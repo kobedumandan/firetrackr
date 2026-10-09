@@ -269,6 +269,51 @@ Frontend environment variables are embedded at build time; rebuild after changin
 them. The frontend build is written to `frontend/dist/`; the Python backend runs
 directly and does not have a separate build step.
 
+### Google photorealistic 3D exploration
+
+On the Command map, click **Explore in 3D** (top left). The viewer opens at the
+current map center. Drag to move, scroll to zoom, use **Rotate left/right** and
+the **Tilt** slider, or **Reset view** to return to the starting location. Use
+**Back to command map** or Escape to return to dispatch. Incident markers,
+live crews, routes, and drawing tools remain on the existing command map; this
+viewer is for exploring Google's imagery. Finish picking/drawing before opening it.
+
+In `frontend/.env`, configure your **Google Maps** browser key:
+
+```dotenv
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_browser_key
+```
+
+This is separate from `VITE_CARTO_MAP_API_KEY`, which is only for the existing
+light/dark basemap. Backend `.env` variables are not read by Vite. Restart
+`npm run dev` after editing frontend configuration, and rebuild production
+assets with `npm run build` if using a production build.
+
+Google Cloud setup for the key's project:
+
+1. Enable **Maps JavaScript API** and billing. This implementation uses its
+   `maps3d` library, rather than directly calling the Map Tiles API.
+2. Restrict the key to **Websites**, permitting `http://localhost:5173/*` for
+   local development and your actual frontend domain when deployed.
+3. Under API restrictions, allow **Maps JavaScript API**. A key restricted only
+   to Map Tiles API will not authorize this viewer.
+
+The browser necessarily receives this key; use website/API restrictions and
+never put server-side credentials in a `VITE_` variable. Keep `.env` out of Git.
+Google is contacted only when opening the 3D viewer, and usage is subject to
+Google Maps Platform billing. No Google Cloud billing or API settings are
+changed by this app.
+
+Photorealistic building detail varies by location. Flat imagery at a particular
+location does not necessarily mean the key is broken. The viewer cannot create
+building meshes that Google has not published. Network, authorization, and
+initialization failures show an error with a retry action; the command map is
+still available. A modern browser with graphics acceleration is recommended.
+
+References: [Google 3D setup](https://developers.google.com/maps/documentation/javascript/3d/get-started),
+[API key setup](https://developers.google.com/maps/documentation/javascript/get-api-key),
+[coverage](https://developers.google.com/maps/coverage).
+
 ## Working with a groupmate using branches
 
 A branch keeps your commits separate from `main`. A commit is a local snapshot;

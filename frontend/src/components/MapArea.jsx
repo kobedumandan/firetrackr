@@ -16,6 +16,7 @@ import "leaflet/dist/leaflet.css";
 import "leaflet.heat";
 import "../styles/MapArea.css";
 import ConfirmModal from "./ConfirmModal";
+import Google3DExplorer from "./Google3DExplorer";
 
 import { MAP_CENTER, MAP_ZOOM, tileLayersFor, REGION_BOUNDARY } from "../data/mapConfig";
 import { useTheme, readCssVar } from "../hooks/useTheme";
@@ -1590,6 +1591,7 @@ export default function MapArea({
         {tileLayersFor(tileMode).map((layer, i) => (
           <TileLayer key={`${tileMode}-${i}`} {...layer} />
         ))}
+        <Google3DExplorer disabled={pickingMode || !!placingType || isDrawing} />
 
         {/* Picking-mode handlers */}
         <MapClickHandler

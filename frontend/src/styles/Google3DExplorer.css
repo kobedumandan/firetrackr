@@ -1,0 +1,77 @@
+.google-3d-open {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: var(--z-map-label, 1500);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.google-3d-open span {
+  font-weight: 800;
+  color: var(--accent-fire);
+}
+
+.google-3d-open:disabled { opacity: .5; cursor: not-allowed; }
+
+.google-3d-dialog {
+  width: min(1440px, calc(100vw - 32px));
+  height: calc(100dvh - 32px);
+  max-width: none;
+  max-height: none;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--border-bright);
+  border-radius: 14px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.google-3d-dialog[open] { display: flex; flex-direction: column; }
+.google-3d-dialog::backdrop { background: rgb(0 0 0 / 75%); }
+.google-3d-header, .google-3d-footer { flex-shrink: 0; padding: 14px 18px; }
+.google-3d-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.google-3d-header h2 { margin: 0; font-size: 19px; }
+.google-3d-dialog p { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.google-3d-dialog button {
+  padding: 8px 12px;
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.google-3d-dialog button:hover:not(:disabled), .google-3d-open:hover:not(:disabled) { background: var(--bg-hover); }
+.google-3d-dialog button:disabled { opacity: .45; cursor: not-allowed; }
+.google-3d-dialog button:focus-visible, .google-3d-open:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 2px; }
+.google-3d-stage { position: relative; flex: 1; min-height: 180px; background: #101722; }
+.google-3d-host, .google-3d-host gmp-map-3d { width: 100%; height: 100%; display: block; }
+.google-3d-loading { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 18px; border-radius: 8px; background: var(--bg-panel); font-size: 13px; }
+.google-3d-error { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 14px; background: var(--bg-panel); text-align: center; padding: 24px; }
+.google-3d-error h3 { margin: 0; }
+.google-3d-error p { max-width: 520px; }
+.google-3d-error a { color: var(--text-primary); text-decoration: underline; font-size: 13px; }
+.google-3d-camera { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.google-3d-camera label { display: flex; align-items: center; gap: 10px; margin: 0 8px; font-size: 12px; }
+.google-3d-camera input { width: 140px; accent-color: var(--accent-fire); }
+.google-3d-camera label span { min-width: 28px; }
+
+@media (max-width: 600px) {
+  .google-3d-dialog { width: 100vw; height: 100dvh; border-radius: 0; }
+  .google-3d-header { align-items: flex-start; padding: 12px; }
+  .google-3d-header p { display: none; }
+  .google-3d-footer { padding: 10px; }
+}
