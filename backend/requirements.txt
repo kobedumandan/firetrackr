@@ -6,6 +6,8 @@ pydantic==2.13.4
 pydantic_core==2.46.4
 python-dotenv==1.2.2
 python-multipart==0.0.20
+python-jose[cryptography]==3.5.0
+websockets==15.0.1
 annotated-types==0.7.0
 annotated-doc==0.0.4
 typing-inspection==0.4.2
@@ -80,9 +82,9 @@ xxhash==3.7.0
 psutil==7.2.2
 
 # ── Reinforcement Learning ────────────────────────────────────────────────────
-# pip install stable-baselines3 gymnasium
-# stable-baselines3>=2.0.0
-# gymnasium>=0.29.0
+# Imported by ai/__init__.py during API startup, even when RL is disabled.
+stable-baselines3==2.6.0
+gymnasium==1.1.1
 
 # ── SUMO (optional — requires system SUMO install first) ──────────────────────
 # https://sumo.dlr.de/docs/Installing/
