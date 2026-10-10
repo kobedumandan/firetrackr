@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, memo, Fragment } from "react";
 import {
   MapContainer,
+  AttributionControl,
   TileLayer,
   Marker,
   Polyline,
@@ -16,7 +17,8 @@ import "leaflet/dist/leaflet.css";
 import "leaflet.heat";
 import "../styles/MapArea.css";
 import ConfirmModal from "./ConfirmModal";
-import Google3DExplorer from "./Google3DExplorer";
+import CommandBasemapSelector from "./CommandBasemapSelector";
+import { readCommandBasemap, saveCommandBasemap } from "../utils/commandBasemap";
 
 import { MAP_CENTER, MAP_ZOOM, tileLayersFor, REGION_BOUNDARY } from "../data/mapConfig";
 import { useTheme, readCssVar } from "../hooks/useTheme";
@@ -1240,10 +1242,14 @@ export default function MapArea({
     () => document.documentElement.dataset.motion !== "off"
   );
   const activeLayers = activeLayersFor(viewMode, layerPrefs);
-  // The command map has no basemap switcher, so it follows the theme like the
-  // metrics and planning maps do.
   const theme = useTheme();
-  const tileMode = theme === "light" ? "street" : "dark";
+  const [selectedBasemap, setSelectedBasemap] = useState(readCommandBasemap);
+  // Follow the app theme until the user explicitly chooses a basemap.
+  const tileMode = selectedBasemap ?? (theme === "light" ? "street" : "dark");
+  function changeBasemap(value) {
+    setSelectedBasemap(value);
+    saveCommandBasemap(value);
+  }
   const [heatPoints, setHeatPoints] = useState([]);
 
   // ── GNN constraints ────────────────────────────────────────────────────────
@@ -1508,6 +1514,8 @@ export default function MapArea({
 
   return (
     <div className="map-area">
+      {/* Outside Leaflet so choosing a style never places a marker/drawing point. */}
+      <CommandBasemapSelector value={tileMode} onChange={changeBasemap} />
       {/* Picking-mode banner */}
       {pickingMode && (
         <div className="map-pick-banner">
@@ -1591,7 +1599,7 @@ export default function MapArea({
         {tileLayersFor(tileMode).map((layer, i) => (
           <TileLayer key={`${tileMode}-${i}`} {...layer} />
         ))}
-        <Google3DExplorer disabled={pickingMode || !!placingType || isDrawing} />
+        <AttributionControl position="bottomleft" />
 
         {/* Picking-mode handlers */}
         <MapClickHandler

@@ -269,50 +269,24 @@ Frontend environment variables are embedded at build time; rebuild after changin
 them. The frontend build is written to `frontend/dist/`; the Python backend runs
 directly and does not have a separate build step.
 
-### Google photorealistic 3D exploration
+### Command map styles
 
-On the Command map, click **Explore in 3D** (top left). The viewer opens at the
-current map center. Drag to move, scroll to zoom, use **Rotate left/right** and
-the **Tilt** slider, or **Reset view** to return to the starting location. Use
-**Back to command map** or Escape to return to dispatch. Incident markers,
-live crews, routes, and drawing tools remain on the existing command map; this
-viewer is for exploring Google's imagery. Finish picking/drawing before opening it.
+Use **Map style** at the top left of the Command map to choose **Light**,
+**Dark** (CARTO street tiles), or **Satellite** (Esri World Imagery).
+Only the background tiles change: the Leaflet map stays mounted, preserving
+its location, zoom, incident markers, crews, routes, overlays, and drawing tools.
+The existing overlay controls still work independently of the map style.
+Provider credits appear at the bottom left of the map.
 
-In `frontend/.env`, configure your **Google Maps** browser key:
+Your choice is saved in this browser and survives reloads. Until you choose a
+style, the map follows the application's light/dark theme. If browser storage
+is blocked, switching still works for the current map session.
 
-```dotenv
-VITE_GOOGLE_MAPS_API_KEY=your_google_maps_browser_key
-```
-
-This is separate from `VITE_CARTO_MAP_API_KEY`, which is only for the existing
-light/dark basemap. Backend `.env` variables are not read by Vite. Restart
-`npm run dev` after editing frontend configuration, and rebuild production
-assets with `npm run build` if using a production build.
-
-Google Cloud setup for the key's project:
-
-1. Enable **Maps JavaScript API** and billing. This implementation uses its
-   `maps3d` library, rather than directly calling the Map Tiles API.
-2. Restrict the key to **Websites**, permitting `http://localhost:5173/*` for
-   local development and your actual frontend domain when deployed.
-3. Under API restrictions, allow **Maps JavaScript API**. A key restricted only
-   to Map Tiles API will not authorize this viewer.
-
-The browser necessarily receives this key; use website/API restrictions and
-never put server-side credentials in a `VITE_` variable. Keep `.env` out of Git.
-Google is contacted only when opening the 3D viewer, and usage is subject to
-Google Maps Platform billing. No Google Cloud billing or API settings are
-changed by this app.
-
-Photorealistic building detail varies by location. Flat imagery at a particular
-location does not necessarily mean the key is broken. The viewer cannot create
-building meshes that Google has not published. Network, authorization, and
-initialization failures show an error with a retry action; the command map is
-still available. A modern browser with graphics acceleration is recommended.
-
-References: [Google 3D setup](https://developers.google.com/maps/documentation/javascript/3d/get-started),
-[API key setup](https://developers.google.com/maps/documentation/javascript/get-api-key),
-[coverage](https://developers.google.com/maps/coverage).
+Satellite is **2D imagery**, not photorealistic 3D buildings, and has no tilt or
+rotation. The separate Google 3D viewer has been removed. These styles do not
+use `VITE_GOOGLE_MAPS_API_KEY`; an existing value in your local `.env` can remain
+but is unused. Do not put a Google key in the CARTO setting. Other maps, such
+as metrics and planning, retain their existing behavior.
 
 ## Working with a groupmate using branches
 
