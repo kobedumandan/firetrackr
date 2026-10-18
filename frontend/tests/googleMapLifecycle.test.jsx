@@ -6,12 +6,14 @@ import GooglePhotorealisticMap from '../src/components/GooglePhotorealisticMap'
 import { loadGoogleMaps3D } from '../src/utils/googleMaps3D'
 import { attachGoogle3DBridge } from '../src/utils/leafletGoogle3DBridge'
 import { createGoogleConstraintOverlay } from '../src/utils/googleConstraintOverlay'
+import { createGoogleBarangayOverlay } from '../src/utils/googleBarangayOverlay'
 import { useMap } from 'react-leaflet'
 
 vi.mock('react-leaflet', () => ({ useMap: vi.fn() }))
 vi.mock('../src/utils/googleMaps3D', async original => ({ ...await original(), loadGoogleMaps3D: vi.fn() }))
 vi.mock('../src/utils/leafletGoogle3DBridge', () => ({ attachGoogle3DBridge: vi.fn() }))
 vi.mock('../src/utils/googleConstraintOverlay', () => ({ createGoogleConstraintOverlay: vi.fn() }))
+vi.mock('../src/utils/googleBarangayOverlay', () => ({ createGoogleBarangayOverlay: vi.fn() }))
 
 let count = 0
 class GoogleMap extends HTMLElement {
@@ -21,7 +23,7 @@ class GoogleMap extends HTMLElement {
 }
 customElements.define('test-google-map', GoogleMap)
 
-let root, portalHost, controlsHost, props, bridge, roads
+let root, portalHost, controlsHost, props, bridge, roads, neighborhoods
 beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks(); count = 0
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -30,11 +32,14 @@ beforeEach(() => {
   root = createRoot(document.getElementById('root'))
   bridge = { setActive: vi.fn(), refresh: vi.fn(), dispose: vi.fn() }
   roads = { sync: vi.fn(), setActive: vi.fn(), dispose: vi.fn() }
+  neighborhoods = { sync: vi.fn(), setActive: vi.fn(), dispose: vi.fn() }
   useMap.mockReturnValue({ getCenter: () => ({ lat: 7.307, lng: 125.635 }), getZoom: () => 12, getSize: () => ({ y: 800 }) })
   loadGoogleMaps3D.mockResolvedValue({ Map3DElement: GoogleMap })
   attachGoogle3DBridge.mockReturnValue(bridge)
   createGoogleConstraintOverlay.mockReturnValue(roads)
-  props = { portalHost, controlsHost, active: true, overlayRevision: {}, gnnData: null, onFallback: vi.fn() }
+  createGoogleBarangayOverlay.mockReturnValue(neighborhoods)
+  props = { portalHost, controlsHost, active: true, overlayRevision: {}, gnnData: null,
+    barangayData: null, showBarangayLabels: true, onFallback: vi.fn() }
 })
 afterEach(async () => { await act(async () => root.unmount()); vi.useRealTimers(); delete globalThis.IS_REACT_ACT_ENVIRONMENT })
 const render = () => act(async () => root.render(<GooglePhotorealisticMap {...props} />))
@@ -78,6 +83,15 @@ describe('photorealistic view regressions', () => {
     props.gnnData = null; await render()
     expect(roads.sync).toHaveBeenLastCalledWith(null)
     expect(count).toBe(1)
+  })
+
+  it('sends the selected barangay layer and label visibility to the native 3D overlay', async () => {
+    await render()
+    const data = { type: 'FeatureCollection', features: [] }
+    props.barangayData = data; props.showBarangayLabels = false; await render()
+    expect(neighborhoods.sync).toHaveBeenLastCalledWith(data, false)
+    props.barangayData = null; await render()
+    expect(neighborhoods.sync).toHaveBeenLastCalledWith(null, false)
   })
 
   it('still reports an actual SDK initialization failure', async () => {

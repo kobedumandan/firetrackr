@@ -82,6 +82,7 @@ describe('Leaflet / Google renderer lifecycle', () => {
     const border = f.googleMap.children[1]
     expect(border.strokeColor).toBe('#ff5a1f')
     expect(border.strokeWidth).toBe(4)
+    expect(border.zIndex).toBe(10)
     expect(border.path[0]).toEqual(border.path.at(-1))
     expect(border.path.every(point => point.altitude === 2)).toBe(true)
     f.bridge.dispose()

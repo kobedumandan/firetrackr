@@ -1,6 +1,7 @@
 import { rangeToZoom, zoomToRange } from './googleMaps3D'
 import { frameThrottle } from './commandMapData'
 import { setGoogleLinePath, setGooglePolygonPaths } from './googleMapGeometry'
+import { PANABO_BOUNDARY_COLOR } from './mapOverlayColors'
 
 const position = point => ({ lat: point.lat, lng: point.lng, altitude: 0 })
 
@@ -94,6 +95,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
     const options = layer.options || {}
     // The 2D world mask is not a surface in a globe renderer.
     if (options.className === 'cov-hatch-path') return null
+    if (options.className === 'barangay-boundary' || options.icon?.options?.className === 'barangay-map-label') return null
     if (layer instanceof L.Marker || layer instanceof L.CircleMarker) {
       const point = layer.getLatLng()
       if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return null
@@ -104,7 +106,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
     if (layer instanceof L.Polyline) {
       if (options.className === 'jurisdiction-boundary') {
         return { type: 'line', paths: linePaths(layer.getLatLngs()).map(path => [...path, path[0]]),
-          strokeColor: '#ff5a1f', strokeWidth: 4, title: '' }
+          strokeColor: PANABO_BOUNDARY_COLOR, strokeWidth: 4, zIndex: 10, title: '' }
       }
       return { type: layer instanceof L.Polygon ? 'polygon' : 'line',
         paths: layer instanceof L.Polygon ? polygonPaths(layer.getLatLngs()) : linePaths(layer.getLatLngs()),
@@ -160,6 +162,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
         const element = new Element({
           altitudeMode: 'RELATIVE_TO_GROUND', drawsOccludedSegments: true,
           strokeColor: description.strokeColor, strokeWidth: description.strokeWidth,
+          zIndex: description.zIndex,
           ...(polygon ? { fillColor: description.fillColor } : {}),
         })
         if (polygon) setGooglePolygonPaths(element, path)

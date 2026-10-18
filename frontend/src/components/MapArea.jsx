@@ -25,6 +25,7 @@ import { readCommandBasemap, saveCommandBasemap } from "../utils/commandBasemap"
 import { MAP_CENTER, MAP_ZOOM, tileLayersFor, REGION_BOUNDARY } from "../data/mapConfig";
 import { useTheme, readCssVar } from "../hooks/useTheme";
 import { activeLayersFor } from "../utils/mapLayers";
+import { PANABO_BOUNDARY_COLOR, BARANGAY_BOUNDARY_COLOR } from "../utils/mapOverlayColors";
 import {
   fetchHeatmap,
   fetchObstructions,
@@ -526,7 +527,7 @@ function CoverageLayers() {
         })}
       />
 
-      {/* Jurisdiction boundary — glowing blue outline */}
+      {/* Jurisdiction boundary — strong Panabo orange outline */}
       <GeoJSON
         key={`boundary-${boundaryColor}`}
         data={boundaryFeature}
@@ -534,7 +535,7 @@ function CoverageLayers() {
           className: "jurisdiction-boundary",
           fill: false,
           stroke: true,
-          color: "#ff5a1f",
+          color: PANABO_BOUNDARY_COLOR,
           weight: 4,
           opacity: 1,
         })}
@@ -550,7 +551,7 @@ function barangayLabelIcon(name, population) {
       ? Number(population).toLocaleString("en-US")
       : "—";
   return L.divIcon({
-    className: "",
+    className: "barangay-map-label",
     iconSize: [140, 40],
     iconAnchor: [70, 20],
     html: `<div class="brgy-label">
@@ -564,10 +565,11 @@ function BarangayLayer({ featureCollection, showLabels = true }) {
   if (!featureCollection?.features?.length) return null;
 
   const style = () => ({
-    color: "#38bdf8",
-    weight: 1.5,
-    opacity: 0.9,
-    fillColor: "#38bdf8",
+    className: "barangay-boundary",
+    color: BARANGAY_BOUNDARY_COLOR,
+    weight: 2,
+    opacity: 0.95,
+    fillColor: BARANGAY_BOUNDARY_COLOR,
     fillOpacity: 0.08,
   });
 
@@ -2078,6 +2080,8 @@ export default function MapArea({
             heatmapActive={activeLayers.has("Heat Map")}
             overlayRevision={overlayRevision}
             gnnData={visibleGnnData}
+            barangayData={activeLayers.has("Barangay") ? barangays : null}
+            showBarangayLabels={mapZoom >= BARANGAY_LABEL_MIN_ZOOM}
           />
         )}
         {rasterVisited && (

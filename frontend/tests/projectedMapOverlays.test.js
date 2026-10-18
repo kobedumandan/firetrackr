@@ -2,6 +2,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import L from 'leaflet'
 import { createGoogleConstraintOverlay } from '../src/utils/googleConstraintOverlay'
+import { createGoogleBarangayOverlay, prepareBarangays } from '../src/utils/googleBarangayOverlay'
+import { BARANGAY_BOUNDARY_COLOR } from '../src/utils/mapOverlayColors'
 import { attachRasterBridge } from '../src/utils/leafletRasterBridge'
 
 function animationFrames() {
@@ -55,6 +57,36 @@ describe('Google road overlay cache', () => {
     expect(map.children).toHaveLength(0)
     expect(raf.frames.size).toBe(0)
     overlay.dispose()
+  })
+})
+
+describe('Google barangay overlay', () => {
+  it('draws and caches native orange polygons and labels', () => {
+    const map = document.createElement('div')
+    const make = options => Object.assign(document.createElement('div'), options)
+    class Polygon { constructor(options) { return make(options) } }
+    class Marker { constructor(options) { return make(options) } }
+    const data = { type: 'FeatureCollection', features: [{
+      type: 'Feature', properties: { brgy_id: 1, brgy_name: 'San Francisco', brgy_estpopulation: 1234 },
+      geometry: { type: 'Polygon', coordinates: [[[125.6, 7.3], [125.7, 7.3], [125.7, 7.4], [125.6, 7.3]]] },
+    }] }
+    const prepared = prepareBarangays(data)
+    expect(prepareBarangays(data)).toBe(prepared)
+    expect(prepared[0].center).toEqual({ lat: 7.35, lng: 125.65, altitude: 12 })
+    const overlay = createGoogleBarangayOverlay(map, { Polygon3DElement: Polygon, Marker3DElement: Marker })
+    overlay.sync(data, true)
+    expect(map.children).toHaveLength(2)
+    const polygon = map.children[0], label = map.children[1]
+    expect(polygon.strokeColor).toBe(BARANGAY_BOUNDARY_COLOR)
+    expect(polygon.path[0]).toEqual({ lat: 7.3, lng: 125.6, altitude: 3 })
+    expect(label.label).toContain('San Francisco')
+    overlay.sync(null)
+    expect(map.children).toHaveLength(0)
+    overlay.sync(data, false)
+    expect(map.children).toHaveLength(1)
+    expect(map.firstChild).toBe(polygon)
+    overlay.dispose()
+    expect(map.children).toHaveLength(0)
   })
 })
 

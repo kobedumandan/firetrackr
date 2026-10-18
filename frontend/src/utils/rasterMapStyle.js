@@ -1,5 +1,6 @@
 import { REGION_BOUNDARY, TILE_OPTIONS } from '../data/mapConfig'
 import { EMPTY_GEOJSON, rasterTileUrls } from './commandMapData'
+import { PANABO_BOUNDARY_COLOR } from './mapOverlayColors'
 
 export function rasterMapStyle() {
   return {
@@ -31,7 +32,7 @@ export function rasterMapStyle() {
         'circle-radius': ['get', 'radius'], 'circle-color': ['get', 'fillColor'], 'circle-opacity': ['get', 'opacity'],
       } },
       { id: 'command-boundary', type: 'line', source: 'command-boundary', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: {
-        'line-color': '#ff5a1f', 'line-width': 3.5, 'line-opacity': 1,
+        'line-color': PANABO_BOUNDARY_COLOR, 'line-width': 3.5, 'line-opacity': 1,
       } },
     ],
   }

@@ -5,12 +5,13 @@ import L from 'leaflet'
 import { loadGoogleMaps3D, zoomToRange, cameraAfterAction } from '../utils/googleMaps3D'
 import { attachGoogle3DBridge } from '../utils/leafletGoogle3DBridge'
 import { createGoogleConstraintOverlay } from '../utils/googleConstraintOverlay'
+import { createGoogleBarangayOverlay } from '../utils/googleBarangayOverlay'
 import MapCameraControls from './MapCameraControls'
 import '../styles/GooglePhotorealisticMap.css'
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
 
-export default function GooglePhotorealisticMap({ portalHost, controlsHost, active, onFallback, heatmapActive, overlayRevision, gnnData }) {
+export default function GooglePhotorealisticMap({ portalHost, controlsHost, active, onFallback, heatmapActive, overlayRevision, gnnData, barangayData, showBarangayLabels }) {
   const leaflet = useMap()
   const host = useRef(null)
   const runtime = useRef(null)
@@ -53,7 +54,11 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
       map.style.height = '100%'
       map.addEventListener('gmp-error', onError)
       const bridge = attachGoogle3DBridge(leaflet, map, library, L, setCamera, { initiallyActive: false })
-      runtime.current = { map, bridge, roads: createGoogleConstraintOverlay(map, library, leaflet, L) }
+      runtime.current = {
+        map, bridge,
+        roads: createGoogleConstraintOverlay(map, library, leaflet, L),
+        barangays: createGoogleBarangayOverlay(map, library),
+      }
       host.current.append(map)
       // Steady means *every* streamed tile is done, not that the map is usable.
       // Finer imagery can load while navigating. Only SDK errors are fatal.
@@ -65,6 +70,7 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
       if (window.gm_authFailure === authFailure) window.gm_authFailure = previousAuthFailure
       runtime.current?.bridge.dispose()
       runtime.current?.roads.dispose()
+      runtime.current?.barangays.dispose()
       runtime.current = null
       map?.removeEventListener('gmp-error', onError)
       map?.remove()
@@ -76,9 +82,11 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
     if (!current) return
     current.bridge.setActive(active && status === 'ready')
     current.roads.setActive(active && status === 'ready')
+    current.barangays.setActive(active && status === 'ready')
   }, [active, status])
   useEffect(() => { if (active && status === 'ready') runtime.current?.bridge.refresh() }, [active, status, overlayRevision])
   useEffect(() => { runtime.current?.roads.sync(gnnData) }, [gnnData, status])
+  useEffect(() => { runtime.current?.barangays.sync(barangayData, showBarangayLabels) }, [barangayData, showBarangayLabels, status])
 
   function act(action) {
     const map = runtime.current?.map
