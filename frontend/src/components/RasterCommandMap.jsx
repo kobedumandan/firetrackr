@@ -9,19 +9,28 @@ import { clamp } from '../utils/googleMaps3D'
 import MapCameraControls from './MapCameraControls'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
-export default function RasterCommandMap({ portalHost, controlsHost, active, tileMode, overlayRevision, gnnData, heatPoints, picking }) {
+export default function RasterCommandMap({ portalHost, controlsHost, active, tileMode, overlayRevision, gnnData, heatPoints, picking, onUnavailable }) {
   const leaflet = useMap()
   const host = useRef(null)
   const runtime = useRef(null)
+  const unavailable = useRef(onUnavailable)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState('')
   const [camera, setCamera] = useState({ tilt: 0, heading: 0 })
+  useEffect(() => { unavailable.current = onUnavailable }, [onUnavailable])
 
   useEffect(() => {
     if (!portalHost || !host.current) return
     let cancelled = false
     let map
     let observer
+    let failed = false
+    const fallback = message => {
+      if (cancelled || failed) return
+      failed = true
+      setError(message)
+      unavailable.current?.()
+    }
     import('maplibre-gl').then(maplibre => {
       if (cancelled) return
       const center = leaflet.getCenter()
@@ -39,12 +48,11 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
         setReady(true)
       })
       map.on('error', event => {
-        // A missing tile is recoverable; the SDK retains surrounding tiles.
-        if (!event.sourceId) setError('The map could not initialize. Enable hardware acceleration and reload the page.')
+        if (!event.sourceId) fallback('The enhanced map renderer is unavailable. Using the standard map instead.')
       })
       observer = new ResizeObserver(() => { if (map.getContainer().offsetWidth) map.resize() })
       observer.observe(host.current)
-    }).catch(() => { if (!cancelled) setError('The map renderer could not load. Reload the page to retry.') })
+    }).catch(() => fallback('The enhanced map renderer is unavailable. Using the standard map instead.'))
     return () => {
       cancelled = true; observer?.disconnect(); runtime.current?.bridge.dispose(); runtime.current = null; map?.remove()
     }

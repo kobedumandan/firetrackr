@@ -1,6 +1,8 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef, memo, Fragment } from "react";
 import {
   MapContainer,
+  AttributionControl,
+  TileLayer,
   Marker,
   Polyline,
   CircleMarker,
@@ -12,6 +14,7 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "leaflet.heat";
 import "../styles/MapArea.css";
 import ConfirmModal from "./ConfirmModal";
 import CommandBasemapSelector from "./CommandBasemapSelector";
@@ -19,7 +22,7 @@ import GooglePhotorealisticMap from "./GooglePhotorealisticMap";
 import RasterCommandMap from "./RasterCommandMap";
 import { readCommandBasemap, saveCommandBasemap } from "../utils/commandBasemap";
 
-import { MAP_CENTER, MAP_ZOOM, REGION_BOUNDARY } from "../data/mapConfig";
+import { MAP_CENTER, MAP_ZOOM, tileLayersFor, REGION_BOUNDARY } from "../data/mapConfig";
 import { useTheme, readCssVar } from "../hooks/useTheme";
 import { activeLayersFor } from "../utils/mapLayers";
 import {
@@ -602,7 +605,92 @@ function BarangayLayer({ featureCollection, showLabels = true }) {
   );
 }
 
-// ── Weighted KDE heatmap layer (leaflet.heat) ─────────────────────────────────
+// The original Leaflet layers remain available when the enhanced raster
+// renderer cannot start (for example when WebGL is unavailable).
+function HeatmapLayer({ points }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!points.length) return;
+    const data = points.map((p) => [p.lat, p.lng, p.weight]);
+    const layer = L.heatLayer(data, {
+      radius: 25,
+      blur: 18,
+      minOpacity: 0.35,
+      maxZoom: 17,
+      max: 5.0,
+      gradient: {
+        0.0: "#0000ff",
+        0.2: "#00ffff",
+        0.4: "#00ff00",
+        0.6: "#ffff00",
+        0.8: "#ff8000",
+        1.0: "#ff0000",
+      },
+    }).addTo(map);
+    return () => map.removeLayer(layer);
+  }, [map, points]);
+
+  return null;
+}
+
+const NORMAL_ROAD_COLOR = "#B0BEC5";
+const GnnConstraintsLayer = memo(function GnnConstraintsLayer({ data }) {
+  const renderer = useMemo(() => L.canvas({ padding: 0.5 }), []);
+  const ordered = useMemo(() => {
+    const features = data?.constraints?.features;
+    if (!features?.length) return [];
+    return [...features]
+      .sort((a, b) => {
+        const an = a.properties?.display_constraint_type === "normal" ? 0 : 1;
+        const bn = b.properties?.display_constraint_type === "normal" ? 0 : 1;
+        return an - bn;
+      })
+      .map((feature, index) => {
+        const props = feature.properties || {};
+        return {
+          key: `gc-${props.road_id ?? index}-${index}`,
+          props,
+          isNormal: props.display_constraint_type === "normal",
+          positions: feature.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
+        };
+      });
+  }, [data]);
+
+  return <>{ordered.map(({ key, props, isNormal, positions }) => {
+    const color = props.map_color || NORMAL_ROAD_COLOR;
+    const pathOptions = {
+      color,
+      weight: props.map_weight || 2,
+      opacity: props.map_opacity ?? 0.85,
+      renderer,
+      interactive: !isNormal,
+    };
+    if (isNormal) return <Polyline key={key} positions={positions} pathOptions={pathOptions} />;
+    const confidence = props.hover_confidence_text ||
+      (props.final_display_confidence_pct != null
+        ? `Confidence ${props.final_display_confidence_pct.toFixed(0)}%`
+        : null);
+    return (
+      <Polyline key={key} positions={positions} pathOptions={pathOptions}>
+        <Tooltip sticky className="leaflet-dark-tooltip">
+          <div className="tooltip-id" style={{ color }}>
+            {props.display_label || props.display_constraint_type}
+          </div>
+          {(props.name || props.barangay) && (
+            <div className="tooltip-sub">{[props.name, props.barangay].filter(Boolean).join(" · ")}</div>
+          )}
+          <div className="tooltip-sub">
+            Avoidance ×{props.routing_multiplier ?? 1}
+            {confidence ? ` · ${confidence}` : ""}
+            {props.custom ? " · custom" : ""}
+          </div>
+        </Tooltip>
+      </Polyline>
+    );
+  })}</>;
+});
+
 // Shared colors for the custom constraint editor.
 const NARROW_ROAD_COLOR = "#E53935";
 const TRAFFIC_AREA_COLOR = "#FFD54F";
@@ -1113,6 +1201,7 @@ export default function MapArea({
   const [controlsHost, setControlsHost] = useState(null);
   const [googleVisited, setGoogleVisited] = useState(isGoogle3D);
   const [rasterVisited, setRasterVisited] = useState(!isGoogle3D);
+  const [rasterFallback, setRasterFallback] = useState(false);
   function changeBasemap(value) {
     // Road snapping relies on Leaflet pointer coordinates; leave placement
     // mode when entering 3D. Starting placement below returns to Satellite.
@@ -1395,9 +1484,9 @@ export default function MapArea({
   const visibleHeatPoints = activeLayers.has("Heat Map") ? heatPoints : null;
 
   return (
-    <div className={`map-area map-area--projected${isGoogle3D ? " map-area--3d" : ""}`}>
+    <div className={`map-area${isGoogle3D || !rasterFallback ? " map-area--projected" : ""}${isGoogle3D ? " map-area--3d" : ""}`}>
       <div ref={setGoogleHost} className="command-renderer-host" hidden={!isGoogle3D} />
-      <div ref={setRasterHost} className="command-renderer-host" hidden={isGoogle3D} />
+      <div ref={setRasterHost} className="command-renderer-host" hidden={isGoogle3D || rasterFallback} />
       {/* Outside Leaflet so choosing a style never places a marker/drawing point. */}
       <CommandBasemapSelector value={tileMode} onChange={changeBasemap} />
       {/* Picking-mode banner */}
@@ -1480,6 +1569,10 @@ export default function MapArea({
         fadeAnimation={mapMotion}
         markerZoomAnimation={mapMotion}
       >
+        {rasterFallback && !isGoogle3D && tileLayersFor(tileMode).map((layer, index) => (
+          <TileLayer key={`${tileMode}-${index}`} {...layer} />
+        ))}
+        {rasterFallback && !isGoogle3D && <AttributionControl position="bottomleft" />}
 
         {/* Picking-mode handlers */}
         <MapClickHandler
@@ -1504,7 +1597,10 @@ export default function MapArea({
 
         {/* Coverage mask + jurisdiction boundary */}
         <CoverageLayers />
-        {/* Dense GNN / heat layers are drawn directly by the visible renderer. */}
+        {rasterFallback && activeLayers.has("Heat Map") && <HeatmapLayer points={heatPoints} />}
+        {rasterFallback && activeLayers.has("GNN Constraints") && gnnData && (
+          <GnnConstraintsLayer data={gnnData} />
+        )}
 
         {/* Barangay boundary overlay with centered labels */}
         {activeLayers.has("Barangay") && barangays && (
@@ -1988,12 +2084,13 @@ export default function MapArea({
           <RasterCommandMap
             portalHost={rasterHost}
             controlsHost={controlsHost}
-            active={!isGoogle3D}
+            active={!isGoogle3D && !rasterFallback}
             tileMode={tileMode}
             overlayRevision={overlayRevision}
             gnnData={visibleGnnData}
             heatPoints={visibleHeatPoints}
             picking={pickingMode || !!placingType || isDrawing}
+            onUnavailable={() => setRasterFallback(true)}
           />
         )}
       </MapContainer>
