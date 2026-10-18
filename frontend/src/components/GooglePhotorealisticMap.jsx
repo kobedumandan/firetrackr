@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMap } from 'react-leaflet'
 import L from 'leaflet'
@@ -19,6 +19,13 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [camera, setCamera] = useState({ tilt: 55, heading: 0 })
+  const [barangayError, setBarangayError] = useState(false)
+  const reportBarangayError = useCallback(error => {
+    // Log the actual SDK message locally; cross-origin uncaught errors otherwise
+    // arrive as just "Script error" and unmount the entire dashboard.
+    console.warn('Google Barangay overlay:', error?.message || error)
+    setBarangayError(true)
+  }, [])
 
   // Keep this instance and Google's own tile cache alive between style changes.
   useEffect(() => {
@@ -57,7 +64,7 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
       runtime.current = {
         map, bridge,
         roads: createGoogleConstraintOverlay(map, library, leaflet, L),
-        barangays: createGoogleBarangayOverlay(map, library),
+        barangays: createGoogleBarangayOverlay(map, library, reportBarangayError),
       }
       host.current.append(map)
       // Steady means *every* streamed tile is done, not that the map is usable.
@@ -75,18 +82,34 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
       map?.removeEventListener('gmp-error', onError)
       map?.remove()
     }
-  }, [leaflet, portalHost, attempt])
+  }, [leaflet, portalHost, attempt, reportBarangayError])
 
   useEffect(() => {
     const current = runtime.current
     if (!current) return
     current.bridge.setActive(active && status === 'ready')
     current.roads.setActive(active && status === 'ready')
-    current.barangays.setActive(active && status === 'ready')
   }, [active, status])
   useEffect(() => { if (active && status === 'ready') runtime.current?.bridge.refresh() }, [active, status, overlayRevision])
   useEffect(() => { runtime.current?.roads.sync(gnnData) }, [gnnData, status])
-  useEffect(() => { runtime.current?.barangays.sync(barangayData, showBarangayLabels) }, [barangayData, showBarangayLabels, status])
+  useEffect(() => {
+    const overlay = runtime.current?.barangays
+    if (!overlay) return
+    try {
+      if (!active || status !== 'ready') {
+        overlay.setActive(false)
+        return
+      }
+      overlay.sync(barangayData, showBarangayLabels)
+      overlay.setActive(true)
+    } catch (error) {
+      // A failed optional overlay must never unmount the app or the other maps.
+      overlay.setActive(false)
+      // The SDK rejected this update; publish that external failure once.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      reportBarangayError(error)
+    }
+  }, [active, barangayData, showBarangayLabels, status, reportBarangayError])
 
   function act(action) {
     const map = runtime.current?.map
@@ -114,6 +137,9 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
         </div>
       )}
       {active && heatmapActive && <div className="google-map-note">Heatmap shading is available in Light, Dark and Satellite.</div>}
+      {active && barangayData && barangayError && <div className="google-map-note" role="status">
+        Some Barangay details could not load in 3D. <button type="button" onClick={onFallback}>View in Satellite</button>
+      </div>}
     </>, portalHost)}
     {active && <MapCameraControls host={controlsHost} camera={camera} onAction={act} disabled={status !== 'ready'} title="3D view · HD" />}
   </>

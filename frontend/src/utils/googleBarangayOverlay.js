@@ -1,4 +1,4 @@
-import { setGooglePolygonPaths } from './googleMapGeometry'
+import { setGoogleLinePath, setGooglePolygonPaths } from './googleMapGeometry'
 import { BARANGAY_BOUNDARY_COLOR, BARANGAY_FILL_COLOR } from './mapOverlayColors'
 
 const prepared = new WeakMap()
@@ -38,68 +38,109 @@ export function prepareBarangays(data) {
 
 const coordinates = ring => ring.map(([lng, lat]) => ({ lat, lng, altitude: 3 }))
 
-export function createGoogleBarangayOverlay(map, library) {
+export function createGoogleBarangayOverlay(map, library, onWarning = () => {}) {
   let cachedData
   let selectedData
   let labelsVisible = true
   let active = true
   let polygons = []
   let labels = []
+  let labelsBuilt = false
 
   const detach = () => [...polygons, ...labels].forEach(element => element.remove())
+  const build = data => {
+    const Polygon = library.Polygon3DElement || library.Polygon3DInteractiveElement
+    const Line = library.Polyline3DElement || library.Polyline3DInteractiveElement
+    const next = []
+    const options = {
+      altitudeMode: 'RELATIVE_TO_GROUND', drawsOccludedSegments: true,
+      strokeColor: BARANGAY_BOUNDARY_COLOR, strokeWidth: 2, zIndex: 5,
+    }
+    try {
+      for (const barangay of prepareBarangays(data)) {
+        for (const polygon of barangay.rings) {
+          if (!polygon[0]?.length) continue
+          let element
+          try {
+            if (!Polygon) throw new Error('Google polygon rendering is unavailable')
+            element = new Polygon({ ...options, fillColor: BARANGAY_FILL_COLOR })
+            setGooglePolygonPaths(element, {
+              path: coordinates(polygon[0]), innerPaths: polygon.slice(1).map(coordinates),
+            })
+            map.append(element)
+            next.push(element)
+          } catch (error) {
+            element?.remove()
+            if (!Line) throw error
+            // If the SDK rejects a polygon, keep its boundaries visible using
+            // the line renderer already used by roads and city limits.
+            for (const ring of polygon) {
+              const line = new Line(options)
+              next.push(line)
+              const path = coordinates(ring)
+              const first = path[0], last = path.at(-1)
+              if (first.lat !== last.lat || first.lng !== last.lng) path.push({ ...first })
+              setGoogleLinePath(line, path)
+              map.append(line)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      next.forEach(element => element.remove())
+      throw error
+    }
+    polygons = next
+    labels = []
+    labelsBuilt = false
+    // Cache only a successful build; failures must remain retryable.
+    cachedData = data
+  }
+  const buildLabels = data => {
+    const Marker = library.Marker3DElement || library.Marker3DInteractiveElement
+    let warning
+    for (const barangay of prepareBarangays(data)) {
+      if (Marker && barangay.center) {
+        let label
+        try {
+          const population = barangay.population == null ? '' : ` · Est. pop. ${Number(barangay.population).toLocaleString('en-US')}`
+          label = new Marker({
+            position: barangay.center, altitudeMode: 'RELATIVE_TO_GROUND',
+            label: `${barangay.name}${population}`, sizePreserved: true,
+            drawsWhenOccluded: true, zIndex: 6,
+          })
+          map.append(label)
+          labels.push(label)
+        } catch (error) {
+          label?.remove()
+          warning = error
+        }
+      }
+    }
+    labelsBuilt = true
+    if (warning) onWarning(warning)
+  }
   const attach = () => {
     if (!active || !selectedData) return
+    if (cachedData !== selectedData) build(selectedData)
     polygons.forEach(element => { if (element.parentNode !== map) map.append(element) })
+    if (labelsVisible && !labelsBuilt) buildLabels(selectedData)
     labels.forEach(element => {
       if (labelsVisible) {
         if (element.parentNode !== map) map.append(element)
       } else element.remove()
     })
   }
-  const build = data => {
-    polygons = []
-    labels = []
-    const Polygon = library.Polygon3DElement || library.Polygon3DInteractiveElement
-    const Marker = library.Marker3DElement || library.Marker3DInteractiveElement
-    for (const barangay of prepareBarangays(data)) {
-      for (const polygon of barangay.rings) {
-        if (!Polygon || !polygon[0]?.length) continue
-        const element = new Polygon({
-          altitudeMode: 'RELATIVE_TO_GROUND', drawsOccludedSegments: true,
-          strokeColor: BARANGAY_BOUNDARY_COLOR, strokeWidth: 2,
-          fillColor: BARANGAY_FILL_COLOR, zIndex: 5,
-        })
-        setGooglePolygonPaths(element, {
-          path: coordinates(polygon[0]),
-          innerPaths: polygon.slice(1).map(coordinates),
-        })
-        polygons.push(element)
-      }
-      if (Marker && barangay.center) {
-        const population = barangay.population == null ? '' : ` · Est. pop. ${Number(barangay.population).toLocaleString('en-US')}`
-        labels.push(new Marker({
-          position: barangay.center, altitudeMode: 'RELATIVE_TO_GROUND',
-          label: `${barangay.name}${population}`, sizePreserved: true,
-          drawsWhenOccluded: true, zIndex: 6,
-        }))
-      }
-    }
-  }
 
   return {
     sync(data, showLabels = true) {
-      if (selectedData === data && labelsVisible === showLabels) return
-      detach()
+      if (selectedData !== data) detach()
       selectedData = data
       labelsVisible = showLabels
       if (!data) return
-      if (cachedData !== data) {
-        cachedData = data
-        build(data)
-      }
       attach()
     },
-    setActive(value) { active = value; if (value) attach() },
+    setActive(value) { active = value; if (value) attach(); else detach() },
     dispose() { detach(); polygons = []; labels = [] },
   }
 }

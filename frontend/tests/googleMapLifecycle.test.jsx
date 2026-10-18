@@ -100,4 +100,41 @@ describe('photorealistic view regressions', () => {
     expect(portalHost.querySelector('[role="alert"]').textContent).toContain('could not initialize')
     expect(controlsHost.querySelector('[aria-label="Increase tilt"]').disabled).toBe(true)
   })
+
+  it('does not sync the cached Google Barangay overlay while a standard map is active', async () => {
+    await render()
+    props.active = false
+    await render()
+    neighborhoods.sync.mockClear()
+    for (let style = 0; style < 3; style++) {
+      props.barangayData = { features: [] }; await render()
+      props.barangayData = null; await render()
+    }
+    expect(neighborhoods.sync).not.toHaveBeenCalled()
+    props.active = true
+    await render()
+    expect(neighborhoods.sync).toHaveBeenCalledOnce()
+    expect(count).toBe(1)
+  })
+
+  it.each(['sync', 'setActive'])('contains a Barangay %s exception without blanking the dashboard', async method => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await render()
+      const map = portalHost.querySelector('test-google-map')
+      neighborhoods[method].mockImplementation(value => {
+        if (value) throw new Error('SDK rejected Barangay geometry')
+      })
+      props.barangayData = { features: [] }
+      await render()
+      expect(portalHost.querySelector('test-google-map')).toBe(map)
+      expect(portalHost.querySelector('[role="status"]').textContent).toContain('Barangay')
+      expect(controlsHost.querySelector('[aria-label="Increase tilt"]').disabled).toBe(false)
+      props.active = false
+      await render()
+      expect(portalHost.querySelector('[role="status"]')).toBeNull()
+      expect(bridge.dispose).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledWith('Google Barangay overlay:', 'SDK rejected Barangay geometry')
+    } finally { warn.mockRestore() }
+  })
 })

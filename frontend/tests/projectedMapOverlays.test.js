@@ -61,6 +61,89 @@ describe('Google road overlay cache', () => {
 })
 
 describe('Google barangay overlay', () => {
+  const data = { features: [{ properties: { brgy_name: 'San Francisco' },
+    geometry: { type: 'Polygon', coordinates: [[[125.6, 7.3], [125.7, 7.3], [125.7, 7.4], [125.6, 7.3]]] },
+  }] }
+
+  it('defers SDK construction while hidden and builds labels only when needed', () => {
+    const map = document.createElement('div')
+    const polygon = vi.fn(() => document.createElement('div'))
+    const marker = vi.fn(() => document.createElement('div'))
+    class Polygon { constructor() { return polygon() } }
+    class Marker { constructor() { return marker() } }
+    const overlay = createGoogleBarangayOverlay(map, { Polygon3DElement: Polygon, Marker3DElement: Marker })
+    overlay.setActive(false)
+    overlay.sync(data, false)
+    expect(polygon).not.toHaveBeenCalled()
+    expect(marker).not.toHaveBeenCalled()
+    overlay.setActive(true)
+    expect(polygon).toHaveBeenCalledOnce()
+    expect(marker).not.toHaveBeenCalled()
+    overlay.sync(data, true)
+    expect(marker).toHaveBeenCalledOnce()
+    overlay.setActive(false)
+    overlay.setActive(true)
+    expect(polygon).toHaveBeenCalledOnce()
+    expect(marker).toHaveBeenCalledOnce()
+    expect(map.children).toHaveLength(2)
+  })
+
+  it.each(['constructor', 'path', 'append'])('falls back to orange outlines when Google rejects a polygon %s', failure => {
+    const map = document.createElement('div')
+    class Polygon {
+      constructor() {
+        if (failure === 'constructor') throw new Error('SDK polygon rejected')
+        const element = document.createElement('div')
+        element.dataset.polygon = 'true'
+        if (failure === 'path') Object.defineProperty(element, 'path', { set() { throw new Error('SDK path rejected') } })
+        return element
+      }
+    }
+    class Line { constructor(options) { return Object.assign(document.createElement('div'), options) } }
+    const append = map.append.bind(map)
+    map.append = element => {
+      if (failure === 'append' && element.dataset.polygon) throw new Error('SDK append rejected')
+      append(element)
+    }
+    const overlay = createGoogleBarangayOverlay(map, { Polygon3DElement: Polygon, Polyline3DElement: Line })
+    expect(() => overlay.sync(data, false)).not.toThrow()
+    expect(map.children).toHaveLength(1)
+    const outline = map.firstChild
+    expect(outline.strokeColor).toBe(BARANGAY_BOUNDARY_COLOR)
+    expect(outline.path).toHaveLength(4)
+    overlay.sync(null)
+    overlay.sync(data, false)
+    expect(map.firstChild).toBe(outline)
+  })
+
+  it('preserves boundaries when a native label fails', () => {
+    const map = document.createElement('div'), warning = vi.fn()
+    class Polygon { constructor() { return document.createElement('div') } }
+    class Marker { constructor() { throw new Error('SDK label rejected') } }
+    const overlay = createGoogleBarangayOverlay(map, { Polygon3DElement: Polygon, Marker3DElement: Marker }, warning)
+    expect(() => overlay.sync(data)).not.toThrow()
+    expect(map.children).toHaveLength(1)
+    expect(warning).toHaveBeenCalledWith(expect.objectContaining({ message: 'SDK label rejected' }))
+  })
+
+  it('cleans up partial builds and retries rather than caching a failure', () => {
+    const map = document.createElement('div')
+    let fail = true, count = 0
+    class Polygon {
+      constructor() {
+        if (++count === 2 && fail) throw new Error('SDK unavailable')
+        return document.createElement('div')
+      }
+    }
+    const multiple = { features: [...data.features, ...data.features] }
+    const overlay = createGoogleBarangayOverlay(map, { Polygon3DElement: Polygon })
+    expect(() => overlay.sync(multiple)).toThrow('SDK unavailable')
+    expect(map.children).toHaveLength(0)
+    fail = false
+    overlay.sync(multiple)
+    expect(map.children).toHaveLength(2)
+  })
+
   it('draws and caches native orange polygons and labels', () => {
     const map = document.createElement('div')
     const make = options => Object.assign(document.createElement('div'), options)
