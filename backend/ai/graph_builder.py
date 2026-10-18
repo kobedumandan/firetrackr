@@ -10,10 +10,10 @@ from __future__ import annotations
 import numpy as np
 import networkx as nx
 import scipy.sparse as sp
-import torch
-from torch_geometric.data import Data
-from torch_geometric.utils import from_networkx
-from typing import List, Tuple, Optional, Dict, Any
+from typing import TYPE_CHECKING, List, Tuple, Optional, Dict, Any
+
+if TYPE_CHECKING:
+    from torch_geometric.data import Data
 
 
 # ── Node feature indices ───────────────────────────────────────────────────────
@@ -98,6 +98,9 @@ class RoadNetworkGraph:
 
     def to_pyg(self) -> Data:
         """Convert to a PyTorch Geometric Data object for GNN input."""
+        import torch
+        from torch_geometric.data import Data
+
         nodes = sorted(self._node_features.keys())
         x = torch.tensor([self._node_features[n] for n in nodes], dtype=torch.float)
 

@@ -4,10 +4,10 @@ NetworkX graph, and SUMO simulation into one callable interface
 that the FastAPI endpoints will use.
 
 Call flow for a dispatch request:
-  1. Build/update RoadNetworkGraph from latest PostGIS data.
-  2. Run GNN (GAT or PMGCN) to score every node → routing heat-map.
-  3. ALT (A* with Landmarks and Triangle inequality) search on GNN-modulated
-     edge costs finds the optimal route.
+  1. Use the loaded directed road graph.
+  2. Read exported constraint costs (default), or run the explicit local GNN.
+     Without exports, exported mode uses base travel times.
+  3. ALT (A* with Landmarks and Triangle inequality) searches the active costs.
   4. Return route (WKT LINESTRING), ETA, and confidence score.
 """
 
@@ -17,13 +17,13 @@ import heapq
 import logging
 import time
 from datetime import datetime
-from typing import List, Optional, Tuple, Dict, Any
+from typing import TYPE_CHECKING, List, Optional, Tuple, Dict, Any
 
 import numpy as np
-import torch
 
-from .gnn_models import GAT, PMGCN, GraphSAGE
-from .rl_agents import PPOAgent
+if TYPE_CHECKING:
+    import torch
+
 from .graph_builder import RoadNetworkGraph
 from .sumo_interface import SUMOInterface
 
@@ -200,7 +200,7 @@ class GeoAIRoutingEngine:
     def __init__(
         self,
         gnn_type: str = "gat",
-        use_rl: bool = True,
+        use_rl: bool = False,
         use_sumo: bool = False,
         gnn_model_path: Optional[str] = None,
         rl_model_path: Optional[str] = None,
@@ -209,8 +209,12 @@ class GeoAIRoutingEngine:
         hidden_channels: int = 64,
         out_channels: int = 16,
         device: str = "cpu",
+        inference_mode: str = "exported",
     ):
-        self.device = torch.device(device)
+        if inference_mode not in {"exported", "local"}:
+            raise ValueError("inference_mode must be 'exported' or 'local'")
+        self.inference_mode = inference_mode
+        self.device = device
         self.use_rl = use_rl
         self.use_sumo = use_sumo
 
@@ -232,32 +236,40 @@ class GeoAIRoutingEngine:
         self._edge_mid_cache: "Tuple[int, Any] | None" = None
 
         # ── GNN model ─────────────────────────────────────────────────────────
-        if gnn_type == "pmgcn":
-            self.gnn = PMGCN(
-                in_channels=in_channels,
-                hidden_channels=hidden_channels,
-                task_out_channels=out_channels,
-            ).to(self.device)
-        elif gnn_type == "graphsage":
-            self.gnn = GraphSAGE(
-                in_channels=in_channels,
-                hidden_channels=hidden_channels,
-                out_channels=out_channels,
-            ).to(self.device)
-        else:
-            self.gnn = GAT(
-                in_channels=in_channels,
-                hidden_channels=hidden_channels,
-                out_channels=out_channels,
-            ).to(self.device)
+        self.gnn = None
+        if inference_mode == "local":
+            import torch
+            from .gnn_models import GAT, PMGCN, GraphSAGE
 
-        if gnn_model_path:
-            self._load_gnn(gnn_model_path)
-        self.gnn.eval()
+            self.device = torch.device(device)
+            if gnn_type == "pmgcn":
+                self.gnn = PMGCN(
+                    in_channels=in_channels,
+                    hidden_channels=hidden_channels,
+                    task_out_channels=out_channels,
+                ).to(self.device)
+            elif gnn_type == "graphsage":
+                self.gnn = GraphSAGE(
+                    in_channels=in_channels,
+                    hidden_channels=hidden_channels,
+                    out_channels=out_channels,
+                ).to(self.device)
+            else:
+                self.gnn = GAT(
+                    in_channels=in_channels,
+                    hidden_channels=hidden_channels,
+                    out_channels=out_channels,
+                ).to(self.device)
+
+            if gnn_model_path:
+                self._load_gnn(gnn_model_path)
+            self.gnn.eval()
 
         # ── RL agent (PPO) ────────────────────────────────────────────────────
-        self.rl_agent: Optional[PPOAgent] = None
+        self.rl_agent = None
         if use_rl:
+            from .rl_agents import PPOAgent
+
             self.rl_agent = PPOAgent(model_path=rl_model_path or "checkpoints/ppo_dispatch")
             if rl_model_path:
                 try:
@@ -289,6 +301,8 @@ class GeoAIRoutingEngine:
     # ── GNN helpers ───────────────────────────────────────────────────────────
 
     def _load_gnn(self, path: str):
+        import torch
+
         state = torch.load(path, map_location=self.device, weights_only=True)
         self.gnn.load_state_dict(state)
         logger.info("GNN weights loaded from %s", path)
@@ -633,6 +647,9 @@ class GeoAIRoutingEngine:
 
     def _run_gnn(self, data) -> torch.Tensor:
         """Run GNN forward pass and return node embeddings / scores."""
+        import torch
+        from .gnn_models import PMGCN
+
         x = data.x.to(self.device)
         edge_index = data.edge_index.to(self.device)
         with torch.no_grad():
@@ -910,9 +927,9 @@ class GeoAIRoutingEngine:
     ) -> Tuple[Dict[Tuple[int, int], float], Dict[int, float]]:
         """
         Return per-edge costs and per-node scores from the active source:
-        GAT-predicted constraint multipliers when loaded, else the live GNN.
+        Exported constraints/edge weights, base travel times, or explicit local GNN.
 
-        On the constraint path the costs only change when constraints are
+        On the exported path the costs only change when constraints are
         reloaded, so the result is cached and reused until invalidate_landmarks()
         clears it — repeated calls (e.g. the connector recomputed on every
         responder location ping) then skip the full-graph sweep. The live GNN
@@ -923,8 +940,16 @@ class GeoAIRoutingEngine:
         mutates it in place; node_scores_map is read-only at every call site and
         is shared.
         """
-        if not self._use_constraint_costs:
+        if self.inference_mode == "local":
             return self._compute_gnn_edge_costs()
+
+        if not self._use_constraint_costs and not self._precomputed_weights:
+            # Exported mode never falls back to a local model or random scores.
+            return (
+                {(u, v): data.get("travel_time_s", 60.0)
+                 for u, v, data in self.graph.G.edges(data=True)},
+                {n: 1.0 for n in self.graph.G.nodes()},
+            )
 
         if self._edge_cost_cache is None:
             self._edge_cost_cache = self._compute_constraint_edge_costs()
