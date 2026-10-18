@@ -659,8 +659,11 @@
 /* ── GNN legend ──────────────────────────────────────────────────────────────── */
 .gnn-legend {
   position: absolute;
-  top: 9.8px;
+  top: 100px;
   left: 9.8px;
+  max-height: calc(100% - 140px);
+  max-width: 300px;
+  overflow-y: auto;
   z-index: var(--z-popover);
   background: var(--page-default-base);
   backdrop-filter: blur(10px);

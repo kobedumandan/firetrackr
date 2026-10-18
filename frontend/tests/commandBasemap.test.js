@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { TILE_OPTIONS, tileLayersFor } from '../src/data/mapConfig'
+import { COMMAND_BASEMAP_OPTIONS, TILE_OPTIONS, tileLayersFor } from '../src/data/mapConfig'
 import {
   COMMAND_BASEMAP_KEY, isCommandBasemap, readCommandBasemap, saveCommandBasemap,
 } from '../src/utils/commandBasemap'
@@ -13,7 +13,7 @@ function storageWith(value) {
 }
 
 describe('Command map basemap preferences', () => {
-  it.each(TILE_OPTIONS.map(({ id }) => id))('restores and saves %s', (id) => {
+  it.each(COMMAND_BASEMAP_OPTIONS.map(({ id }) => id))('restores and saves %s', (id) => {
     const storage = storageWith(id)
     expect(isCommandBasemap(id)).toBe(true)
     expect(readCommandBasemap()).toBe(id)
@@ -22,7 +22,7 @@ describe('Command map basemap preferences', () => {
     expect(storage.setItem).toHaveBeenCalledWith(COMMAND_BASEMAP_KEY, id)
   })
 
-  it.each([null, '', 'unknown', 'google-3d'])('ignores invalid saved choice %s', (id) => {
+  it.each([null, '', 'unknown'])('ignores invalid saved choice %s', (id) => {
     const storage = storageWith(id)
     expect(readCommandBasemap()).toBeNull()
     saveCommandBasemap(id)
@@ -52,5 +52,10 @@ describe('Command map basemap preferences', () => {
       }
     }
     expect(tileLayersFor('invalid')).toEqual(tileLayersFor('dark'))
+  })
+
+  it('uses a separate renderer for 3D without adding it to raster-only pickers', () => {
+    expect(tileLayersFor('google-3d')).toEqual([])
+    expect(TILE_OPTIONS.some(({ id }) => id === 'google-3d')).toBe(false)
   })
 })

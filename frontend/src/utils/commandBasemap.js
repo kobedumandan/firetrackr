@@ -1,9 +1,9 @@
-import { TILE_OPTIONS } from '../data/mapConfig'
+import { COMMAND_BASEMAP_OPTIONS } from '../data/mapConfig'
 
 export const COMMAND_BASEMAP_KEY = 'firetrackr.commandBasemap'
 
 export function isCommandBasemap(value) {
-  return TILE_OPTIONS.some(({ id }) => id === value)
+  return COMMAND_BASEMAP_OPTIONS.some(({ id }) => id === value)
 }
 
 export function readCommandBasemap() {

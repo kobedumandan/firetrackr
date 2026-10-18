@@ -1,4 +1,4 @@
-import { TILE_OPTIONS } from '../data/mapConfig'
+import { COMMAND_BASEMAP_OPTIONS } from '../data/mapConfig'
 import '../styles/CommandBasemapSelector.css'
 
 export default function CommandBasemapSelector({ value, onChange }) {
@@ -6,13 +6,13 @@ export default function CommandBasemapSelector({ value, onChange }) {
     <div className="command-basemap" role="group" aria-label="Map style">
       <span className="command-basemap-label">Map style</span>
       <div className="command-basemap-options">
-        {TILE_OPTIONS.map(({ id, label }) => (
+        {COMMAND_BASEMAP_OPTIONS.map(({ id, label, title }) => (
           <button
             key={id}
             type="button"
             aria-pressed={value === id}
             onClick={() => onChange(id)}
-            title={id === 'satellite' ? '2D satellite imagery' : `${label} street map`}
+            title={title ?? (id === 'satellite' ? '2D satellite imagery' : `${label} street map`)}
           >
             {label}
           </button>

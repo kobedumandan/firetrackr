@@ -20,7 +20,7 @@
   color: var(--text-secondary);
 }
 
-.command-basemap-options { display: flex; gap: 4px; }
+.command-basemap-options { display: flex; flex-wrap: wrap; gap: 4px; }
 .command-basemap button {
   border: 1px solid var(--border-bright);
   border-radius: 5px;
