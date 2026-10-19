@@ -15,6 +15,7 @@ from models import (
 )
 from serializers import _incident_dict
 from services.incident_events import record_changes, snapshot
+from services.heatmap import severity_weight
 from services.push import notify_dispatch_assigned
 from services.routing import _haversine_meters, _load_active_obstructions
 from state import manager
@@ -252,7 +253,6 @@ def _released_payload(dispatches) -> dict:
 
 # Severity → heatmap weight. Closed incidents become weighted points so the
 # fire-density heatmap accumulates from real history.
-_SEVERITY_WEIGHT = {"Minor": 0.4, "Moderate": 0.7, "Critical": 1.0}
 
 
 def _add_incident_to_heatmap(db: Session, inc: FireIncident, now: datetime):
@@ -268,7 +268,7 @@ def _add_incident_to_heatmap(db: Session, inc: FireIncident, now: datetime):
     )
     if already:
         return
-    weight = _SEVERITY_WEIGHT.get((inc.fire_severity or "").strip(), 0.5)
+    weight = severity_weight(inc.fire_severity)
     db.add(HeatmapData(
         fire_id                 = inc.fire_id,
         heatmap_latitude        = inc.fire_latitude,

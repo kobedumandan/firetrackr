@@ -4,8 +4,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import HeatmapData, Users
+from models import FireIncident, HeatmapData, Users
 from security import require_admin
+from services.heatmap import severity_weight
+from serializers import _incident_dict
 
 
 router = APIRouter(tags=["geodata"])
@@ -48,12 +50,23 @@ def get_heatmap(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    rows = db.query(HeatmapData).all()
+    # Derive one consistent severity weight from the incident, including old
+    # seeded rows. Do not mix their synthetic density values with live weights.
+    rows = (
+        db.query(FireIncident)
+        .join(HeatmapData, HeatmapData.fire_id == FireIncident.fire_id)
+        .filter(FireIncident.fire_status == "closed")
+        .all()
+    )
     return [
         {
-            "lat":    r.heatmap_latitude,
-            "lng":    r.heatmap_longitude,
-            "weight": float(r.heatmap_density_value),
+            "lat": incident.fire_latitude,
+            "lng": incident.fire_longitude,
+            "weight": severity_weight(incident.fire_severity),
+            "fire_id": incident.fire_id,
+            "occurred_at": incident.fire_incident_datetime,
+            "incident": {key: value for key, value in _incident_dict(incident).items()
+                         if key in {"id", "loc", "addr", "sev", "status", "alarm", "structure", "casualties"}},
         }
-        for r in rows
+        for incident in rows
     ]
