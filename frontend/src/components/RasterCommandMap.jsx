@@ -10,7 +10,7 @@ import MapCameraControls from './MapCameraControls'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
-export default function RasterCommandMap({ portalHost, controlsHost, active, tileMode, overlayRevision, gnnData, heatPoints, picking, onUnavailable }) {
+export default function RasterCommandMap({ portalHost, controlsHost, active, tileMode, overlayRevision, gnnData, heatmapData, picking, onUnavailable }) {
   const leaflet = useMap()
   const host = useRef(null)
   const runtime = useRef(null)
@@ -82,11 +82,8 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
   }, [ready, gnnData])
   useEffect(() => {
     if (!ready || runtime.current?.map !== ready) return
-    ready.getSource('command-heat').setData(heatPoints?.length ? {
-      type: 'FeatureCollection', features: heatPoints.map(point => ({ type: 'Feature', properties: { weight: point.weight },
-        geometry: { type: 'Point', coordinates: [point.lng, point.lat] } })),
-    } : EMPTY_GEOJSON)
-  }, [ready, heatPoints])
+    ready.getSource('command-heat').setData(heatmapData || EMPTY_GEOJSON)
+  }, [ready, heatmapData])
   useEffect(() => { if (ready && runtime.current?.map === ready) ready.getCanvas().style.cursor = picking ? 'crosshair' : '' }, [ready, picking])
 
   function act(action) {
@@ -103,6 +100,6 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
   if (!portalHost) return null
   return <>
     {createPortal(<><div className="raster-map-canvas" ref={host} />{active && error && <div className="google-map-message" role="alert">{error}</div>}</>, portalHost)}
-    {active && <MapCameraControls host={controlsHost} camera={camera} onAction={act} disabled={!ready || Boolean(error)} maxTilt={70} title="Map view · HD" />}
+    {active && <MapCameraControls host={controlsHost} camera={camera} onAction={act} disabled={!ready || Boolean(error)} maxTilt={70} title="Map view" detail="HD" />}
   </>
 }

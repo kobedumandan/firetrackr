@@ -1,4 +1,7 @@
 import { useState, useEffect, useMemo, useRef, memo, Fragment } from "react";
+import { createPortal } from "react-dom";
+import PanelToggleIcon from "./PanelToggleIcon";
+import MapControlIcon from "./MapControlIcon";
 import {
   MapContainer,
   AttributionControl,
@@ -14,12 +17,16 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import "leaflet.heat";
 import "../styles/MapArea.css";
 import ConfirmModal from "./ConfirmModal";
 import CommandBasemapSelector from "./CommandBasemapSelector";
 import GooglePhotorealisticMap from "./GooglePhotorealisticMap";
 import RasterCommandMap from "./RasterCommandMap";
+import HeatmapPanel from "./HeatmapPanel";
+import HeatmapIncidents from "./HeatmapIncidents";
+import { useHeatmap } from "../hooks/useHeatmap";
+import { EMPTY_HEATMAP, filterHeatmapPoints, heatmapSurface } from "../utils/heatmap";
+import { heatmapOpacity } from "../utils/heatmapOpacity";
 import { readCommandBasemap, saveCommandBasemap } from "../utils/commandBasemap";
 
 import { MAP_CENTER, MAP_ZOOM, tileLayersFor, REGION_BOUNDARY } from "../data/mapConfig";
@@ -27,7 +34,6 @@ import { useTheme, readCssVar } from "../hooks/useTheme";
 import { activeLayersFor } from "../utils/mapLayers";
 import { PANABO_BOUNDARY_COLOR, BARANGAY_BOUNDARY_COLOR } from "../utils/mapOverlayColors";
 import {
-  fetchHeatmap,
   fetchObstructions,
   snapToRoad,
   createObstruction,
@@ -609,29 +615,17 @@ function BarangayLayer({ featureCollection, showLabels = true }) {
 
 // The original Leaflet layers remain available when the enhanced raster
 // renderer cannot start (for example when WebGL is unavailable).
-function HeatmapLayer({ points }) {
+function HeatmapLayer({ data }) {
   const map = useMap();
 
   useEffect(() => {
-    if (!points.length) return;
-    const data = points.map((p) => [p.lat, p.lng, p.weight]);
-    const layer = L.heatLayer(data, {
-      radius: 25,
-      blur: 18,
-      minOpacity: 0.35,
-      maxZoom: 17,
-      max: 5.0,
-      gradient: {
-        0.0: "#0000ff",
-        0.2: "#00ffff",
-        0.4: "#00ff00",
-        0.6: "#ffff00",
-        0.8: "#ff8000",
-        1.0: "#ff0000",
-      },
-    }).addTo(map);
-    return () => map.removeLayer(layer);
-  }, [map, points]);
+    const style = feature => ({ stroke: false, fillColor: feature.properties.color,
+      fillOpacity: heatmapOpacity(map.getZoom(), feature.properties.opacity) });
+    const layer = L.geoJSON(data, { interactive: false, style }).addTo(map);
+    const update = () => layer.setStyle(style);
+    map.on("zoom", update);
+    return () => { map.off("zoom", update); map.removeLayer(layer); };
+  }, [map, data]);
 
   return null;
 }
@@ -704,20 +698,21 @@ function GnnLegend({ data }) {
   const items = (data?.meta?.legend || []).filter((it) => it.type !== "normal");
 
   return (
-    <div className="gnn-legend">
-      <div className="gnn-legend-title">
-        {data?.meta?.model || "GAT"} Predicted Constraints
+    <section className="gnn-legend" aria-label="Predicted road constraints">
+      <div className="constraint-section-heading">
+        <span>{data?.meta?.model || "GAT"} predictions</span>
+        <span className="gnn-legend-count"><strong>{(data?.meta?.constrained ?? 0).toLocaleString()}</strong> / {(data?.meta?.total ?? 0).toLocaleString()} roads</span>
       </div>
-      {items.map((it) => (
-        <div key={it.type} className="gnn-legend-item">
-          <span className="gnn-legend-swatch" style={{ background: it.color }} />
-          {it.label} ({it.count})
-        </div>
-      ))}
-      <div className="gnn-legend-count">
-        {data?.meta?.constrained ?? 0} / {data?.meta?.total ?? 0} roads constrained
+      <div className="gnn-legend-items">
+        {items.map((it) => (
+          <div key={it.type} className="gnn-legend-item">
+            <span className="gnn-legend-swatch" style={{ background: it.color }} />
+            <span>{it.label}</span><strong>{(it.count ?? 0).toLocaleString()}</strong>
+          </div>
+        ))}
       </div>
-    </div>
+      {!(data?.meta?.constrained > 0) && <p className="constraint-help">No constrained roads in this dataset.</p>}
+    </section>
   );
 }
 
@@ -772,17 +767,8 @@ function DrawPreview({ points, color }) {
   );
 }
 
-// ── Constraint editor panel (appears when GNN Constraints layer is active) ──
-// Bottom-right tool panel for normal view, twinned with ConstraintEditorPanel
-// below (GNN view). Obstruction state lives in MapArea rather than App, so the
-// panel is rendered here alongside it instead of in MapActions.
-// Bottom-right tool panel for the obstruction view, twinned with
-// ConstraintEditorPanel below (GNN view). Deliberately built to the same
-// pattern as MapActions -- same header, same collapse affordance, same type
-// scale -- so the two floating map panels read as one family.
-//
-// Obstruction state lives in MapArea rather than App, so the panel is rendered
-// here alongside it instead of in MapActions.
+// Layer tools keep their state in MapArea and render into the shared right
+// dock below the camera controls. Match the Actions panel's header and controls.
 function ObstructionPanel({
   open,
   onToggleOpen,
@@ -795,75 +781,66 @@ function ObstructionPanel({
   if (!open) {
     return (
       <button
+        type="button"
         className="obstruction-float-btn"
         onClick={onToggleOpen}
         title="Expand obstructions"
+        aria-expanded={false}
+        aria-label="Expand road obstructions"
       >
-        <MaximizeIcon />
+        <PanelToggleIcon />
         Obstructions
+        <span className="obstruction-count">{obstructions.length}</span>
       </button>
     );
   }
 
   return (
-    <div className="obstruction-panel">
+    <section className="obstruction-panel" aria-label="Road obstructions">
       <div className="obstruction-panel-head">
         <button
+          type="button"
           className="obstruction-collapse-btn"
           onClick={onToggleOpen}
           title="Collapse"
           aria-label="Collapse obstructions"
+          aria-expanded={true}
         >
-          <MinimizeIcon />
+          <PanelToggleIcon expanded />
         </button>
-        <div className="obstruction-panel-title">Obstructions</div>
+        <div className="obstruction-panel-title">Road obstructions</div>
       </div>
 
       <div className="obstruction-panel-body">
+        <div className="obstruction-section-label">Add to map</div>
         <div className="obstruction-panel-tools">
-          {placingType ? (
-            <>
-              <div className="obstruction-placing">
-                <span
-                  className="obstruction-chip-icon"
-                  style={{ "--obs": `var(${obsInfo(placingType).token})` }}
-                >
-                  <ObstructionGlyph type={placingType} size={12} />
-                </span>
-                Click a road
-              </div>
-              <button
-                className="obstruction-cancel-btn"
-                onClick={onCancelPlace}
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            OBSTRUCTION_TYPES.map((t) => (
+          {OBSTRUCTION_TYPES.map((t) => (
               <button
                 key={t.id}
+                type="button"
                 className="obstruction-type-btn"
                 style={{ "--obs": `var(${t.token})` }}
                 onClick={() => onStartPlace(t.id)}
                 title={`${t.label} - ${t.effect}`}
+                aria-label={`Place ${t.label.toLowerCase()}`}
+                aria-pressed={placingType === t.id}
               >
-                <ObstructionGlyph type={t.id} size={13} />
-                {t.label}
+                <span className="obstruction-type-icon"><ObstructionGlyph type={t.id} size={16} /></span>
+                <span className="obstruction-type-copy"><span>{t.label}</span><small>{t.blocks ? "Closed road" : t.id === "accident" ? "Heavy delay" : "Slower travel"}</small></span>
               </button>
-            ))
-          )}
+            ))}
         </div>
+        {placingType ? <div className="obstruction-placement" style={{ "--obs": `var(${obsInfo(placingType).token})` }}>
+          <div className="obstruction-placing" role="status"><span>Placing {obsInfo(placingType).label.toLowerCase()}</span><small>Click a road on the map.</small></div>
+          <button type="button" className="obstruction-cancel-btn" onClick={onCancelPlace}>Cancel</button>
+        </div> : <p className="obstruction-help">Choose a type, then select a road.</p>}
 
-        {/* The list sits beside the tools rather than under them: it grows with
-            every obstruction placed, and stacking it would push the buttons up
-            the map as the shift wore on. */}
         <div className="obstruction-panel-list">
           <div className="obstruction-list-title">
-            Active ({obstructions.length})
+            <span>Active on map</span><span className="obstruction-count">{obstructions.length}</span>
           </div>
           {obstructions.length === 0 ? (
-            <div className="obstruction-list-empty">None placed</div>
+            <div className="obstruction-list-empty"><span>No active obstructions</span><small>New obstructions will appear here.</small></div>
           ) : (
             <div className="obstruction-list-scroll">
               {obstructions.map((o) => {
@@ -871,19 +848,21 @@ function ObstructionPanel({
                 return (
                   <div key={o.id} className="obstruction-list-item">
                     <span
-                      className="obstruction-chip-icon"
+                      className="obstruction-chip-icon obstruction-item-icon"
                       style={{ "--obs": `var(${info.token})` }}
                     >
-                      <ObstructionGlyph type={o.type} size={11} />
+                      <ObstructionGlyph type={o.type} size={14} />
                     </span>
-                    <span className="obstruction-item-name">
-                      {o.description || info.label}
+                    <span className="obstruction-item-copy">
+                      <span className="obstruction-item-name" title={o.description || info.label}>{o.description || info.label}</span>
+                      <small>{info.label}<span aria-hidden="true"> / </span>{info.blocks ? "Closed road" : "Delay"}</small>
                     </span>
                     <button
+                      type="button"
                       className="obstruction-item-remove"
                       onClick={() => onDelete(o.id)}
-                      title="Remove"
-                      aria-label={`Remove ${info.label}`}
+                      title="Remove obstruction"
+                      aria-label={`Remove ${o.description || `${info.label} ${o.id}`}`}
                     >
                       <CloseIcon />
                     </button>
@@ -894,36 +873,7 @@ function ObstructionPanel({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// Same glyphs MapActions collapses with, so the two panels behave identically.
-function MinimizeIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 -960 960 960"
-      className="minimize_icon"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M440-440v240h-80v-160H200v-80h240Zm160-320v160h160v80H520v-240h80Z" />
-    </svg>
-  );
-}
-
-function MaximizeIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 -960 960 960"
-      className="maximize_icon"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M200-200v-240h80v160h160v80H200Zm480-320v-160H520v-80h240v240h-80Z" />
-    </svg>
+    </section>
   );
 }
 
@@ -939,78 +889,84 @@ function CloseIcon() {
 }
 
 function ConstraintEditorPanel({
+  data,
+  loadError,
+  onRetry,
   drawingType,
+  pointCount,
+  onFinishDraw,
   onStartDraw,
   onCancelDraw,
   customConstraints,
   onDelete,
   onEdit,
 }) {
+  const [open, setOpen] = useState(true);
+  if (!open) return (
+    <button type="button" className="constraint-float-btn" onClick={() => setOpen(true)} aria-label="Expand GAT constraints" aria-expanded={false}>
+      <PanelToggleIcon />GAT constraints
+    </button>
+  );
   return (
-    <div className="constraint-editor">
-      <div className="constraint-editor-title">Constraint Editor</div>
-
-      {!drawingType && (
+    <section className="constraint-editor" aria-label="GAT constraints">
+      <div className="constraint-editor-head">
+        <button type="button" className="constraint-collapse-btn" onClick={() => setOpen(false)} aria-label="Collapse GAT constraints" aria-expanded={true} title="Collapse">
+          <PanelToggleIcon expanded />
+        </button>
+        <span className="constraint-editor-title">GAT constraints</span>
+      </div>
+      <div className="constraint-editor-body">
+        {data ? <GnnLegend data={data} /> : <div className="constraint-load-state" role="status">
+          <span>{loadError ? "Could not load road constraints." : "Loading road constraints..."}</span>
+          {loadError && <button type="button" onClick={onRetry}>Retry</button>}
+        </div>}
+        <div className="constraint-section-heading"><span>Draw a constraint</span><span className="constraint-section-note">Manual</span></div>
         <div className="constraint-editor-types">
           {CONSTRAINT_TYPES.map((t) => (
             <button
               key={t.id}
+              type="button"
               className="constraint-draw-btn"
+              style={{ "--constraint-color": t.color }}
               onClick={() => onStartDraw(t.id)}
+              aria-label={`Draw ${t.label.toLowerCase()}`}
+              aria-pressed={drawingType === t.id}
             >
-              {/* <span className="constraint-draw-symbol">{t.symbol}</span> */}
-              Draw {t.label}
+              <span className="constraint-type-icon"><MapControlIcon name={t.id === "narrow_road" ? "narrow" : "traffic"} width="16" height="16" /></span>
+              <span>{t.id === "narrow_road" ? "Narrow road" : "Traffic area"}</span>
             </button>
           ))}
         </div>
-      )}
-
-      {drawingType && (
-        <div className="constraint-drawing-hint">
-          Click on map to draw points.
-          <br />
-          Press <strong>Enter</strong> to save, <strong>Esc</strong> to cancel.
-        </div>
-      )}
-
-      {customConstraints.length > 0 && !drawingType && (
-        <div className="constraint-list">
-          <div className="constraint-list-title">
-            Custom ({customConstraints.length})
+        {drawingType ? <div className="constraint-drawing-hint" role="status">
+          <span>{pointCount} point{pointCount !== 1 ? "s" : ""}<small>{pointCount < 2 ? "Select at least two points on the map." : "Continue drawing or save this constraint."}</small></span>
+          <div className="constraint-drawing-actions">
+            <button type="button" disabled={pointCount < 2} onClick={onFinishDraw}>Save</button>
+            <button type="button" onClick={onCancelDraw}>Cancel</button>
           </div>
-          {customConstraints.map((c) => {
-            const info =
-              CONSTRAINT_TYPES.find((t) => t.id === c.constraint_type) ||
-              CONSTRAINT_TYPES[0];
-            return (
-              <div key={c.id} className="constraint-list-item">
-                <span
-                  className="constraint-item-swatch"
-                  style={{ background: info.color }}
-                />
-                <span className="constraint-item-name">
-                  {c.name || "Unnamed"}
-                </span>
-                <button
-                  className="constraint-item-btn"
-                  title="Edit"
-                  onClick={() => onEdit(c)}
-                >
-                  ✎
+        </div> : <p className="constraint-help">Choose a type, then draw along a road.</p>}
+        <div className="constraint-list">
+          <div className="constraint-section-heading">
+            <span>Custom constraints</span><span className="constraint-count">{customConstraints.length}</span>
+          </div>
+          {customConstraints.length === 0 && <div className="constraint-list-empty">No custom constraints yet.</div>}
+          <div className="constraint-list-scroll">
+            {customConstraints.map((c) => {
+              const info = CONSTRAINT_TYPES.find((t) => t.id === c.constraint_type) || CONSTRAINT_TYPES[0];
+              return <div key={c.id} className="constraint-list-item">
+                <span className="constraint-item-swatch" style={{ background: info.color }} />
+                <span className="constraint-item-name" title={c.name || "Unnamed constraint"}>{c.name || "Unnamed constraint"}</span>
+                <button type="button" className="constraint-item-btn" title="Edit" aria-label={`Edit ${c.name || "unnamed constraint"}`} onClick={() => onEdit(c)}>
+                  <MapControlIcon name="edit" width="13" height="13" />
                 </button>
-                <button
-                  className="constraint-item-btn constraint-item-btn--del"
-                  title="Delete"
-                  onClick={() => onDelete(c.id)}
-                >
-                  ✕
+                <button type="button" className="constraint-item-btn constraint-item-btn--del" title="Delete" aria-label={`Delete ${c.name || "unnamed constraint"}`} onClick={() => onDelete(c.id)}>
+                  <CloseIcon />
                 </button>
-              </div>
-            );
-          })}
+              </div>;
+            })}
+          </div>
         </div>
-      )}
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -1163,6 +1119,9 @@ function truckProgressPoint(line, dispatchId, liveLocations) {
 }
 
 export default function MapArea({
+  cameraControlsHost = null,
+  layerToolsHost = null,
+  heatmapRevision = 0,
   pickingMode = false,
   onLocationPicked,
   pickedLocation,
@@ -1179,50 +1138,58 @@ export default function MapArea({
   ripplingIncidentId = null,
   onIncidentClick,
   leftCollapsed = false,
-  rightCollapsed = false,
   viewMode = "normal",
   layerPrefs = null,
   focusedPersonnel = null,
   mapFocus = null,
 }) {
   const leftOffset = leftCollapsed ? 52 + 12 : 280 + 12;
-  const rightOffset = rightCollapsed ? 32 + 12 : 300 + 12;
   // Read once: Leaflet takes these as constructor options, and reading during
   // render rather than in state would be an impure call.
   const [mapMotion] = useState(
     () => document.documentElement.dataset.motion !== "off"
   );
   const activeLayers = useMemo(() => activeLayersFor(viewMode, layerPrefs), [viewMode, layerPrefs]);
+  const constraintsView = activeLayers.has("GNN Constraints");
   const theme = useTheme();
-  const [selectedBasemap, setSelectedBasemap] = useState(readCommandBasemap);
+  const [selectedBasemap, setSelectedBasemap] = useState(() => {
+    const saved = readCommandBasemap();
+    // Satellite is now a temporary fallback, rather than a saved style choice.
+    return saved === "satellite" ? null : saved;
+  });
   // Follow the app theme until the user explicitly chooses a basemap.
   const tileMode = selectedBasemap ?? (theme === "light" ? "street" : "dark");
   const isGoogle3D = tileMode === "google-3d";
   const [googleHost, setGoogleHost] = useState(null);
   const [rasterHost, setRasterHost] = useState(null);
-  const [controlsHost, setControlsHost] = useState(null);
   const [googleVisited, setGoogleVisited] = useState(isGoogle3D);
   const [rasterVisited, setRasterVisited] = useState(!isGoogle3D);
   const [rasterFallback, setRasterFallback] = useState(false);
   function changeBasemap(value) {
     // Road snapping relies on Leaflet pointer coordinates; leave placement
-    // mode when entering 3D. Starting placement below returns to Satellite.
+    // mode when entering 3D. Starting placement below returns to a street map.
     if (value === "google-3d") { setPlacingType(null); setGoogleVisited(true); }
     else setRasterVisited(true);
     setSelectedBasemap(value);
     saveCommandBasemap(value);
   }
-  const [heatPoints, setHeatPoints] = useState([]);
+  const heatmapActive = activeLayers.has("Heat Map");
+  const heatmap = useHeatmap(heatmapActive, heatmapRevision);
+  const [heatRange, setHeatRange] = useState({ from: "", to: "" });
+  const heatPoints = useMemo(() => filterHeatmapPoints(heatmap.points, heatRange), [heatmap.points, heatRange]);
+  const heatSurface = useMemo(() => heatmapActive ? heatmapSurface(heatPoints) : EMPTY_HEATMAP, [heatmapActive, heatPoints]);
 
   // ── GNN constraints ────────────────────────────────────────────────────────
   const [gnnData, setGnnData] = useState(null);
+  const [gnnError, setGnnError] = useState(null);
+  const [gnnAttempt, setGnnAttempt] = useState(0);
 
   useEffect(() => {
     if (!activeLayers.has("GNN Constraints") || gnnData) return;
     fetchGnnConstraints()
-      .then(setGnnData)
-      .catch((err) => console.error("GNN constraints fetch failed:", err));
-  }, [activeLayers, gnnData]);
+      .then((data) => { setGnnData(data); setGnnError(null); })
+      .catch((err) => { setGnnError(err); console.error("GNN constraints fetch failed:", err); });
+  }, [activeLayers, gnnData, gnnAttempt]);
 
   // ── Custom constraint drawing ─────────────────────────────────────────────
   const [customConstraints, setCustomConstraints] = useState([]);
@@ -1240,7 +1207,7 @@ export default function MapArea({
 
   // Keyboard: Enter to finish drawing, Esc to cancel
   useEffect(() => {
-    if (!drawingType) return;
+    if (!constraintsView || !drawingType) return;
     function handleKey(e) {
       if (e.key === "Enter" && drawPoints.length >= 2) {
         setShowSaveDialog(true);
@@ -1252,7 +1219,7 @@ export default function MapArea({
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [drawingType, drawPoints]);
+  }, [constraintsView, drawingType, drawPoints]);
 
   function handleDrawPoint(latlng) {
     if (!drawingType || showSaveDialog) return;
@@ -1308,13 +1275,14 @@ export default function MapArea({
     setDrawPoints(c.coordinates.map(([lon, lat]) => [lat, lon]));
   }
 
-  const isDrawing = !!drawingType && !showSaveDialog;
+  const isDrawing = constraintsView && !!drawingType && !showSaveDialog;
   const drawColor =
     CONSTRAINT_TYPES.find((t) => t.id === drawingType)?.color || "#fff";
 
   // ── Road obstructions ──────────────────────────────────────────────────────
   const [obstructions, setObstructions] = useState([]);
   const [placingType, setPlacingType] = useState(null);
+  const obstructionPlacementActive = !!placingType && !constraintsView;
   // The adder starts open; collapsing it leaves the pins and a way back.
   const [adderOpen, setAdderOpen] = useState(true);
   // Where the pending obstruction would land once snapped, or null when the
@@ -1334,7 +1302,7 @@ export default function MapArea({
   // otherwise a fast drag queues dozens of round trips and the ghost lands on
   // whichever reply happens to arrive last.
   function handleObstructionHover(latlng) {
-    if (!placingType) return;
+    if (!obstructionPlacementActive) return;
     if (latlng === null) {
       setGhost(null);
       return;
@@ -1363,7 +1331,7 @@ export default function MapArea({
     // Placement follows the ghost, not the raw click: what the dispatcher saw
     // previewed is exactly what gets saved. No ghost means no road in range,
     // and the banner is already saying so.
-    if (!placingType || !ghost) return;
+    if (!obstructionPlacementActive || !ghost) return;
     const temp = {
       id: `local-${Date.now()}`,
       type: placingType,
@@ -1458,13 +1426,6 @@ export default function MapArea({
     return () => timers.forEach(clearTimeout);
   }, [livePersonnelLocations]);
 
-  useEffect(() => {
-    if (!activeLayers.has("Heat Map") || heatPoints.length) return;
-    fetchHeatmap()
-      .then(setHeatPoints)
-      .catch((err) => console.error("Heatmap fetch failed:", err));
-  }, [activeLayers, heatPoints.length]);
-
   // ── Barangay boundaries ────────────────────────────────────────────────────
   const [barangays, setBarangays] = useState(null);
   useEffect(() => {
@@ -1483,7 +1444,6 @@ export default function MapArea({
     drawPoints, isDrawing, customConstraints, mapZoom, recentlyUpdatedIds, activeLayers,
   ]);
   const visibleGnnData = activeLayers.has("GNN Constraints") ? gnnData : null;
-  const visibleHeatPoints = activeLayers.has("Heat Map") ? heatPoints : null;
 
   return (
     <div className={`map-area${isGoogle3D || !rasterFallback ? " map-area--projected" : ""}${isGoogle3D ? " map-area--3d" : ""}`}>
@@ -1541,7 +1501,7 @@ export default function MapArea({
       )}
 
       {/* Obstruction placement banner */}
-      {placingType && !pickingMode && (
+      {obstructionPlacementActive && !pickingMode && (
         <div
           className="map-pick-banner obstruction-banner"
           style={{ "--obs": `var(${obsInfo(placingType).token})` }}
@@ -1580,12 +1540,12 @@ export default function MapArea({
         <MapClickHandler
           active={pickingMode}
           onPick={onLocationPicked}
-          obstructionActive={!!placingType}
+          obstructionActive={obstructionPlacementActive}
           onObstructionPick={handleObstructionPlace}
           onObstructionHover={handleObstructionHover}
         />
         <DrawClickHandler active={isDrawing} onPoint={handleDrawPoint} />
-        <CursorController active={pickingMode || !!placingType || isDrawing} />
+        <CursorController active={pickingMode || obstructionPlacementActive || isDrawing} />
         <MapResizeWatcher />
 
         <PersonnelFocuser
@@ -1599,7 +1559,8 @@ export default function MapArea({
 
         {/* Coverage mask + jurisdiction boundary */}
         <CoverageLayers />
-        {rasterFallback && activeLayers.has("Heat Map") && <HeatmapLayer points={heatPoints} />}
+        {rasterFallback && heatmapActive && <HeatmapLayer data={heatSurface} />}
+        {heatmapActive && <HeatmapIncidents points={heatPoints} />}
         {rasterFallback && activeLayers.has("GNN Constraints") && gnnData && (
           <GnnConstraintsLayer data={gnnData} />
         )}
@@ -1920,7 +1881,7 @@ export default function MapArea({
           })()}
 
         {/* Newly logged incidents */}
-        {newIncidents.map((inc) => (
+        {!constraintsView && newIncidents.map((inc) => (
           <Marker
             key={inc.id}
             position={inc.coords}
@@ -1940,7 +1901,7 @@ export default function MapArea({
         ))}
 
         {/* Reporter location markers */}
-        {reporterLocations.map((r) => (
+        {!constraintsView && reporterLocations.map((r) => (
           <Marker key={r.token} position={r.coords} icon={reporterIcon()}>
             <Tooltip direction="top" className="leaflet-dark-tooltip">
               <div className="tooltip-id request-token">{r.token}</div>
@@ -1974,12 +1935,12 @@ export default function MapArea({
         ))}
 
         {/* Picked location preview pin */}
-        {pickedLocation && (
+        {!constraintsView && pickedLocation && (
           <Marker position={pickedLocation} icon={newIncidentIcon()} />
         )}
 
         {/* Ghost preview of the pending obstruction, on its snapped position */}
-        {placingType && ghost && (
+        {obstructionPlacementActive && ghost && (
           <Marker
             position={[ghost.latitude, ghost.longitude]}
             icon={obstructionGhostIcon(placingType)}
@@ -1991,7 +1952,7 @@ export default function MapArea({
         {/* Outside the obstruction view an obstruction is a bar across the
             road, not a pin: it stays legible without competing with the
             incident and unit markers that view is actually about. */}
-        {viewMode !== "obstructions" &&
+        {!constraintsView && viewMode !== "obstructions" &&
           obstructions.map((obs) => {
             const bar = obstructionBar(obs);
             if (!bar) return null;
@@ -2074,10 +2035,14 @@ export default function MapArea({
         {googleVisited && (
           <GooglePhotorealisticMap
             portalHost={googleHost}
-            controlsHost={controlsHost}
+            controlsHost={cameraControlsHost}
             active={isGoogle3D}
-            onFallback={() => changeBasemap("satellite")}
-            heatmapActive={activeLayers.has("Heat Map")}
+            onFallback={() => {
+              setGoogleVisited(false);
+              setRasterVisited(true);
+              setSelectedBasemap("satellite");
+            }}
+            heatmapData={heatmapActive ? heatSurface : null}
             overlayRevision={overlayRevision}
             gnnData={visibleGnnData}
             barangayData={activeLayers.has("Barangay") ? barangays : null}
@@ -2087,22 +2052,17 @@ export default function MapArea({
         {rasterVisited && (
           <RasterCommandMap
             portalHost={rasterHost}
-            controlsHost={controlsHost}
+            controlsHost={cameraControlsHost}
             active={!isGoogle3D && !rasterFallback}
             tileMode={tileMode}
             overlayRevision={overlayRevision}
             gnnData={visibleGnnData}
-            heatPoints={visibleHeatPoints}
-            picking={pickingMode || !!placingType || isDrawing}
+            heatmapData={heatSurface}
+            picking={pickingMode || obstructionPlacementActive || isDrawing}
             onUnavailable={() => setRasterFallback(true)}
           />
         )}
       </MapContainer>
-
-      {/* GNN legend */}
-      {activeLayers.has("GNN Constraints") && gnnData && (
-        <GnnLegend data={gnnData} />
-      )}
 
       {/* Constraint save dialog */}
       {showSaveDialog && (
@@ -2160,15 +2120,17 @@ export default function MapArea({
         );
       })()}
 
-      {/* Bottom-right area: constraint editor (GNN mode) OR obstacles (normal mode) */}
-      <div
-        className="command-map-tools"
-        style={{ right: rightCollapsed ? 12 : rightOffset }}
-      >
-        <div ref={setControlsHost} className="command-map-camera-slot" />
+      {/* Layer tools share the incident/camera dock so panels cannot overlap. */}
+      {layerToolsHost && (constraintsView || heatmapActive || viewMode === "obstructions") && createPortal(
+      <div className="command-map-tools">
         {activeLayers.has("GNN Constraints") ? (
           <ConstraintEditorPanel
+            data={gnnData}
+            loadError={gnnError}
+            onRetry={() => { setGnnError(null); setGnnAttempt((v) => v + 1); }}
             drawingType={drawingType}
+            pointCount={drawPoints.length}
+            onFinishDraw={() => setShowSaveDialog(true)}
             onStartDraw={(type) => {
               setDrawingType(type);
               setDrawPoints([]);
@@ -2189,15 +2151,17 @@ export default function MapArea({
             onToggleOpen={() => setAdderOpen((v) => !v)}
             placingType={placingType}
             onStartPlace={(type) => {
-              if (isGoogle3D) changeBasemap("satellite");
+              if (isGoogle3D) changeBasemap(theme === "light" ? "street" : "dark");
               setPlacingType(type);
             }}
             onCancelPlace={() => setPlacingType(null)}
             obstructions={obstructions}
             onDelete={handleObstructionDelete}
           />
+        ) : heatmapActive ? (
+          <HeatmapPanel range={heatRange} onRangeChange={setHeatRange} count={heatPoints.length} status={heatmap.status} onRefresh={heatmap.refresh} />
         ) : null}
-      </div>
+      </div>, layerToolsHost)}
     </div>
   );
 }

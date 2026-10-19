@@ -8,9 +8,11 @@ export function setGoogleLinePath(element, path) {
 export function setGooglePolygonPaths(element, { path, innerPaths = [] }) {
   if ('path' in element || !('outerCoordinates' in element)) {
     element.path = path
-    element.innerPaths = innerPaths
+    // The weekly SDK rejects an empty iterable. Leave fresh polygons without
+    // holes unset; undefined clears holes when updating an existing polygon.
+    if (innerPaths.length || element.innerPaths?.length) element.innerPaths = innerPaths.length ? innerPaths : undefined
   } else {
     element.outerCoordinates = path
-    element.innerCoordinates = innerPaths
+    if (innerPaths.length || element.innerCoordinates?.length) element.innerCoordinates = innerPaths.length ? innerPaths : undefined
   }
 }

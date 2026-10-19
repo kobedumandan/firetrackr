@@ -2,25 +2,40 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMap } from 'react-leaflet'
 import L from 'leaflet'
-import { loadGoogleMaps3D, zoomToRange, cameraAfterAction } from '../utils/googleMaps3D'
+import { loadGoogleMaps3D, zoomToRange, rangeToZoom, cameraAfterAction } from '../utils/googleMaps3D'
 import { attachGoogle3DBridge } from '../utils/leafletGoogle3DBridge'
 import { createGoogleConstraintOverlay } from '../utils/googleConstraintOverlay'
 import { createGoogleBarangayOverlay } from '../utils/googleBarangayOverlay'
+import { createGoogleHeatmapOverlay } from '../utils/googleHeatmapOverlay'
 import MapCameraControls from './MapCameraControls'
 import '../styles/GooglePhotorealisticMap.css'
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
 
-export default function GooglePhotorealisticMap({ portalHost, controlsHost, active, onFallback, heatmapActive, overlayRevision, gnnData, barangayData, showBarangayLabels }) {
+export default function GooglePhotorealisticMap({ portalHost, controlsHost, active, onFallback, heatmapData, overlayRevision, gnnData, barangayData, showBarangayLabels }) {
   const leaflet = useMap()
   const host = useRef(null)
   const runtime = useRef(null)
+  const fallback = useRef({ active, onFallback })
+  useEffect(() => { fallback.current = { active, onFallback } }, [active, onFallback])
   const [instance, setInstance] = useState(null)
   const [status, setStatus] = useState('loading')
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [camera, setCamera] = useState({ tilt: 55, heading: 0 })
+  const onCameraChange = useCallback(next => {
+    setCamera(next)
+    const current = runtime.current
+    if (current && Number.isFinite(next.range)) {
+      current.heatmap.setZoom(rangeToZoom(next.range, current.map.center.lat, leaflet.getSize().y))
+    }
+  }, [leaflet])
   const [barangayError, setBarangayError] = useState(false)
+  const [heatmapFailure, setHeatmapFailure] = useState(null)
+  const reportHeatmapError = useCallback(error => {
+    console.warn('Google heatmap overlay:', error?.message || error)
+    setHeatmapFailure({ data: runtime.current?.heatmapData })
+  }, [])
   const reportBarangayError = useCallback(error => {
     // Log the actual SDK message locally; cross-origin uncaught errors otherwise
     // arrive as just "Script error" and unmount the entire dashboard.
@@ -36,10 +51,11 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
     let map
     const previousAuthFailure = window.gm_authFailure
     function fail(message) {
-      if (cancelled) return
+      if (cancelled || failed) return
       failed = true
       setError(message)
       setStatus('error')
+      if (fallback.current.active) fallback.current.onFallback?.()
     }
     const authFailure = () => {
       previousAuthFailure?.()
@@ -61,11 +77,12 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
       map.style.width = '100%'
       map.style.height = '100%'
       map.addEventListener('gmp-error', onError)
-      const bridge = attachGoogle3DBridge(leaflet, map, library, L, setCamera, { initiallyActive: false })
+      const bridge = attachGoogle3DBridge(leaflet, map, library, L, onCameraChange, { initiallyActive: false })
       runtime.current = {
         map, bridge,
         roads: createGoogleConstraintOverlay(map, library, leaflet, L),
         barangays: createGoogleBarangayOverlay(map, library, reportBarangayError),
+        heatmap: createGoogleHeatmapOverlay(map, library, reportHeatmapError),
       }
       setInstance(map)
       host.current.append(map)
@@ -80,11 +97,12 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
       runtime.current?.bridge.dispose()
       runtime.current?.roads.dispose()
       runtime.current?.barangays.dispose()
+      runtime.current?.heatmap.dispose()
       runtime.current = null
       map?.removeEventListener('gmp-error', onError)
       map?.remove()
     }
-  }, [leaflet, portalHost, attempt, reportBarangayError])
+  }, [leaflet, portalHost, attempt, reportBarangayError, reportHeatmapError, onCameraChange])
 
   useEffect(() => {
     const current = runtime.current
@@ -94,6 +112,14 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
   }, [active, status, instance])
   useEffect(() => { if (active && status === 'ready' && runtime.current?.map === instance) runtime.current.bridge.refresh() }, [active, status, overlayRevision, instance])
   useEffect(() => { if (runtime.current?.map === instance) runtime.current?.roads.sync(gnnData) }, [gnnData, status, instance])
+  useEffect(() => {
+    const current = runtime.current
+    if (!current || current.map !== instance) return
+    current.heatmapData = heatmapData
+    current.heatmap.setZoom(rangeToZoom(current.map.range, current.map.center.lat, leaflet.getSize().y))
+    current.heatmap.sync(heatmapData)
+    current.heatmap.setActive(active && status === 'ready')
+  }, [active, status, instance, heatmapData, leaflet])
   useEffect(() => {
     const overlay = runtime.current?.barangays
     if (!overlay || runtime.current.map !== instance) return
@@ -138,11 +164,11 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
           </div>
         </div>
       )}
-      {active && heatmapActive && <div className="google-map-note">Heatmap shading is available in Light, Dark and Satellite.</div>}
+      {active && heatmapData && heatmapFailure?.data === heatmapData && <div className="google-map-note" role="alert">The 3D heatmap could not render. Choose Light or Dark to view it.</div>}
       {active && barangayData && barangayError && <div className="google-map-note" role="status">
         Some Barangay details could not load in 3D. <button type="button" onClick={onFallback}>View in Satellite</button>
       </div>}
     </>, portalHost)}
-    {active && <MapCameraControls host={controlsHost} camera={camera} onAction={act} disabled={status !== 'ready'} title="3D view · HD" />}
+    {active && <MapCameraControls host={controlsHost} camera={camera} onAction={act} disabled={status !== 'ready'} title="3D view" detail="HD" />}
   </>
 }

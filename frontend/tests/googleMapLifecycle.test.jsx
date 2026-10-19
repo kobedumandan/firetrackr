@@ -3,11 +3,12 @@ import { act, StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import GooglePhotorealisticMap from '../src/components/GooglePhotorealisticMap'
-import { loadGoogleMaps3D } from '../src/utils/googleMaps3D'
+import { loadGoogleMaps3D, zoomToRange } from '../src/utils/googleMaps3D'
 import { attachGoogle3DBridge } from '../src/utils/leafletGoogle3DBridge'
 import { createGoogleConstraintOverlay } from '../src/utils/googleConstraintOverlay'
 import { createGoogleBarangayOverlay } from '../src/utils/googleBarangayOverlay'
 import { useMap } from 'react-leaflet'
+import { heatmapSurface } from '../src/utils/heatmap'
 
 vi.mock('react-leaflet', () => ({ useMap: vi.fn() }))
 vi.mock('../src/utils/googleMaps3D', async original => ({ ...await original(), loadGoogleMaps3D: vi.fn() }))
@@ -22,6 +23,10 @@ class GoogleMap extends HTMLElement {
   flyCameraTo = vi.fn(({ endCamera }) => Object.assign(this, endCamera))
 }
 customElements.define('test-google-map', GoogleMap)
+class HeatPolygon extends HTMLElement {
+  constructor(options) { super(); Object.assign(this, options) }
+}
+customElements.define('test-heat-polygon', HeatPolygon)
 
 let root, portalHost, controlsHost, props, bridge, roads, neighborhoods
 beforeEach(() => {
@@ -45,6 +50,34 @@ afterEach(async () => { await act(async () => root.unmount()); vi.useRealTimers(
 const render = () => act(async () => root.render(<GooglePhotorealisticMap {...props} />))
 
 describe('photorealistic view regressions', () => {
+  it('renders and removes the shared heatmap on the current native map across style switches', async () => {
+    loadGoogleMaps3D.mockResolvedValue({ Map3DElement: GoogleMap, Polygon3DElement: HeatPolygon })
+    props.heatmapData = heatmapSurface([{ lat: 7.3, lng: 125.6, weight: 1 }])
+    await render()
+    await act(async () => vi.advanceTimersByTimeAsync(32))
+    const first = portalHost.querySelector('test-heat-polygon')
+    expect(first).toBeTruthy()
+    const onCamera = attachGoogle3DBridge.mock.calls.at(-1)[4]
+    await act(async () => onCamera({ tilt: 55, heading: 0, range: zoomToRange(18, 7.307, 800) }))
+    expect(first.fillColor.endsWith('0a')).toBe(true)
+    await act(async () => onCamera({ tilt: 55, heading: 0, range: zoomToRange(12, 7.307, 800) }))
+    expect(first.fillColor.endsWith('a6')).toBe(true)
+    props.active = false; await render()
+    expect(portalHost.querySelector('test-heat-polygon')).toBeNull()
+    props.active = true; await render()
+    await act(async () => vi.advanceTimersByTimeAsync(32))
+    expect(portalHost.querySelector('test-heat-polygon')).toBe(first)
+    props.heatmapData = null; await render()
+    expect(portalHost.querySelector('test-heat-polygon')).toBeNull()
+    expect(count).toBe(1)
+  })
+  it.each([true, false])('falls back after startup failure only when active=%s', async active => {
+    props.active = active
+    loadGoogleMaps3D.mockRejectedValueOnce(new Error('Google unavailable'))
+    await render()
+    expect(props.onFallback).toHaveBeenCalledTimes(active ? 1 : 0)
+    expect(portalHost.querySelector('test-google-map')).toBeNull()
+  })
   it('activates the replacement renderer when the portal host changes', async () => {
     await render()
     bridge.setActive.mockClear()

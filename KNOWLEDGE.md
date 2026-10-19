@@ -141,6 +141,27 @@ at 20 connections plus 40 overflow per engine/process, with pre-ping/recycle.
 Neither configurable Supabase pool sizing nor a dedicated test DB setting is
 implemented in `database.py`.
 
+The fire-history heatmap reads closed incidents linked to `heatmap_data`.
+`GET /api/heatmap` preserves `lat`, `lng`, and `weight`, adds `fire_id` and
+`occurred_at`, and derives severity weights (Minor 0.4, Moderate 0.7, Critical 1.0;
+unknown 0.5) from the current incident, including legacy seeded rows. Reopened
+incidents are excluded. No existing heatmap rows are rewritten. The dashboard
+filters points to its region boundary and inclusive Philippine occurrence dates.
+Heatmap coordinates use the incident's location, rather than seeded jittered
+coordinates. The API also supplies an `incident` display summary (ID, place,
+address, severity, status, alarm, structure and casualties). Transparent hit areas
+at incident locations show that summary on hover or keyboard focus in 2D and 3D;
+clicking opens details. Only the heatmap shading is drawn. Records with identical
+coordinates share a hit area and list their incidents together.
+MapLibre, Leaflet fallback, and photorealistic Google 3D share Gaussian density
+contours sampled every 100 m with a 500 m influence limit. Colors are relative to
+the selected dataset's peak, rather than calibrated risk or absolute counts.
+The panel supports date presets, custom dates, counts, and refresh/error/empty
+states. Heatmap opacity stays at its overview strength through Leaflet-equivalent
+zoom 14, then fades at closer zooms to reveal roads in all renderers. Only paint
+changes during zoom; the density contours are retained. Visible heatmaps reload on incident events, WebSocket reconnection,
+browser visibility, manual refresh, and a two-minute visible-tab interval.
+
 ## AI and road routing
 
 ### Inputs and runtime path

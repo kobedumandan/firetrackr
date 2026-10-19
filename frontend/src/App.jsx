@@ -152,7 +152,10 @@ export default function App() {
   // Start collapsed; the Incident View only auto-opens once there's an active
   // incident to show (see the effect below).
   const [rightCollapsed, setRightCollapsed]       = useState(true)
+  const [mapControlsHost, setMapControlsHost]     = useState(null)
+  const [mapLayerToolsHost, setMapLayerToolsHost] = useState(null)
   const [viewMode, setViewMode]                   = useState("normal")
+  const [heatmapRevision, setHeatmapRevision] = useState(0)
   const [pickingMode, setPickingMode]             = useState(false)
   const [pickedLocation, setPickedLocation]       = useState(null)
   const [incidentDefaults, setIncidentDefaults]   = useState(null) // prefill for NewIncidentModal
@@ -353,6 +356,7 @@ export default function App() {
       socket = ws
 
       ws.onopen = () => {
+        setHeatmapRevision(value => value + 1)
         pingId = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) ws.send('ping')
         }, 30_000)
@@ -362,6 +366,9 @@ export default function App() {
         if (e.data === 'pong') return
         try {
           const msg = JSON.parse(e.data)
+          if (['incident_created', 'incident_updated', 'incident_deleted'].includes(msg.type)) {
+            setHeatmapRevision(value => value + 1)
+          }
           if (msg.type === 'incident_created') {
             const inc = msg.data
             incidentSnapRef.current.set(inc.fire_id, {
@@ -883,6 +890,9 @@ export default function App() {
       ) : (
         <div className="main">
           <MapArea
+            heatmapRevision={heatmapRevision}
+            cameraControlsHost={mapControlsHost}
+            layerToolsHost={mapLayerToolsHost}
             pickingMode={pickingMode}
             onLocationPicked={handleLocationPicked}
             pickedLocation={pickedLocation}
@@ -899,7 +909,6 @@ export default function App() {
             ripplingIncidentId={ripplingId}
             onIncidentClick={handleSelectIncident}
             leftCollapsed={leftCollapsed}
-            rightCollapsed={rightCollapsed}
             viewMode={viewMode}
             layerPrefs={mapLayerPrefs}
             focusedPersonnel={focusedPersonnel}
@@ -912,6 +921,8 @@ export default function App() {
             reporterCount={reporterLocations.length}
           />
           <RightSidebar
+            onCameraHostChange={setMapControlsHost}
+            onLayerToolsHostChange={setMapLayerToolsHost}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
             incident={selectedInc}
