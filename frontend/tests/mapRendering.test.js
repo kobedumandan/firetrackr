@@ -75,6 +75,20 @@ describe('raster renderer and HD sources', () => {
 })
 
 describe('Google geometry compatibility', () => {
+  it('does not assign empty polygon holes rejected by the weekly SDK', () => {
+    let holes
+    const polygon = { path: null, get innerPaths() { return holes }, set innerPaths(value) {
+      if (value?.length === 0) throw new Error('empty iterable')
+      holes = value
+    } }
+    const path = [{ lat: 7.3, lng: 125.6 }, { lat: 7.4, lng: 125.7 }, { lat: 7.3, lng: 125.8 }]
+    setGooglePolygonPaths(polygon, { path })
+    expect(polygon.path).toBe(path); expect(holes).toBeUndefined()
+    setGooglePolygonPaths(polygon, { path, innerPaths: [path] })
+    expect(holes).toEqual([path])
+    setGooglePolygonPaths(polygon, { path })
+    expect(holes).toBeUndefined()
+  })
   it('sets real path properties on both current and older Google SDK shapes', () => {
     const path = [{ lat: 7.3, lng: 125.6 }, { lat: 7.4, lng: 125.7 }]
     const modern = { path: null }, legacy = { coordinates: null }

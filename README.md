@@ -93,11 +93,10 @@ py -3.11 -m venv venv
 # If activation is blocked: Set-ExecutionPolicy -Scope Process Bypass
 # source venv/bin/activate       # macOS/Linux
 
-# 2. Install PyTorch FIRST (match your hardware — see requirements.txt header)
-#    CPU only:
-pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
-#    Then install torch-geometric and the rest:
+# 2. Install backend dependencies (default exported predictions mode)
 pip install -r requirements.txt
+# Optional local node-GNN inference only:
+# pip install -r requirements-ml.txt
 
 # 3. Configure environment
 Copy-Item .env.example .env      # first setup only; edit DATABASE_URL and JWT_SECRET
@@ -116,6 +115,18 @@ python seed_barangays.py
 # 6. Run the API
 python run.py                    # http://127.0.0.1:8000  (interactive docs at /docs)
 ```
+
+`GNN_INFERENCE_MODE=exported` is the default in `backend/.env.example`. The backend
+uses precomputed constraint GeoJSON, then exported edge weights; if neither is
+available it warns and uses base travel times. It does not import PyTorch/PyG
+or run a local model with `USE_RL=false`. Restart the backend after changing modes.
+
+For the generic local node GNN, install `backend/requirements-ml.txt` and set
+`GNN_INFERENCE_MODE=local`. This mode skips exported constraint costs and uses
+`GNN_TYPE` / `TORCH_DEVICE`. It is separate from the notebook's SegmentGAT;
+it does not train a model or call Lightning. The Lightning retraining workflow
+remains planned. Experimental `USE_RL=true` additionally needs Gymnasium and
+Stable-Baselines3 installed separately.
 
 To run with multiple workers for CPU-bound route rebuilds:
 
@@ -166,7 +177,7 @@ python -m alembic upgrade head
 python -m alembic current
 ```
 
-The current migration head in this checkout is `0023`. Refresh **Schemas > public
+The current migration head in this checkout is `0026`. Refresh **Schemas > public
 > Tables** in pgAdmin to see the resulting tables. Migrations create/update the
 schema; seed scripts insert initial data. They do not copy your groupmate's data.
 For a database that already has data, take a backup before applying migrations;

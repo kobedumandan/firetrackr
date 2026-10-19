@@ -15,8 +15,15 @@ export function constraintFeatures(data) {
       properties: {
         color: props.map_color || '#b0bec5', weight: Math.max(2, props.map_weight || 2),
         opacity: props.map_opacity ?? 0.85, normal: props.display_constraint_type === 'normal',
+        hoverLabel: props.display_label || props.display_constraint_type || 'Road constraint',
+        hoverLocation: [props.name, props.barangay].filter(Boolean).join(' · '),
+        hoverMeta: [`Avoidance ×${props.routing_multiplier ?? 1}`, props.hover_confidence_text ||
+          (props.final_display_confidence_pct != null ? `Confidence ${props.final_display_confidence_pct.toFixed(0)}%` : null),
+          props.custom ? 'Custom' : null].filter(Boolean).join(' · '),
         title: [props.display_label || props.display_constraint_type, props.name, props.barangay,
-          `Avoidance ×${props.routing_multiplier ?? 1}`, props.hover_confidence_text].filter(Boolean).join(' · '),
+          `Avoidance ×${props.routing_multiplier ?? 1}`, props.hover_confidence_text ||
+            (props.final_display_confidence_pct != null ? `Confidence ${props.final_display_confidence_pct.toFixed(0)}%` : null),
+          props.custom ? 'custom' : null].filter(Boolean).join(' · '),
       },
     }))
   }).sort((a, b) => Number(b.properties.normal) - Number(a.properties.normal))

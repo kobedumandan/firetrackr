@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import ReportReceiptFields from './ReportReceiptFields'
 import { fetchTeams } from '../api'
 import {
-  SEVERITIES, ALARMS, STRUCTURES,
+  SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES,
   ICON_CLOSE, ICON_TRUCK, ICON_PLUS,
 } from './incidentFormOptions'
 import {
@@ -19,6 +19,7 @@ const EMPTY = {
   fire_status:           'pending',
   fire_alarm_level:      '1st Alarm',
   fire_structure_type:   'Residential',
+  fire_dispatch_type:    'Firefighting Operations',
   fire_casualties:       'None',
   fire_units_assigned:   0,
   fire_reporter_name:    '',
@@ -245,6 +246,11 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
           {/* ── Assessment ── */}
           <section className="eim-section">
             <SectionHead title="Assessment" desc="How serious the fire looks from the report." />
+            <Field label="Dispatch type">
+              <select value={form.fire_dispatch_type} onChange={e => set('fire_dispatch_type', e.target.value)}>
+                {DISPATCH_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+              </select>
+            </Field>
             <Field label="Severity" required>
               <Segmented label="Severity" options={SEVERITIES} value={form.fire_severity} onChange={v => set('fire_severity', v)} />
             </Field>

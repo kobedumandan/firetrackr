@@ -657,56 +657,16 @@
 }
 
 /* ── GNN legend ──────────────────────────────────────────────────────────────── */
-.gnn-legend {
-  position: absolute;
-  top: 100px;
-  left: 9.8px;
-  max-height: calc(100% - 140px);
-  max-width: 300px;
-  overflow-y: auto;
-  z-index: var(--z-popover);
-  background: var(--page-default-base);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  padding: 10px 14px;
-  color: var(--map-text);
-  font-size: 11px;
-  pointer-events: auto;
-}
+.gnn-legend { min-width: 0; padding-bottom: 9px; border-bottom: 1px solid var(--border); }
+.gnn-legend-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 10px; margin-top: 8px; }
+.gnn-legend-item { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 9px; color: var(--text-secondary); }
+.gnn-legend-item > span:nth-child(2) { flex: 1; min-width: 0; }
+.gnn-legend-item strong { color: var(--text-primary); font-weight: 500; font-variant-numeric: tabular-nums; }
+.gnn-legend-swatch { width: 12px; height: 3px; border-radius: 2px; flex: none; }
+.gnn-legend-count { font-size: 9px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.gnn-legend-count strong { color: var(--text-primary); font-weight: 500; }
 
-.gnn-legend-title {
-  font-weight: 600;
-  font-size: 11px;
-  /* letter-spacing: 0.5px; */
-  /* text-transform: uppercase; */
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-
-.gnn-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 0;
-  font-family: var(--font-span);
-}
-
-.gnn-legend-swatch {
-  display: inline-block;
-  width: 18px;
-  height: 3.8px;
-  border-radius: 1px;
-  flex-shrink: 0;
-}
-
-.gnn-legend-count {
-  margin-top: 4px;
-  font-size: 10px;
-  color: var(--map-text-faint);
-}
-
-/* ── Constraint drawing banner ────────────────────────────────────────────── */
+/* Constraint drawing banner. */
 .constraint-draw-banner {
   pointer-events: auto;
 }
@@ -732,137 +692,46 @@
   box-shadow: 0 0 6px rgba(0,0,0,0.5);
 }
 
-/* ── Constraint editor panel (inside bottom-right tile-switcher) ──────────── */
-.constraint-editor {
-  background: var(--page-default-base);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  padding: 12px 11.8px;
-  color: var(--map-text);
-  font-size: 11px;
-  min-width: 180px;
-  max-width: 220px;
-  pointer-events: auto;
-}
+/* ── Constraint tools in the shared incident/camera dock ──────────── */
+.constraint-editor { display: flex; flex-direction: column; width: 100%; min-width: 0; max-height: min(320px, 45vh); padding: 11px; overflow: hidden; border: 1px solid var(--border); border-radius: 11px; background: var(--bg-panel); color: var(--text-primary); box-shadow: var(--shadow-sm); pointer-events: auto; }
+.constraint-editor-head { display: flex; flex-shrink: 0; align-items: center; gap: 8px; margin-bottom: 11px; }
+.constraint-editor-title { margin-left: auto; font-size: 11px; color: var(--text-secondary); }
+.constraint-collapse-btn { display: grid; place-items: center; width: 23px; height: 23px; padding: 0; background: transparent; color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.constraint-collapse-btn:hover { background: var(--bg-hover); }
+.constraint-float-btn { display: flex; align-items: center; gap: 4px; width: fit-content; height: 23px; padding: 0 7px; background: var(--bg-panel); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; line-height: 1; box-shadow: var(--shadow-sm); cursor: pointer; pointer-events: auto; }
+.constraint-float-btn:hover { background: var(--bg-hover); }
+.constraint-editor-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.constraint-editor-body > * { flex-shrink: 0; }
+.constraint-editor-body::-webkit-scrollbar, .constraint-list-scroll::-webkit-scrollbar { display: none; }
+.constraint-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-secondary); font-size: 9px; }
+.constraint-section-note { color: var(--text-muted); font-size: 8px; }
+.constraint-editor-types { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.constraint-draw-btn { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); color: var(--text-primary); font: inherit; font-size: 10px; text-align: left; cursor: pointer; transition: background .15s, border-color .15s; }
+.constraint-draw-btn:hover { background: var(--bg-hover); border-color: color-mix(in srgb, var(--constraint-color) 50%, var(--border)); }
+.constraint-draw-btn[aria-pressed="true"] { border-color: var(--constraint-color); background: color-mix(in srgb, var(--constraint-color) 10%, var(--bg-panel)); }
+.constraint-type-icon { display: grid; place-items: center; width: 23px; height: 26px; flex: none; border-radius: 5px; color: var(--constraint-color); background: color-mix(in srgb, var(--constraint-color) 10%, transparent); }
+.constraint-help { margin: 0; font-size: 9px; line-height: 1.5; color: var(--text-secondary); }
+.constraint-drawing-hint { display: flex; flex-direction: column; gap: 7px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel); font-size: 10px; }
+.constraint-drawing-hint small { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 9px; }
+.constraint-drawing-actions { display: flex; gap: 5px; }
+.constraint-drawing-actions button, .constraint-load-state button { padding: 5px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-panel); color: var(--text-primary); font: inherit; font-size: 9px; cursor: pointer; }
+.constraint-drawing-actions button:hover:not(:disabled), .constraint-load-state button:hover { background: var(--bg-hover); }
+.constraint-drawing-actions button:disabled { opacity: .4; cursor: default; }
+.constraint-load-state { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 9px; border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: 10px; }
+.constraint-list { padding-top: 8px; border-top: 1px solid var(--border); }
+.constraint-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 5px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-primary); font-size: 9px; font-variant-numeric: tabular-nums; }
+.constraint-list-scroll { max-height: 80px; overflow-y: auto; scrollbar-width: none; }
+.constraint-list-item { display: flex; align-items: center; gap: 7px; padding: 6px 0; min-width: 0; }
+.constraint-list-item + .constraint-list-item { border-top: 1px solid var(--border-dim); }
+.constraint-item-swatch { width: 12px; height: 3px; border-radius: 2px; flex: none; }
+.constraint-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: 10px; }
+.constraint-item-btn { display: grid; place-items: center; width: 24px; height: 24px; flex: none; padding: 0; border: none; border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.constraint-item-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.constraint-item-btn--del:hover { background: rgba(var(--accent-red-rgb), .14); color: var(--accent-red); }
+.constraint-list-empty { margin-top: 6px; padding: 10px 8px; border: 1px dashed var(--border); border-radius: 6px; text-align: center; color: var(--text-secondary); font-size: 9px; }
+.constraint-editor button:focus-visible, .constraint-float-btn:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 2px; }
 
-.constraint-editor-title {
-  font-weight: 500;
-  font-size: 11px;
-  /* text-transform: uppercase; */
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-}
-
-.constraint-editor-types {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.constraint-draw-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-primary);
-  font-family: var(--font-span);
-  font-size: 9.8px;
-  font-weight: 500;
-  letter-spacing: -0.1px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.constraint-draw-btn:hover {
-  background: var(--bg-hover);
-  border-color: transparent;
-}
-
-.constraint-draw-symbol {
-  font-size: 14px;
-  line-height: 1;
-}
-
-.constraint-drawing-hint {
-  font-size: 10px;
-  color: var(--map-text-dim);
-  line-height: 1.5;
-  padding: 4px 0;
-}
-
-/* ── Custom constraint list ───────────────────────────────────────────────── */
-.constraint-list {
-  margin-top: 8px;
-  border-top: 1px solid var(--border-subtle);
-  padding-top: 8px;
-}
-
-.constraint-list-title {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  color: var(--map-text-faint);
-  margin-bottom: 4px;
-}
-
-.constraint-list-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 0;
-  font-size: 11px;
-}
-
-.constraint-item-swatch {
-  display: inline-block;
-  width: 10px;
-  height: 3px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-.constraint-item-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--map-text);
-}
-
-.constraint-item-btn {
-  width: 20px;
-  height: 20px;
-  border: none;
-  border-radius: 4px;
-  background: var(--surface-raise);
-  color: var(--map-text-dim);
-  font-size: 11px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-.constraint-item-btn:hover {
-  background: var(--surface-raise-strong);
-  color: var(--map-text-bright);
-}
-
-.constraint-item-btn--del:hover {
-  background: rgba(var(--accent-red-rgb),0.2);
-  color: var(--accent-red);
-}
-
-/* ── Constraint save dialog ───────────────────────────────────────────────── */
+/* Constraint save dialog. */
 .constraint-save-dialog {
   position: absolute;
   top: 50%;
@@ -1002,234 +871,73 @@
   white-space: nowrap;
 }
 
-/* ── Obstruction panel (bottom-right, obstruction view) ────────────────
-   Mirrors .map-actions-panel so the two floating map panels match: same
-   surface, same header, same control sizes, same type scale. Positioning is
-   left to the .tile-switcher wrapper, which is the only reason this cannot
-   simply reuse those classes. */
+/* Road obstruction tools in the shared incident/camera dock. */
 .obstruction-panel {
-  width: 320px;
-  padding: 0 11.8px 12px;
-  background: var(--page-default-base);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: var(--shadow-md);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  pointer-events: auto;
+  width: 100%; padding: 10px 11px; background: var(--page-default-base);
+  border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-md);
+  display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
 }
-
-.obstruction-panel-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  padding: 8.9px 0;
-}
-
-.obstruction-panel-title {
-  color: var(--text-secondary);
-  padding-right: 6px;
-  font-size: 11px;
-}
-
+.obstruction-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.obstruction-panel-title { flex: 1; text-align: right; color: var(--text-secondary); font-size: 11px; }
 .obstruction-collapse-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-muted);
-  cursor: pointer;
-  width: 23px;
-  height: 23px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.15s, background 0.15s;
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-muted); cursor: pointer; width: 23px; height: 23px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color .15s, background .15s;
 }
-
-.obstruction-collapse-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
+.obstruction-collapse-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
 .obstruction-float-btn {
-  max-width: fit-content;
-  height: 23px;
-  padding: 0 7px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-primary);
-  font-size: 11px;
-  line-height: 1;
-  gap: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: var(--shadow-sm);
-  pointer-events: auto;
-  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+  max-width: fit-content; height: 23px; padding: 0 7px; background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary);
+  font-size: 11px; line-height: 1; gap: 4px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-sm); pointer-events: auto;
+  transition: color .15s, background .15s, box-shadow .15s;
 }
-
-.obstruction-float-btn:hover {
-  background: var(--bg-hover);
-  box-shadow: var(--shadow-md);
+.obstruction-float-btn:hover { background: var(--bg-hover); box-shadow: var(--shadow-md); }
+.obstruction-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 18px; padding: 0 5px;
+  border: 1px solid var(--border); border-radius: 5px; background: var(--bg-panel);
+  color: var(--text-primary); font-size: 9px; font-variant-numeric: tabular-nums;
 }
-
-/* Tools on the left, the running list on the right. */
-.obstruction-panel-body {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.obstruction-panel-tools {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
+.obstruction-panel-body { display: flex; flex-direction: column; gap: 7px; }
+.obstruction-section-label { font-size: 9px; color: var(--text-secondary); }
+.obstruction-panel-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
 .obstruction-type-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 5.8px 8px 4.8px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  font-family: var(--font-condensed);
-  font-size: 9.8px;
-  font-weight: 500;
-  letter-spacing: -0.1px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.15s;
+  display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0;
+  min-height: 45px; padding: 7px; background: var(--bg-panel);
+  border: 1px solid var(--border); border-radius: 7px; color: var(--text-primary);
+  font: inherit; font-size: 10px; text-align: left; cursor: pointer;
+  transition: background .15s, border-color .15s;
 }
-
-.obstruction-type-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: color-mix(in srgb, var(--obs) 50%, transparent);
-}
-
-/* Only the glyph carries the type's colour; the label stays with the panel's
-   own text colour so the buttons read as one set. */
-.obstruction-type-btn svg {
-  color: var(--obs);
-  flex: none;
-}
-
-.obstruction-placing {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 5.8px 0 4.8px;
-  background: var(--accent-amber-dim);
-  border-radius: 4px;
-  color: var(--accent-amber);
-  font-family: var(--font-condensed);
-  font-size: 9.8px;
-  font-weight: 500;
-  letter-spacing: -0.1px;
-  text-transform: uppercase;
-}
-
-.obstruction-cancel-btn {
-  width: 100%;
-  padding: 5.8px 0 4.8px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  font-family: var(--font-condensed);
-  font-size: 9.8px;
-  font-weight: 500;
-  letter-spacing: -0.1px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.obstruction-cancel-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.obstruction-panel-list {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.obstruction-list-title {
-  font-size: 9.4px;
-  color: var(--text-muted);
-  margin-bottom: 5px;
-}
-
-.obstruction-list-empty {
-  font-size: 9.4px;
-  color: var(--text-muted);
-  opacity: 0.7;
-  padding: 2px 0;
-}
-
-/* Capped so a long shift's worth of obstructions scrolls inside the panel
-   instead of growing it off the top of the map. */
-.obstruction-list-scroll {
-  max-height: 104px;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-
-.obstruction-list-item {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2.5px 0;
-  min-width: 0;
-}
-
-.obstruction-chip-icon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  color: var(--obs);
-}
-
-.obstruction-item-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 9.8px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.obstruction-item-remove {
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  flex: none;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.obstruction-item-remove:hover {
-  background: rgba(var(--accent-red-rgb), 0.14);
-  color: var(--accent-red);
-}
+.obstruction-type-btn:hover { background: var(--bg-hover); border-color: color-mix(in srgb, var(--obs) 50%, var(--border)); }
+.obstruction-type-btn[aria-pressed="true"] { border-color: var(--obs); background: color-mix(in srgb, var(--obs) 10%, var(--bg-panel)); }
+.obstruction-type-icon { display: grid; place-items: center; flex-shrink: 0; width: 23px; height: 26px; border-radius: 5px; background: color-mix(in srgb, var(--obs) 10%, transparent); }
+.obstruction-type-btn svg { color: var(--obs); flex: none; }
+.obstruction-type-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.obstruction-type-copy small { font-size: 8px; color: var(--text-secondary); }
+.obstruction-help { margin: 0; font-size: 9px; line-height: 1.5; color: var(--text-secondary); }
+.obstruction-placement { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; border: 1px solid color-mix(in srgb, var(--obs) 40%, var(--border)); border-radius: 6px; background: color-mix(in srgb, var(--obs) 5%, var(--bg-panel)); }
+.obstruction-placing { display: flex; flex-direction: column; gap: 4px; font-size: 10px; color: var(--obs); }
+.obstruction-placing small { color: var(--text-secondary); font-size: 9px; }
+.obstruction-cancel-btn { flex-shrink: 0; padding: 6px 8px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; color: var(--text-secondary); font: inherit; font-size: 9px; cursor: pointer; }
+.obstruction-cancel-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.obstruction-panel-list { display: flex; flex-direction: column; min-width: 0; padding-top: 8px; border-top: 1px solid var(--border); }
+.obstruction-list-title { display: flex; align-items: center; justify-content: space-between; font-size: 9px; color: var(--text-secondary); margin-bottom: 6px; }
+.obstruction-list-empty { display: flex; flex-direction: column; gap: 5px; padding: 12px 8px; border: 1px dashed var(--border); border-radius: 6px; color: var(--text-secondary); font-size: 10px; text-align: center; }
+.obstruction-list-empty small { font-size: 9px; }
+.obstruction-list-scroll { max-height: 80px; overflow-y: auto; padding-right: 2px; scrollbar-width: thin; }
+.obstruction-list-item { display: flex; align-items: center; gap: 7px; padding: 6px 0; min-width: 0; }
+.obstruction-list-item + .obstruction-list-item { border-top: 1px solid var(--border-dim); }
+.obstruction-chip-icon { display: grid; place-items: center; flex: none; color: var(--obs); }
+.obstruction-item-icon { width: 26px; height: 28px; border-radius: 5px; background: color-mix(in srgb, var(--obs) 8%, var(--bg-panel)); }
+.obstruction-item-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
+.obstruction-item-copy small { font-size: 8px; color: var(--text-secondary); }
+.obstruction-item-name { min-width: 0; font-size: 9.8px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.obstruction-item-remove { display: grid; place-items: center; width: 24px; height: 24px; flex: none; padding: 0; border: none; border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer; transition: color .15s, background .15s; }
+.obstruction-item-remove:hover { background: rgba(var(--accent-red-rgb), .14); color: var(--accent-red); }
+.obstruction-panel button:focus-visible, .obstruction-float-btn:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 2px; }
 
 /* Placement banner + popup accents, both tinted by the active type's token. */
 .obstruction-banner {

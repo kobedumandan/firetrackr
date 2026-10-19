@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "../styles/MapActions.css";
+import PanelToggleIcon from "./PanelToggleIcon";
 
 function LogIncIcon() {
   return (
@@ -27,31 +28,6 @@ function ReportIncIcon() {
   );
 }
 
-function MinimizeIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 -960 960 960"
-      className="minimize_icon"
-      fill="currentColor"
-    >
-      <path d="M440-440v240h-80v-160H200v-80h240Zm160-320v160h160v80H520v-240h80Z" />
-    </svg>
-  );
-}
-function MaximizeIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 -960 960 960"
-      className="maximize_icon"
-      fill="currentColor"
-    >
-      <path d="M200-200v-240h80v160h160v80H200Zm480-320v-160H520v-80h240v240h-80Z" />
-    </svg>
-  );
-}
-
 export default function MapActions({
   pickingMode,
   onStartPicking,
@@ -67,7 +43,7 @@ export default function MapActions({
         onClick={() => setCollapsed(false)}
         title="Expand actions"
       >
-        <MaximizeIcon />
+        <PanelToggleIcon />
         Actions
       </button>
     );
@@ -81,7 +57,7 @@ export default function MapActions({
           onClick={() => setCollapsed(true)}
           title="Collapse"
         >
-          <MinimizeIcon />
+          <PanelToggleIcon expanded />
         </button>
         <div className="map-actions-section-header">
           Actions

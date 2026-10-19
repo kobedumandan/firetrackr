@@ -80,12 +80,21 @@ ranges and resolved dependencies are in [package.json](frontend/package.json) an
 | External services | PhilSMS over HTTP; Expo push API; map tile providers configured in mapConfig.js |
 
 Dependency completeness is an existing limitation: `security.py` imports `jose`
-but `python-jose` is not declared. `ai/__init__.py` imports modules that eagerly
-import Gymnasium and Stable-Baselines3 even though those requirement lines are
-commented out. Consequently disabled `USE_RL` does not eliminate those import
-requirements. SUMO/TraCI integration has optional runtime guards; enabling it also
+but `python-jose` is not declared. Default `GNN_INFERENCE_MODE=exported` with
+`USE_RL=false` skips PyTorch/PyG and optional RL imports. Local GNN dependencies
+live in `backend/requirements-ml.txt`; experimental RL still needs Gymnasium and
+Stable-Baselines3 installed separately. SUMO/TraCI integration has optional runtime guards; enabling it also
 requires external software and scenario files. README prerequisites are guidance,
 not a verified version matrix for every current dependency.
+
+Incident intake from the map and register records a dispatch type: Fire Safety
+Enforcement, Firefighting Operations, Emergency Medical Services (EMS), Special
+Operations, Fire/Arson Investigation, or Disaster Management. New incidents default
+to Firefighting Operations; older incidents remain unspecified. The API accepts
+`fire_dispatch_type` on create/update and returns `dispatch_type` in incident JSON.
+The category is editable, appears in incident details, and is available in all
+register export formats. It classifies the incident; crew selection is unchanged.
+Apply migration `0024` before running the updated backend.
 
 ## Backend/frontend integration
 
@@ -112,7 +121,7 @@ Sources: [api.js](frontend/src/api.js), [App.jsx](frontend/src/App.jsx),
 ## Database structure and relationships
 
 [models.py](backend/models.py) defines the schema; [Alembic versions](backend/alembic/versions/)
-define migration history. The current linear chain ends at `0023` (incident events).
+define migration history. The current linear chain ends at `0024` (incident dispatch type).
 PostGIS must already be enabled; migration files do not create the extension.
 
 | Tables | Relationships and role |
@@ -141,6 +150,39 @@ at 20 connections plus 40 overflow per engine/process, with pre-ping/recycle.
 Neither configurable Supabase pool sizing nor a dedicated test DB setting is
 implemented in `database.py`.
 
+The fire-history heatmap reads closed incidents linked to `heatmap_data`.
+`GET /api/heatmap` preserves `lat`, `lng`, and `weight`, adds `fire_id` and
+`occurred_at`, and derives severity weights (Minor 0.4, Moderate 0.7, Critical 1.0;
+unknown 0.5) from the current incident, including legacy seeded rows. Reopened
+incidents are excluded. No existing heatmap rows are rewritten. The dashboard
+filters points to its region boundary and inclusive Philippine occurrence dates.
+Heatmap coordinates use the incident's location, rather than seeded jittered
+coordinates. The API also supplies an `incident` display summary (ID, place,
+address, severity, status, alarm, structure and casualties). Transparent hit areas
+at incident locations show that summary on hover or keyboard focus in 2D and 3D;
+clicking opens details. Only the heatmap shading is drawn. Records with identical
+coordinates share a hit area and list their incidents together.
+MapLibre, Leaflet fallback, and photorealistic Google 3D share Gaussian density
+contours sampled every 100 m with a 500 m influence limit. Colors are relative to
+the selected dataset's peak, rather than calibrated risk or absolute counts.
+The panel supports date presets, custom dates, counts, and refresh/error/empty
+states. Heatmap opacity stays at its overview strength through Leaflet-equivalent
+zoom 14, then fades at closer zooms to reveal roads in all renderers. Only paint
+changes during zoom; the density contours are retained. Visible heatmaps reload on incident events, WebSocket reconnection,
+browser visibility, manual refresh, and a two-minute visible-tab interval.
+
+The dashboard's `Alt+C` shortcut opens Command using the sidebar navigation
+path, including from Settings and while the Alerts panel is open. Its hint appears
+at the right of the Command button (in the tooltip when navigation is compact).
+The shortcut is inactive on login, while typing, and while a modal dialog is open.
+Light and Dark MapLibre basemaps start at 40 degrees of tilt when selected;
+Satellite starts at zero. Returning to the same renderer preserves manual tilt.
+The Map style selector starts collapsed. Incident markers use the original
+severity-colored pins with their pulse and selection rings across renderers.
+Constraint road details appear on hover in tilted MapLibre and Google 3D views,
+including the road label, location, avoidance multiplier and available confidence.
+Hover cards hide during drawing, camera motion, and when the layer is hidden.
+
 ## AI and road routing
 
 ### Inputs and runtime path
@@ -159,11 +201,15 @@ schedules; [edge_weights.json](backend/data/edge_weights.json) is a fallback.
 The trained `best_gat_manual_threshold_model.pt` is an artifact, not the live model
 that generates road classifications on each request.
 
-The engine also constructs a generic GraphSAGE/GAT/PMGCN node model; configuration
-defaults to GraphSAGE with eight node features and the shipped GraphSAGE checkpoint.
-If no constraint costs are loaded, `_compute_edge_costs()` invokes live node scoring.
-Thus comments describing the development region as strictly raw-travel-time routing
-are simplified: inspect this fallback before relying on that claim.
+`GNN_INFERENCE_MODE=exported` (default) skips local model initialization and uses
+constraint GeoJSON, then exported edge weights. Missing exports log a warning and
+fall back to base travel times, including in routing pool workers. There is no
+implicit local GNN fallback. `GNN_INFERENCE_MODE=local` explicitly constructs the
+generic GraphSAGE/GAT/PMGCN node model and skips exported constraint costs. Local
+mode defaults to GraphSAGE with eight node features and the shipped GraphSAGE
+checkpoint; it is not the notebook's SegmentGAT. Install the optional ML
+requirements before enabling local mode. Routing status includes `inference_mode`;
+`gnn_type` is `exported` when no local model is constructed.
 
 ### Search and route products
 
@@ -427,11 +473,11 @@ First recorded milestones are not overwritten by retries or later GPS packets.
 Migration `0025` adds nullable incident receipt/suppression timestamps and response
 classification, per-dispatch-truck departure/arrival, event audit metadata and
 dispatch-associated truck telemetry. It adds no tables and backfills no history.
-The supplied October 19 backup was inspected, not restored. It reported `0024`,
-which was missing from this branch. `0024_dispatch_audit_compatibility.py` is an
-explicit reconstruction of its three nullable dispatch audit columns, verified
-against the supplied schema; it is not the original migration source. Databases
-already at `0024` skip that reconstruction and apply `0025` normally.
+Main's authoritative `0024_add_incident_dispatch_type.py` adds the optional incident
+dispatch category. An earlier feature revision temporarily reused `0024` while that
+source was unavailable. Migration `0026` safely adds the category only when an
+existing feature database reached `0025` without it; fresh and main-derived databases
+already contain it. The supplied October 19 backup was inspected, not restored.
 
 Measurement rules:
 
@@ -482,10 +528,10 @@ require a working enhanced renderer; standard tiles remain available.
 
 Deployment: back up the target database, stop the backend, review `alembic current`,
 then run `venv\Scripts\python.exe -m alembic upgrade head` from `backend/` before
-restarting it. Build the frontend with `npm.cmd run build`. Downgrade to `0024`
+restarting it. Build the frontend with `npm.cmd run build`. Downgrade below `0025`
 removes the new operational fields/history metadata, so preserve a backup first.
 
-Local validation includes a fresh migration chain through `0025`, downgrade/upgrade,
+Local validation includes the migration chain through `0026`, downgrade/upgrade,
 multi-unit and missing-data calculations, ordering/idempotence, route snapshot
 survival, GPS gating/offline order, role/ownership checks, existing dispatch/mobile
 contracts, UI empty/error/modal/period behavior and the existing map test suite.

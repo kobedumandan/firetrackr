@@ -7,16 +7,19 @@ import { rasterMapStyle, selectRasterStyle } from '../utils/rasterMapStyle'
 import { constraintFeatures, EMPTY_GEOJSON } from '../utils/commandMapData'
 import { clamp } from '../utils/googleMaps3D'
 import MapCameraControls from './MapCameraControls'
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
-export default function RasterCommandMap({ portalHost, controlsHost, active, tileMode, overlayRevision, gnnData, heatPoints, picking, onUnavailable }) {
+export default function RasterCommandMap({ portalHost, controlsHost, active, tileMode, overlayRevision, gnnData, heatmapData, picking, onUnavailable }) {
   const leaflet = useMap()
   const host = useRef(null)
   const runtime = useRef(null)
   const unavailable = useRef(onUnavailable)
-  const [ready, setReady] = useState(false)
+  // Track the actual instance: a replacement must reapply style/activation even
+  // when the previous renderer was already ready.
+  const [ready, setReady] = useState(null)
   const [error, setError] = useState('')
-  const [camera, setCamera] = useState({ tilt: 0, heading: 0 })
+  const [camera, setCamera] = useState({ tilt: tileMode === 'street' || tileMode === 'dark' ? 40 : 0, heading: 0 })
   useEffect(() => { unavailable.current = onUnavailable }, [onUnavailable])
 
   useEffect(() => {
@@ -24,20 +27,20 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
     let cancelled = false
     let map
     let observer
+    let startupTimer
     let failed = false
     const fallback = message => {
       if (cancelled || failed) return
       failed = true
+      clearTimeout(startupTimer)
       setError(message)
       unavailable.current?.()
     }
-    // Worker startup can fail outside MapLibre's map error event (for example
-    // in embedded browsers). Keep the standard tiles available in that case.
-    const startupTimer = setTimeout(() => {
-      if (!runtime.current) fallback('The enhanced map did not initialize. Using the standard map instead.')
-    }, 15000)
     import('maplibre-gl').then(maplibre => {
       if (cancelled) return
+      // MapLibre 6 resolves its worker relative to import.meta.url. Vite moves
+      // the library during optimization/build, so emit and configure it explicitly.
+      maplibre.setWorkerUrl(workerUrl)
       const center = leaflet.getCenter()
       map = new maplibre.Map({
         container: host.current, style: rasterMapStyle(), center: [center.lng, center.lat],
@@ -49,38 +52,47 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
       })
       map.on('load', () => {
         if (cancelled || failed) return
-        clearTimeout(startupTimer)
-        runtime.current = { map, bridge: attachRasterBridge(leaflet, map, maplibre, L, setCamera) }
-        setReady(true)
+        try {
+          runtime.current = { map, bridge: attachRasterBridge(leaflet, map, maplibre, L, setCamera) }
+          clearTimeout(startupTimer)
+          setReady(map)
+        } catch {
+          fallback('The enhanced map renderer is unavailable. Using the standard map instead.')
+        }
       })
+      // Worker startup can fail without emitting MapLibre's error event. In
+      // that case return control to the existing Leaflet renderer.
+      startupTimer = setTimeout(() => fallback('The enhanced map did not finish loading. Using the standard map instead.'), 15000)
       map.on('error', event => {
         if (!event.sourceId) fallback('The enhanced map renderer is unavailable. Using the standard map instead.')
       })
-      observer = new ResizeObserver(() => { if (map.getContainer().offsetWidth) map.resize() })
+      observer = new ResizeObserver(() => { if (!cancelled && map.getContainer().offsetWidth) map.resize() })
       observer.observe(host.current)
     }).catch(() => fallback('The enhanced map renderer is unavailable. Using the standard map instead.'))
     return () => {
-      clearTimeout(startupTimer)
-      cancelled = true; observer?.disconnect(); runtime.current?.bridge.dispose(); runtime.current = null; map?.remove()
+      cancelled = true; clearTimeout(startupTimer); observer?.disconnect(); runtime.current?.bridge.dispose(); runtime.current = null; map?.remove()
     }
   }, [leaflet, portalHost])
 
-  useEffect(() => { if (ready) runtime.current?.bridge.setActive(active) }, [active, ready])
+  useEffect(() => { if (ready && runtime.current?.map === ready) runtime.current.bridge.setActive(active) }, [active, ready])
   useEffect(() => {
-    if (ready && active) selectRasterStyle(runtime.current.map, tileMode)
+    const current = runtime.current
+    if (!ready || !active || current?.map !== ready) return
+    selectRasterStyle(ready, tileMode)
+    if (current.tileMode !== tileMode) {
+      ready.jumpTo({ pitch: tileMode === 'street' || tileMode === 'dark' ? 40 : 0 })
+      current.tileMode = tileMode
+    }
   }, [ready, active, tileMode])
-  useEffect(() => { if (ready && active) runtime.current?.bridge.refresh() }, [ready, active, overlayRevision])
+  useEffect(() => { if (ready && active && runtime.current?.map === ready) runtime.current.bridge.refresh() }, [ready, active, overlayRevision])
   useEffect(() => {
-    if (ready) runtime.current.map.getSource('command-roads').setData(constraintFeatures(gnnData))
+    if (ready && runtime.current?.map === ready) ready.getSource('command-roads').setData(constraintFeatures(gnnData))
   }, [ready, gnnData])
   useEffect(() => {
-    if (!ready) return
-    runtime.current.map.getSource('command-heat').setData(heatPoints?.length ? {
-      type: 'FeatureCollection', features: heatPoints.map(point => ({ type: 'Feature', properties: { weight: point.weight },
-        geometry: { type: 'Point', coordinates: [point.lng, point.lat] } })),
-    } : EMPTY_GEOJSON)
-  }, [ready, heatPoints])
-  useEffect(() => { if (ready) runtime.current.map.getCanvas().style.cursor = picking ? 'crosshair' : '' }, [ready, picking])
+    if (!ready || runtime.current?.map !== ready) return
+    ready.getSource('command-heat').setData(heatmapData || EMPTY_GEOJSON)
+  }, [ready, heatmapData])
+  useEffect(() => { if (ready && runtime.current?.map === ready) ready.getCanvas().style.cursor = picking ? 'crosshair' : '' }, [ready, picking])
 
   function act(action) {
     const map = runtime.current?.map
@@ -96,6 +108,6 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
   if (!portalHost) return null
   return <>
     {createPortal(<><div className="raster-map-canvas" ref={host} />{active && error && <div className="google-map-message" role="alert">{error}</div>}</>, portalHost)}
-    {active && <MapCameraControls host={controlsHost} camera={camera} onAction={act} disabled={!ready || Boolean(error)} maxTilt={70} title="Map view · HD" />}
+    {active && <MapCameraControls host={controlsHost} camera={camera} onAction={act} disabled={!ready || Boolean(error)} maxTilt={70} title="Map view" detail="HD" />}
   </>
 }

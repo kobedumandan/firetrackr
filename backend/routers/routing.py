@@ -26,6 +26,7 @@ def routing_status():
         "region_label": Config.REGION_CFG["label"],
         "place_name": Config.PLACE_NAME,
         "road_source": Config.ROAD_SOURCE,
+        "inference_mode": Config.GNN_INFERENCE_MODE,
         "has_constraints": bool(
             Config.PREDICTED_CONSTRAINTS_PATH and Config.PREDICTED_CONSTRAINTS_PATH.exists()
         ),
@@ -38,7 +39,8 @@ def routing_status():
         "nodes": g.number_of_nodes(),
         "edges": g.number_of_edges(),
         "precomputed_weights": state.routing_engine._precomputed_weights,
-        "gnn_type": type(state.routing_engine.gnn).__name__,
+        "gnn_type": (type(state.routing_engine.gnn).__name__
+                     if state.routing_engine.gnn is not None else "exported"),
         **region,
     }
 

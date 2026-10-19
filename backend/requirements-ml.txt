@@ -1,0 +1,22 @@
+# Optional dependencies for GNN_INFERENCE_MODE=local.
+# Install requirements.txt separately; Lightning training needs its own environment.
+# ── Deep Learning (PyTorch) ───────────────────────────────────────────────────
+# Install manually BEFORE the rest — match your CUDA version:
+#   GPU (CUDA 12.1): pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
+#   CPU only:        pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1
+torchvision==0.20.1
+sympy==1.13.1
+mpmath==1.3.0
+filelock==3.29.0
+fsspec==2026.4.0
+setuptools==82.0.1
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+
+# ── Graph Neural Networks ─────────────────────────────────────────────────────
+# Install after PyTorch: pip install torch-geometric
+torch-geometric==2.7.0
+tqdm==4.67.3
+xxhash==3.7.0
+psutil==7.2.2

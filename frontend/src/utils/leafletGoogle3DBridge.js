@@ -2,6 +2,7 @@ import { rangeToZoom, zoomToRange } from './googleMaps3D'
 import { frameThrottle } from './commandMapData'
 import { setGoogleLinePath, setGooglePolygonPaths } from './googleMapGeometry'
 import { PANABO_BOUNDARY_COLOR } from './mapOverlayColors'
+import { attachIncidentHover } from './incidentHover'
 
 const position = point => ({ lat: point.lat, lng: point.lng, altitude: 0 })
 
@@ -120,6 +121,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
 
   function createOverlay(layer, description) {
     const elements = []
+    let hover
     const popup = layer.getPopup?.()
     const previousAutoPan = popup?.options.autoPan
     if (popup) popup.options.autoPan = false
@@ -151,6 +153,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
       }
       element.style.opacity = description.opacity
       if (description.interactive) element.addEventListener('gmp-click', event => clickLayer(layer, event))
+      hover = attachIncidentHover(element, layer, () => active && !disposed && !unloaded && !leaflet.getContainer?.().classList.contains('pick-cursor'))
       elements.push(element)
     } else {
       for (const path of description.paths) {
@@ -180,7 +183,9 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
     layer.on('move', move)
     return {
       signature: JSON.stringify(description),
+      hideHover() { hover?.hide() },
       remove() {
+        hover?.dispose()
         layer.off('move', move)
         elements.forEach(element => element.remove())
         if (popup) popup.options.autoPan = previousAutoPan
@@ -217,6 +222,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
   })
   function cameraChanged() {
     if (!active) return
+    overlays.forEach(overlay => overlay.hideHover())
     readCamera()
     clearTimeout(cameraTimer)
     cameraTimer = setTimeout(saveCamera, 150)
@@ -236,6 +242,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
     setActive(value) {
       if (active && !value) saveCamera()
       active = value
+      if (!value) overlays.forEach(overlay => overlay.hideHover())
       if (value) { fromLeaflet(); schedule(); readCamera() }
       else { readCamera.cancel(); clearTimeout(cameraTimer) }
     },

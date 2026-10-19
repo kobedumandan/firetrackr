@@ -81,14 +81,10 @@ function _cacheSet(key, data) {
 }
 
 // ── Personnel ─────────────────────────────────────────────────────────────────
-export async function fetchHeatmap() {
-  const cached = _cacheGet('heatmap')
-  if (cached) return cached
-
-  const res = await apiFetch('/api/heatmap')
+export async function fetchHeatmap(signal) {
+  const res = await apiFetch('/api/heatmap', { signal })
   if (!res.ok) throw new Error(`Failed to fetch heatmap data (${res.status})`)
   const data = await res.json()
-  _cacheSet('heatmap', data)
   return data
 }
 

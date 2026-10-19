@@ -70,7 +70,7 @@ def _load_graph():
 
 
 def build_routing_engine(register_gym: bool = True) -> "GeoAIRoutingEngine | None":
-    """Load the road graph + GNN engine and apply routing weights.
+    """Load the road graph and configure exported or local GNN costs.
 
     Returns a ready-to-use engine, or None if the graph data could not be
     loaded (callers degrade gracefully). `register_gym` is only needed by the
@@ -84,7 +84,9 @@ def build_routing_engine(register_gym: bool = True) -> "GeoAIRoutingEngine | Non
             gnn_type=Config.GNN_TYPE,
             use_rl=Config.USE_RL,
             use_sumo=Config.USE_SUMO,
-            gnn_model_path=str(model_path) if model_path.exists() else None,
+            gnn_model_path=(str(model_path) if Config.GNN_INFERENCE_MODE == "local"
+                            and model_path.exists() else None),
+            inference_mode=Config.GNN_INFERENCE_MODE,
             in_channels=Config.NODE_FEATURE_DIM,
             hidden_channels=Config.GNN_HIDDEN,
             out_channels=Config.GNN_OUT,
@@ -98,7 +100,9 @@ def build_routing_engine(register_gym: bool = True) -> "GeoAIRoutingEngine | Non
         # landmark heuristic is admissible either way).
         constraints_path = Config.PREDICTED_CONSTRAINTS_PATH
         edge_weights_path = Config.EDGE_WEIGHTS_PATH
-        if constraints_path and constraints_path.exists():
+        if Config.GNN_INFERENCE_MODE == "local":
+            logger.info("Local GNN inference enabled; exported constraint costs are skipped")
+        elif constraints_path and constraints_path.exists():
             with open(constraints_path, encoding="utf-8") as f:
                 predicted = json.load(f)
             style = _load_constraint_style()
@@ -109,16 +113,17 @@ def build_routing_engine(register_gym: bool = True) -> "GeoAIRoutingEngine | Non
             }
             engine.apply_predicted_constraints(predicted.get("features", []), multiplier_by_type)
         elif edge_weights_path and edge_weights_path.exists():
+            logger.warning("No constraint predictions found; using exported edge weights")
             with open(edge_weights_path) as f:
                 edge_weights = json.load(f)
             engine.apply_edge_weights(edge_weights)
         else:
-            logger.info(
+            logger.warning(
                 "[region=%s] no constraint or edge-weight data — routing on raw travel time",
                 Config.REGION,
             )
 
-        if register_gym:
+        if register_gym and Config.USE_RL:
             register_env()
         return engine
     except Exception as exc:

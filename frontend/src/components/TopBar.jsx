@@ -3,6 +3,7 @@ import "../styles/TopBar.css";
 import SignOutModal from "./SignOutModal";
 import { getCurrentShift } from "../utils/shift";
 import { BellIcon } from "./notificationUi";
+import { COMMAND_SHORTCUT } from "../hooks/useCommandShortcut";
 
 function PointUpIcon({className}) {
   return (
@@ -181,10 +182,21 @@ export default function TopBar({
               onClick={() => onNavChange(label)}
               /* data-label feeds the CSS tooltip that replaces the text when
                  the rail is compacted — see [data-nav="compact"] in TopBar.css */
-              data-label={label}
+              data-label={label === "Command" ? `${label} (${COMMAND_SHORTCUT})` : label}
+              aria-keyshortcuts={label === "Command" ? COMMAND_SHORTCUT : undefined}
+              title={label === "Command" ? `Command (${COMMAND_SHORTCUT})` : undefined}
             >
               <Icon className="nav-btn-icon" />
               <span className="nav-btn-label">{label}</span>
+              {label === "Command" && (showingSettings || activeNav !== "Command") && (
+                <span className="nav-btn-shortcut" aria-hidden="true">
+                  <svg className="nav-btn-shortcut-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+                    <rect x="2" y="5" width="20" height="14" rx="3" />
+                    <path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 15h10" />
+                  </svg>
+                  {COMMAND_SHORTCUT}
+                </span>
+              )}
             </button>
           </span>
         ))}

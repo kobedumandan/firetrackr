@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import ReportReceiptFields from './ReportReceiptFields'
 import '../styles/AppModal.css'
-import { SEVERITIES, ALARMS, STRUCTURES, ICON_CLOSE, ICON_PIN, ICON_BOLT } from './incidentFormOptions'
+import { SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES, ICON_CLOSE, ICON_PIN, ICON_BOLT } from './incidentFormOptions'
 import { Icon, Field, SectionHead, Segmented } from './incidentForm'
 
 const CHANNELS = ['911 Call', 'BFP Hotline', 'SMS Report', 'Walk-in', 'Dispatcher']
@@ -21,6 +21,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
     severity:     'Moderate',
     alarm:        '1st Alarm',
     structure:    'Residential',
+    dispatchType: 'Firefighting Operations',
     reporter:     '911 Call',
     mobile:       '',
     autoDispatch: true,
@@ -52,6 +53,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
         severity:     form.severity,
         alarm:        form.alarm,
         structure:    form.structure,
+        dispatchType: form.dispatchType,
         reporter:     form.reporter,
         mobile:       form.mobile.trim(),
         coords:       location,
@@ -124,6 +126,11 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
           {/* ── Assessment ── */}
           <section className="eim-section">
             <SectionHead title="Assessment" desc="How serious the fire looks from the report." />
+            <Field label="Dispatch type">
+              <select value={form.dispatchType} onChange={e => set('dispatchType', e.target.value)}>
+                {DISPATCH_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+              </select>
+            </Field>
             <Field label="Severity" required>
               <Segmented label="Severity" options={SEVERITIES} value={form.severity} onChange={v => set('severity', v)} />
             </Field>

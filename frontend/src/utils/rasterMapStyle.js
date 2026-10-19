@@ -1,6 +1,7 @@
 import { REGION_BOUNDARY, TILE_OPTIONS } from '../data/mapConfig'
 import { EMPTY_GEOJSON, rasterTileUrls } from './commandMapData'
 import { PANABO_BOUNDARY_COLOR } from './mapOverlayColors'
+import { HEATMAP_FADE_STOPS } from './heatmapOpacity'
 
 export function rasterMapStyle() {
   return {
@@ -13,10 +14,10 @@ export function rasterMapStyle() {
     },
     layers: [
       { id: 'command-background', type: 'background', paint: { 'background-color': '#111820' } },
-      { id: 'command-heat', type: 'heatmap', source: 'command-heat', paint: {
-        'heatmap-weight': ['/', ['coalesce', ['get', 'weight'], 1], 5], 'heatmap-radius': 28,
-        'heatmap-opacity': 0.7,
-        'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,255,0)', 0.2, '#00ffff', 0.4, '#00ff00', 0.6, '#ffff00', 0.8, '#ff8000', 1, '#ff0000'],
+      { id: 'command-heat', type: 'fill', source: 'command-heat', paint: {
+        'fill-color': ['get', 'color'], 'fill-antialias': true,
+        // MapLibre's 512-pixel zoom is one below Leaflet's 256-pixel zoom.
+        'fill-opacity': ['interpolate', ['linear'], ['zoom'], ...HEATMAP_FADE_STOPS.flatMap(([zoom, factor]) => [zoom - 1, ['*', ['get', 'opacity'], factor]])],
       } },
       { id: 'command-roads', type: 'line', source: 'command-roads', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: {
         'line-color': ['get', 'color'], 'line-width': ['get', 'weight'], 'line-opacity': ['get', 'opacity'],

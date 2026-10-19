@@ -1,7 +1,7 @@
 # ── Web Framework ─────────────────────────────────────────────────────────────
 fastapi==0.136.1
 starlette==1.0.0
-uvicorn==0.46.0
+uvicorn[standard]==0.46.0
 pydantic==2.13.4
 pydantic_core==2.46.4
 python-dotenv==1.2.2
@@ -59,32 +59,16 @@ six==1.17.0
 tzdata==2026.2
 pyparsing==3.3.2
 
-# ── Deep Learning (PyTorch) ───────────────────────────────────────────────────
-# Install manually BEFORE the rest — match your CUDA version:
-#   GPU (CUDA 12.1): pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
-#   CPU only:        pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
-torch==2.5.1
-torchvision==0.20.1
+# Optional local GNN inference: pip install -r requirements-ml.txt
+# Default GNN_INFERENCE_MODE=exported does not require PyTorch/PyG.
+# Pillow remains a backend dependency for image handling.
 pillow==12.1.1
-sympy==1.13.1
-mpmath==1.3.0
-filelock==3.29.0
-fsspec==2026.4.0
-setuptools==82.0.1
-Jinja2==3.1.6
-MarkupSafe==3.0.3
-
-# ── Graph Neural Networks ─────────────────────────────────────────────────────
-# Install after PyTorch: pip install torch-geometric
-torch-geometric==2.7.0
-tqdm==4.67.3
-xxhash==3.7.0
-psutil==7.2.2
 
 # ── Reinforcement Learning ────────────────────────────────────────────────────
-# Imported by ai/__init__.py during API startup, even when RL is disabled.
-stable-baselines3==2.6.0
-gymnasium==1.1.1
+# Optional experimental RL; not imported when USE_RL=false.
+# pip install stable-baselines3 gymnasium
+# stable-baselines3>=2.0.0
+# gymnasium>=0.29.0
 
 # ── SUMO (optional — requires system SUMO install first) ──────────────────────
 # https://sumo.dlr.de/docs/Installing/

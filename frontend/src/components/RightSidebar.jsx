@@ -351,6 +351,8 @@ export default function RightSidebar({
   viewMode = "normal",
   onViewModeChange,
   focusNonce = 0,
+  onCameraHostChange,
+  onLayerToolsHostChange,
 }) {
   const viewModeButtons = (
     <div
@@ -399,7 +401,8 @@ export default function RightSidebar({
 
   if (collapsed) {
     return (
-      <>
+      <div className="right-sidebar-dock right-sidebar-dock--collapsed">
+        <div className="right-sidebar-dock-top">
         <button
           className="right-sidebar-float-btn"
           onClick={onToggleCollapse}
@@ -409,13 +412,16 @@ export default function RightSidebar({
           Tab
         </button>
         {viewModeButtons}
-      </>
+        </div>
+        <div ref={onCameraHostChange} className="command-map-camera-slot" />
+        <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+      </div>
     );
   }
 
   return (
     <>
-      {viewModeButtons}
+      <div className="right-sidebar-dock">
       <aside className="sidebar-right">
         <div className="sidebar-tabs">
           <div className="sidebar-section-header">Incident View</div>
@@ -764,6 +770,10 @@ export default function RightSidebar({
                 <span className="detail-label">Reported By</span>
                 <span className="detail-value">{incident.reporter || "—"}</span>
               </div>
+              <div className="detail-row">
+                <span className="detail-label">Dispatch type</span>
+                <span className="detail-value">{incident.dispatch_type || 'Unspecified'}</span>
+              </div>
               {incident.structure && (
                 <div className="detail-row">
                   <span className="detail-label">Structure</span>
@@ -908,6 +918,10 @@ export default function RightSidebar({
           </div>
         )}
       </aside>
+      {viewModeButtons}
+      <div ref={onCameraHostChange} className="command-map-camera-slot" />
+      <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+      </div>
 
       {showDispatch && incident && (
         <DispatchModal
