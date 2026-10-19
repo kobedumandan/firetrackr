@@ -132,7 +132,9 @@ export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
   const onOut = () => { if (active) leaflet.fire('mouseout') }
   const onUnload = () => { unloaded = true }
   leaflet.on('moveend', fromLeaflet).on('layeradd layerremove', refresh).on('unload', onUnload)
-  map.on('moveend', saveCamera).on('move', readCamera).on('click', onClick).on('mousemove', onMove).on('mouseout', onOut)
+  // MapLibre 6 on() returns a Subscription rather than the map itself.
+  const listeners = [['moveend', saveCamera], ['move', readCamera], ['click', onClick], ['mousemove', onMove], ['mouseout', onOut]]
+  listeners.forEach(([name, handler]) => map.on(name, handler))
   return {
     refresh,
     setActive(value) {
@@ -143,7 +145,7 @@ export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
     dispose() {
       saveCamera(); active = false; refresh.cancel(); readCamera.cancel()
       leaflet.off('moveend', fromLeaflet).off('layeradd layerremove', refresh).off('unload', onUnload)
-      map.off('moveend', saveCamera).off('move', readCamera).off('click', onClick).off('mousemove', onMove).off('mouseout', onOut)
+      listeners.forEach(([name, handler]) => map.off(name, handler))
       markers.forEach(entry => entry.remove()); markers.clear(); leaflet.closePopup()
     },
   }

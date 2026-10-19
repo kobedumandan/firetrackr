@@ -1,4 +1,5 @@
 .command-renderer-host, .google-map-canvas, .raster-map-canvas { position: absolute; inset: 0; }
+.command-renderer-host > .raster-map-canvas { position: absolute; inset: 0; }
 .command-renderer-host { z-index: 1; background: var(--map-base); }
 .command-renderer-host[hidden] { display: none; }
 .raster-map-canvas .maplibregl-ctrl-bottom-right { right: 6px; }

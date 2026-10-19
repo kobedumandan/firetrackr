@@ -199,6 +199,13 @@ describe('tilted raster interactions', () => {
       resize: vi.fn(), queryRenderedFeatures: vi.fn(() => []),
     })
     map.jumpTo = vi.fn(() => map.fire('moveend'))
+    // Match MapLibre 6: on() returns a Subscription, not a chainable map.
+    const eventOn = map.on.bind(map)
+    const eventOff = map.off.bind(map)
+    map.on = vi.fn((name, handler) => {
+      eventOn(name, handler)
+      return { unsubscribe: () => eventOff(name, handler) }
+    })
     const bridge = attachRasterBridge(leaflet, map, { Marker: NativeMarker }, L, vi.fn())
     bridge.setActive(true); raf.flush()
     expect(leaflet.setView).not.toHaveBeenCalled()
@@ -223,6 +230,7 @@ describe('tilted raster interactions', () => {
     layers.delete(marker); leaflet.fire('layerremove'); raf.flush()
     expect(nativeMarkers[0].removed).toBe(true)
     leaflet.fire('unload'); bridge.dispose()
+    expect(map.listens('click')).toBe(false)
     expect(raf.frames.size).toBe(0)
   })
 })
