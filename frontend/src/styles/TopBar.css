@@ -72,6 +72,34 @@
   background: var(--bg-hover);
   color: var(--text-primary);
 }
+.nav-btn-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-left: auto;
+  align-self: center;
+  flex-shrink: 0;
+  min-height: 23px;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: #c4c4c4;
+  background: #111111;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 4px 7px;
+}
+.nav-btn:has(.nav-btn-shortcut) { align-items: center; }
+.nav-btn-shortcut-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
 .nav-btn.active {
   background: var(--accent-fire-dim);
   color: var(--accent-fire);
@@ -338,6 +366,7 @@
 
 /* The labels are the only thing that goes; icons keep their own sizing. */
 :root[data-nav="compact"] .nav-btn-label,
+:root[data-nav="compact"] .nav-btn-shortcut,
 :root[data-nav="compact"] .user-chip-name-wrap,
 :root[data-nav="compact"] .user-chip-btn-wrap,
 :root[data-nav="compact"] .current-shift-label,

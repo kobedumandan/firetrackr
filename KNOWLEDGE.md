@@ -171,6 +171,18 @@ zoom 14, then fades at closer zooms to reveal roads in all renderers. Only paint
 changes during zoom; the density contours are retained. Visible heatmaps reload on incident events, WebSocket reconnection,
 browser visibility, manual refresh, and a two-minute visible-tab interval.
 
+The dashboard's `Alt+C` shortcut opens Command using the sidebar navigation
+path, including from Settings and while the Alerts panel is open. Its hint appears
+at the right of the Command button (in the tooltip when navigation is compact).
+The shortcut is inactive on login, while typing, and while a modal dialog is open.
+Light and Dark MapLibre basemaps start at 40 degrees of tilt when selected;
+Satellite starts at zero. Returning to the same renderer preserves manual tilt.
+The Map style selector starts collapsed. Incident markers use the original
+severity-colored pins with their pulse and selection rings across renderers.
+Constraint road details appear on hover in tilted MapLibre and Google 3D views,
+including the road label, location, avoidance multiplier and available confidence.
+Hover cards hide during drawing, camera motion, and when the layer is hidden.
+
 ## AI and road routing
 
 ### Inputs and runtime path

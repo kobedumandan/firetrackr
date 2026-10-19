@@ -20,6 +20,7 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
   useEffect(() => { fallback.current = { active, onFallback } }, [active, onFallback])
   const [instance, setInstance] = useState(null)
   const [status, setStatus] = useState('loading')
+  const [readyScene, setReadyScene] = useState(null)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [camera, setCamera] = useState({ tilt: 55, heading: 0 })
@@ -63,6 +64,9 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
     }
     window.gm_authFailure = authFailure
     const onError = () => fail('Google could not initialize the 3D map. Check API access and that your browser supports WebGL.')
+    const onSteady = event => {
+      if (!cancelled && !failed && event.isSteady) setReadyScene(map)
+    }
     loadGoogleMaps3D(API_KEY).then(library => {
       if (cancelled || failed) return
       const center = leaflet.getCenter()
@@ -77,6 +81,7 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
       map.style.width = '100%'
       map.style.height = '100%'
       map.addEventListener('gmp-error', onError)
+      map.addEventListener('gmp-steadychange', onSteady)
       const bridge = attachGoogle3DBridge(leaflet, map, library, L, onCameraChange, { initiallyActive: false })
       runtime.current = {
         map, bridge,
@@ -88,6 +93,7 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
       host.current.append(map)
       // Steady means *every* streamed tile is done, not that the map is usable.
       // Finer imagery can load while navigating. Only SDK errors are fatal.
+      // Keep the initial loading cover separate from interactive readiness.
       setStatus('ready')
     }).catch(error => fail(error.message))
 
@@ -100,6 +106,7 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
       runtime.current?.heatmap.dispose()
       runtime.current = null
       map?.removeEventListener('gmp-error', onError)
+      map?.removeEventListener('gmp-steadychange', onSteady)
       map?.remove()
     }
   }, [leaflet, portalHost, attempt, reportBarangayError, reportHeatmapError, onCameraChange])
@@ -154,12 +161,17 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
   return <>
     {createPortal(<>
       <div className="google-map-canvas" ref={host} />
-      {active && status !== 'ready' && (
-        <div className="google-map-message" role={status === 'error' ? 'alert' : 'status'}>
-          <strong>{status === 'error' ? 'Photorealistic map unavailable' : 'Loading photorealistic map…'}</strong>
-          <p>{status === 'error' ? error : 'Connecting to Google Maps'}</p>
+      {active && status !== 'error' && (status === 'loading' || readyScene !== instance) && (
+        <div className="google-map-loading" role="progressbar" aria-label="Loading photorealistic map">
+          <span className="google-map-spinner" aria-hidden="true" />
+        </div>
+      )}
+      {active && status === 'error' && (
+        <div className="google-map-message" role="alert">
+          <strong>Photorealistic map unavailable</strong>
+          <p>{error}</p>
           <div>
-            {status === 'error' && <button type="button" onClick={() => { setStatus('loading'); setError(''); setAttempt(value => value + 1) }}>Retry</button>}
+            <button type="button" onClick={() => { setStatus('loading'); setReadyScene(null); setError(''); setAttempt(value => value + 1) }}>Retry</button>
             <button type="button" onClick={onFallback}>Use Satellite</button>
           </div>
         </div>

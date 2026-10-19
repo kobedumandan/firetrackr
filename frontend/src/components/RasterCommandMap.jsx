@@ -19,7 +19,7 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
   // when the previous renderer was already ready.
   const [ready, setReady] = useState(null)
   const [error, setError] = useState('')
-  const [camera, setCamera] = useState({ tilt: 0, heading: 0 })
+  const [camera, setCamera] = useState({ tilt: tileMode === 'street' || tileMode === 'dark' ? 40 : 0, heading: 0 })
   useEffect(() => { unavailable.current = onUnavailable }, [onUnavailable])
 
   useEffect(() => {
@@ -74,7 +74,13 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
 
   useEffect(() => { if (ready && runtime.current?.map === ready) runtime.current.bridge.setActive(active) }, [active, ready])
   useEffect(() => {
-    if (ready && active && runtime.current?.map === ready) selectRasterStyle(ready, tileMode)
+    const current = runtime.current
+    if (!ready || !active || current?.map !== ready) return
+    selectRasterStyle(ready, tileMode)
+    if (current.tileMode !== tileMode) {
+      ready.jumpTo({ pitch: tileMode === 'street' || tileMode === 'dark' ? 40 : 0 })
+      current.tileMode = tileMode
+    }
   }, [ready, active, tileMode])
   useEffect(() => { if (ready && active && runtime.current?.map === ready) runtime.current.bridge.refresh() }, [ready, active, overlayRevision])
   useEffect(() => {

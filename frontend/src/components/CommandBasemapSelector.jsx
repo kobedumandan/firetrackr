@@ -6,7 +6,7 @@ import PanelToggleIcon from './PanelToggleIcon'
 import '../styles/MapActions.css'
 
 export default function CommandBasemapSelector({ value, onChange }) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
   if (collapsed) {
     return <button type="button" className="map-actions-float-btn command-basemap-float-btn"
       onClick={() => setCollapsed(false)} title="Expand map styles" aria-label="Expand map styles" aria-expanded={false}>

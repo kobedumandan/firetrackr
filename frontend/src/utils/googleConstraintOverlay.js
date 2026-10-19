@@ -1,5 +1,6 @@
 import { constraintFeatures } from './commandMapData'
 import { setGoogleLinePath } from './googleMapGeometry'
+import { createRoadHover } from './roadHover'
 
 export function createGoogleConstraintOverlay(map, library, leaflet, L) {
   let cachedData
@@ -9,6 +10,21 @@ export function createGoogleConstraintOverlay(map, library, leaflet, L) {
   let cursor = 0
   let frame = null
   const elements = new Map()
+  const hover = createRoadHover()
+  let pointer
+  let hoveredRoad
+  const hideHover = () => { hoveredRoad = null; hover.hide(); map.classList.remove('command-road-hover') }
+  const onPointerMove = event => {
+    pointer = event
+    if (!active || event.buttons || leaflet.getContainer().classList.contains('pick-cursor')) { hideHover(); return }
+    if (hoveredRoad) hover.show(hoveredRoad, event)
+  }
+  map.addEventListener('pointermove', onPointerMove)
+  map.addEventListener('pointerleave', hideHover)
+  map.addEventListener('gmp-centerchange', hideHover)
+  map.addEventListener('gmp-headingchange', hideHover)
+  map.addEventListener('gmp-tiltchange', hideHover)
+  map.addEventListener('gmp-rangechange', hideHover)
   function cancel() { if (frame !== null) cancelAnimationFrame(frame); frame = null }
   function build() {
     frame = null
@@ -24,6 +40,15 @@ export function createGoogleConstraintOverlay(map, library, leaflet, L) {
         element = new Element({ altitudeMode: 'RELATIVE_TO_GROUND', drawsOccludedSegments: true,
           strokeColor: feature.properties.color, strokeWidth: Math.max(3, feature.properties.weight) })
         setGoogleLinePath(element, feature.geometry.coordinates.map(([lng, lat]) => ({ lat, lng, altitude: 2 })))
+        const showHover = event => {
+          if (!active || !selectedData || (event.domEvent || pointer)?.buttons || leaflet.getContainer().classList.contains('pick-cursor')) { hideHover(); return }
+          hoveredRoad = feature.properties
+          map.classList.add('command-road-hover')
+          hover.show(hoveredRoad, event.domEvent || pointer)
+        }
+        element.addEventListener('gmp-pointerover', showHover)
+        element.addEventListener('gmp-pointermove', showHover)
+        element.addEventListener('gmp-pointerout', hideHover)
         element.addEventListener('gmp-click', event => {
           if (leaflet.getContainer().classList.contains('pick-cursor')) return
           event.stopPropagation()
@@ -40,6 +65,7 @@ export function createGoogleConstraintOverlay(map, library, leaflet, L) {
   return {
     sync(data) {
       if (selectedData === data) return
+      hideHover()
       cancel()
       selectedData = data
       elements.forEach(element => element.remove())
@@ -54,9 +80,19 @@ export function createGoogleConstraintOverlay(map, library, leaflet, L) {
     },
     setActive(value) {
       active = value
-      if (!value) cancel()
+      if (!value) { cancel(); hideHover() }
       else if (selectedData && cursor < features.length && frame === null) frame = requestAnimationFrame(build)
     },
-    dispose() { cancel(); elements.forEach(element => element.remove()); elements.clear() },
+    dispose() {
+      active = false; selectedData = null
+      hideHover()
+      cancel(); hover.dispose(); elements.forEach(element => element.remove()); elements.clear()
+      map.removeEventListener('pointermove', onPointerMove)
+      map.removeEventListener('pointerleave', hideHover)
+      map.removeEventListener('gmp-centerchange', hideHover)
+      map.removeEventListener('gmp-headingchange', hideHover)
+      map.removeEventListener('gmp-tiltchange', hideHover)
+      map.removeEventListener('gmp-rangechange', hideHover)
+    },
   }
 }

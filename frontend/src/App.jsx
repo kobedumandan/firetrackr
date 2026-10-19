@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import TopBar from './components/TopBar'
 import LeftSidebar from './components/LeftSidebar'
 import MapArea from './components/MapArea'
@@ -22,6 +22,7 @@ import NotificationPanel from './components/NotificationPanel'
 import { useNotifications, readNotifPrefs, NOTIF_STORAGE_KEY } from './hooks/useNotifications'
 import { fetchActiveIncidents, fetchPersonnel, fetchStations, fetchDispatches, selectRoute, fetchPersonnelLocations, fullReroute, createIncident, fetchReporterSessions, WS_URL } from './api'
 import { readMapLayerPrefs, MAP_LAYER_STORAGE_KEY } from './utils/mapLayers'
+import useCommandShortcut from './hooks/useCommandShortcut'
 import './App.css'
 
 const ACTIVE_STATUSES = new Set(['pending', 'active', 'dispatched', 'contained'])
@@ -270,6 +271,14 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  const navigateToPage = useCallback(nav => {
+    setActiveNav(nav)
+    setShowSettings(false)
+    setFocusedPersonnel(null)
+    setMapFocus(null)
+  }, [])
+  useCommandShortcut(navigateToPage, route.view === 'dashboard')
 
   // Auto-select the first incident when the list loads or changes
   useEffect(() => {
@@ -817,7 +826,7 @@ export default function App() {
       </a>
       <TopBar
         activeNav={activeNav}
-        onNavChange={nav => { setActiveNav(nav); setShowSettings(false); setFocusedPersonnel(null); setMapFocus(null) }}
+        onNavChange={navigateToPage}
         theme={theme}
         onThemeToggle={toggleTheme}
         onOpenSettings={() => setShowSettings(s => !s)}
