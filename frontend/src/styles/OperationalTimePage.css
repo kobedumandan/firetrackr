@@ -1,0 +1,76 @@
+.ota-page { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--page-default-base); color: var(--text-primary); }
+.ota-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px; border-bottom: 1px solid var(--border-dim); }
+.ota-header h1 { font-size: 14.8px; font-weight: 600; margin: 0 0 5px; }
+.ota-header p, .ota-section-head p { font-size: 11px; color: var(--text-muted); margin: 4px 0 0; }
+.ota-body { padding: 20px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+.ota-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.ota-kpis .trend-up { color: #eb6e5d; } .ota-kpis .trend-down { color: #66bb88; }
+.ota-card { padding: 16px 18px; background: var(--bg-panel); border: 1px solid var(--border-dim); border-radius: 10px; }
+.ota-section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; font-size: 11px; }
+.ota-section-head h2 { font-size: 13px; margin: 0; font-weight: 600; }
+.ota-page button:not(.m-period-btn), .ota-dialog button:not(.eim-close) { font: inherit; font-size: 11px; color: var(--text-primary); background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+.ota-page button:disabled, .ota-dialog button:disabled { opacity: .4; cursor: default; }
+.ota-page button:hover:not(:disabled), .ota-dialog button:hover:not(:disabled) { background: var(--bg-hover); }
+.ota-page select, .ota-dialog select, .ota-dialog input { font: inherit; font-size: 11px; color: var(--text-primary); background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; padding: 7px; max-width: 100%; }
+.ota-note { font-size: 10px; color: var(--text-muted); line-height: 1.6; margin: 6px 0 0; }
+.ota-error { padding: 12px; border: 1px solid #9c4033; border-radius: 7px; color: #ed8f7c; font-size: 12px; }
+.ota-empty { padding: 30px 10px; text-align: center; font-size: 12px; color: var(--text-muted); }
+.ota-breakdown { display: flex; margin: 25px 0 16px; gap: 1px; }
+.ota-breakdown > div { min-width: 0; text-align: center; font-size: 11px; }
+.ota-breakdown span { display: block; white-space: nowrap; margin-bottom: 8px; }
+.ota-breakdown small { display: block; color: var(--text-muted); }
+.ota-breakdown i { display: block; height: 20px; }
+.ota-breakdown > div:first-child i { border-radius: 5px 0 0 5px; }
+.ota-breakdown > div:last-child i { border-radius: 0 5px 5px 0; }
+.ota-legend { display: flex; justify-content: center; gap: 22px; flex-wrap: wrap; font-size: 10px; color: var(--text-secondary); }
+.ota-legend span { display: flex; align-items: center; gap: 6px; }
+.ota-legend i { width: 9px; height: 9px; border-radius: 50%; }
+.ota-chart-scroll { overflow-x: auto; margin-top: 12px; }
+.ota-chart-scroll svg { width: 100%; min-width: 520px; max-height: 280px; }
+.ota-chart-scroll text { fill: var(--text-muted); font: 11px var(--font-condensed); }
+.ota-chart-scroll circle:focus { outline: 2px solid var(--accent-fire); }
+.ota-table-scroll { overflow-x: auto; margin-top: 14px; }
+.ota-page table { width: 100%; border-collapse: collapse; text-align: left; font-size: 10px; white-space: nowrap; }
+.ota-page th { color: var(--text-muted); font-size: 9px; font-weight: 500; background: var(--bg-hover); padding: 9px; }
+.ota-page td { padding: 9px; border-bottom: 1px solid var(--border-dim); }
+.ota-page tbody tr { cursor: pointer; } .ota-page tbody tr:hover { background: var(--bg-hover); }
+.ota-page td small, .ota-sources small { display: block; color: var(--text-muted); font-size: 9px; margin-top: 3px; }
+.ota-page .ota-record-link { color: var(--accent-fire); border: none; padding: 0; }
+.ota-pagination { display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding-top: 12px; font-size: 10px; color: var(--text-muted); }
+.ota-pagination span { margin-right: auto; }
+.ota-dialog { max-height: 94dvh; overflow: auto; }
+.ota-modal-meta { display: flex; flex-wrap: wrap; gap: 10px 24px; padding: 14px 20px; border-bottom: 1px solid var(--border-dim); font-size: 11px; color: var(--text-secondary); }
+.ota-modal-meta label { display: flex; align-items: center; gap: 8px; }
+.ota-modal-layout { display: grid; grid-template-columns: 3fr 2fr; min-height: 490px; }
+.ota-map-wrap { padding: 16px; min-width: 0; display: flex; flex-direction: column; }
+.ota-map { min-height: 420px; flex: 1; border-radius: 8px; z-index: 0; }
+.ota-details { padding: 16px; min-width: 0; border-left: 1px solid var(--border-dim); font-size: 11px; }
+.ota-stages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.ota-stages button { text-align: left; }
+.ota-stages strong { display: block; margin-top: 6px; }
+.ota-dialog .ota-stages .active { border-color: var(--accent-fire); color: var(--accent-fire); }
+.ota-dialog dl { margin: 16px 0; }
+.ota-dialog dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border-dim); }
+.ota-dialog dt { color: var(--text-muted); } .ota-dialog dd { text-align: right; margin: 0; }
+.ota-comparison { margin-top: 15px; } .ota-comparison h3 { font-size: 12px; }
+.ota-sources { color: var(--text-muted); font-size: 10px; }
+.ota-confirm { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
+.ota-confirm summary { cursor: pointer; color: var(--accent-fire); }
+.ota-confirm form { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.nav-btn[data-label="Operational Time Analysis"] .nav-btn-label { white-space: normal; text-align: left; line-height: 1.4; }
+@media (max-width: 1100px) { .ota-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 800px) { .ota-modal-layout { grid-template-columns: 1fr; } .ota-map { min-height: 320px; } .ota-details { border-left: 0; } .ota-header, .ota-section-head { flex-wrap: wrap; } .ota-body { padding: 12px; } }
+@media (max-width: 600px) {
+  .ota-header { padding: 12px; }
+  .ota-header > div { min-width: 0; max-width: 100%; }
+  .ota-header .m-period-group, .ota-pagination { flex-wrap: wrap; }
+  .ota-kpis { grid-template-columns: 1fr; }
+  .ota-kpis .kpi-card, .ota-card { padding: 12px; }
+  .ota-kpis .kpi-card-head { flex-wrap: wrap; }
+  .ota-legend { gap: 8px; }
+  .ota-pagination span { flex-basis: 100%; }
+  .ota-breakdown span { font-size: 9px; white-space: normal; overflow-wrap: anywhere; }
+  .ota-modal-meta, .ota-map-wrap, .ota-details { padding: 12px; }
+  .ota-modal-meta label { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+  .ota-modal-meta select { min-width: 0; width: 100%; }
+}

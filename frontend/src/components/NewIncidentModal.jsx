@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import ReportReceiptFields from './ReportReceiptFields'
 import '../styles/AppModal.css'
 import { SEVERITIES, ALARMS, STRUCTURES, ICON_CLOSE, ICON_PIN, ICON_BOLT } from './incidentFormOptions'
 import { Icon, Field, SectionHead, Segmented } from './incidentForm'
@@ -57,6 +58,8 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
         autoDispatch: form.autoDispatch,
         locationSource: form.locationSource,
         reporterToken: form.reporterToken,
+        reportReceivedAt: form.receivedAt ? new Date(`${form.receivedAt}+08:00`).toISOString() : null,
+        responseKind: form.responseKind || null,
       })
     } catch (err) {
       setError(err.message || 'Failed to log incident')
@@ -79,6 +82,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
         </div>
 
         <form id="nim-form" className="eim-body" onSubmit={handleSubmit}>
+          <ReportReceiptFields receivedAt={form.receivedAt} kind={form.responseKind} onReceipt={v => set('receivedAt', v)} onKind={v => set('responseKind', v)} />
 
           {/* ── Location ── */}
           <section className="eim-section">

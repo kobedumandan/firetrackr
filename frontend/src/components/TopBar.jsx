@@ -110,6 +110,7 @@ function PlanningIcon(props) {
 const NAV_ITEMS = [
   { label: "Command", Icon: CommandIcon },
   { label: "Metrics", Icon: MetricsIcon },
+  { label: "Operational Time Analysis", Icon: MetricsIcon },
   { label: "Planning", Icon: PlanningIcon },
   { label: "Incidents", Icon: IncidentsIcon },
   { label: "Personnel", Icon: PersonnelIcon },

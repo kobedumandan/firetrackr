@@ -31,6 +31,11 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
       setError(message)
       unavailable.current?.()
     }
+    // Worker startup can fail outside MapLibre's map error event (for example
+    // in embedded browsers). Keep the standard tiles available in that case.
+    const startupTimer = setTimeout(() => {
+      if (!runtime.current) fallback('The enhanced map did not initialize. Using the standard map instead.')
+    }, 15000)
     import('maplibre-gl').then(maplibre => {
       if (cancelled) return
       const center = leaflet.getCenter()
@@ -43,7 +48,8 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
         attributionControl: { compact: true },
       })
       map.on('load', () => {
-        if (cancelled) return
+        if (cancelled || failed) return
+        clearTimeout(startupTimer)
         runtime.current = { map, bridge: attachRasterBridge(leaflet, map, maplibre, L, setCamera) }
         setReady(true)
       })
@@ -54,6 +60,7 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
       observer.observe(host.current)
     }).catch(() => fallback('The enhanced map renderer is unavailable. Using the standard map instead.'))
     return () => {
+      clearTimeout(startupTimer)
       cancelled = true; observer?.disconnect(); runtime.current?.bridge.dispose(); runtime.current = null; map?.remove()
     }
   }, [leaflet, portalHost])

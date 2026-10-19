@@ -249,6 +249,12 @@ def location_update(
         raise HTTPException(status_code=422, detail="recorded_at must be an ISO 8601 timestamp.")
 
     # Always preserve history
+    from services.operational_times import collect_telemetry
+    milestone_changed = collect_telemetry(db, dispatch, current_user, body.latitude, body.longitude,
+                                         recorded_at, body.accuracy_m, body.sample_id)
+    if milestone_changed:
+        background_tasks.add_task(manager.broadcast, {"type": "operational_times_updated", "data": {"fire_id": dispatch.fire_id}})
+
     db.add(LocationLog(
         device_id=None,
         log_latitude=body.latitude,

@@ -15,6 +15,8 @@ import TeamsPage from './pages/TeamsPage'
 import TrucksPage from './pages/TrucksPage'
 import MetricsPage from './pages/MetricsPage'
 import PlanningPage from './pages/PlanningPage'
+import OperationalTimePage from './pages/OperationalTimePage'
+import { invalidateOperationalTimes } from './api'
 import SettingsPage from './pages/SettingsPage'
 import LoginPage from './pages/LoginPage'
 import ToastStack from './components/ToastStack'
@@ -362,6 +364,7 @@ export default function App() {
         if (e.data === 'pong') return
         try {
           const msg = JSON.parse(e.data)
+          if (/^(operational_times_updated|incident_|dispatch_|route_updated)/.test(msg.type || '')) invalidateOperationalTimes()
           if (msg.type === 'incident_created') {
             const inc = msg.data
             incidentSnapRef.current.set(inc.fire_id, {
@@ -736,6 +739,8 @@ export default function App() {
       fire_remarks:          '',
       auto_dispatch:         !!formData.autoDispatch,
       reporter_token:        formData.reporterToken || null,
+      report_received_at:    formData.reportReceivedAt || null,
+      response_kind:         formData.responseKind || null,
     })
     cancelPicking()
     fetchActiveIncidents()
@@ -839,6 +844,8 @@ export default function App() {
         />
       ) : activeNav === 'Metrics' ? (
         <MetricsPage />
+      ) : activeNav === 'Operational Time Analysis' ? (
+        <OperationalTimePage theme={theme} />
       ) : activeNav === 'Planning' ? (
         <PlanningPage />
       ) : activeNav === 'Incidents' ? (

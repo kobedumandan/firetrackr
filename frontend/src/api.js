@@ -6,6 +6,26 @@ import { createAsyncCache } from './utils/asyncCache'
 // the API elsewhere can still provide VITE_API_BASE_URL.
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 const constraintCache = createAsyncCache({ ttl: 5 * 60 * 1000 })
+const operationalCache = createAsyncCache({ ttl: 30000 })
+export function invalidateOperationalTimes() {
+  operationalCache.clear()
+  window.dispatchEvent(new Event('operational-times-updated'))
+}
+async function operationalRequest(path, options) {
+  const res = await apiFetch(`/api/operational-times${path}`, options)
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Operational analysis unavailable (${res.status})`)
+  return data
+}
+export function fetchOperationalTimes(period, page = 1) {
+  return operationalCache.get(`${localStorage.getItem('bfp_token')}:${period}:${page}`, () => operationalRequest(`?period=${period}&page=${page}`))
+}
+export function fetchOperationalDetail(fireId) { return operationalRequest(`/${fireId}`) }
+export async function confirmOperationalMilestone(fireId, body) {
+  const data = await operationalRequest(`/${fireId}/milestones`, { method: 'POST', body: JSON.stringify(body) })
+  invalidateOperationalTimes()
+  return data
+}
 function cachedConstraints(path) {
   const key = `${BASE_URL}:${localStorage.getItem('bfp_token') || ''}:${path}`
   return constraintCache.get(key, async () => {
@@ -36,6 +56,10 @@ export async function apiFetch(path, options = {}) {
     localStorage.removeItem('bfp_token')
     localStorage.removeItem('bfp_user')
     window.location.reload()
+  }
+
+  if (res.ok && options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase()) && /^\/api\/(incidents|dispatch)(\/|$)/.test(path)) {
+    invalidateOperationalTimes()
   }
 
   return res

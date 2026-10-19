@@ -391,10 +391,105 @@ for a requested verified audit.
 | Lightning retraining/challenger promotion | [Plan](plans-todo/gnn-retraining-lightning.md); no job service, API, artifact promotion or UI integration. Training notebooks/preprocessing pipeline are outside tracked source. |
 | Applying drawn constraints to routing | Custom map CRUD is implemented; engine-cost integration is outstanding. |
 | Shared real-time state across API workers | Warning in [run.py](backend/run.py); no shared pub/sub/session store implemented. |
-| Dispatch acknowledgement/travel-start timestamps | Status comments include `en_route`; there is no dedicated transition/ack endpoint or travel-start measurement. |
+| Dispatch acknowledgement/status transitions | Operational departure/arrival measurements are separate from dispatch status. Recording a measurement does not silently change the dispatch workflow. |
 | ETA validation exposure/calibration | [eta_validation.py](backend/eta_validation.py) exists but is not wired into routes. |
 | RL/SUMO operations | Experimental classes exist, default flags are off, required deployment artifacts are incomplete. |
 | Notification feature | [Plan](plans-todo/notifications-tab.md) has stale historical context; App, hook, toast/panel and settings show the feature is implemented. Live verification remains separate. |
+
+## Operational Time Analysis
+
+The administrator sidebar now opens a separate **Operational Time Analysis** page
+between Metrics and Planning. It uses the existing React state-based navigation,
+KpiCard, form fields, modal shell, theme tokens and Leaflet maps. Metrics calculations,
+Planning coverage and the routing/ETA algorithms retain their existing behavior.
+
+Implementation entry points:
+
+- Frontend: `pages/OperationalTimePage.jsx`, `components/OperationalTrendChart.jsx`,
+  `components/ResponseAnalysisModal.jsx`, `components/ReportReceiptFields.jsx`,
+  `utils/operationalTimes.js` and `styles/OperationalTimePage.css`.
+- Integration: App/TopBar navigation, api.js cache and invalidation, the two incident
+  intake forms, and optional focus management in AppModal. Data refreshes after
+  relevant WebSocket messages, local writes and a visible-page minute timer.
+- Backend: `routers/operational_times.py`, `services/operational_times.py`, schema
+  and ORM extensions, plus small hooks in incident creation, dispatch creation,
+  route selection/replacement, crew arrival and mobile location updates.
+
+The administrator-only API is `GET /api/operational-times?period=1y&page=1`,
+`GET /api/operational-times/{fire_id}`, and
+`POST /api/operational-times/{fire_id}/milestones`. All use existing JWT role checks.
+Confirmation requires `kind`, a timezone-aware `occurred_at`, and an
+`idempotency_key`; unit events also require the incident's `dispatch_truck_id`.
+`response_kind` can explicitly verify fire, medical, rescue or other. Sources,
+actor identity, occurrence time and server receipt time are audited separately.
+First recorded milestones are not overwritten by retries or later GPS packets.
+
+Migration `0025` adds nullable incident receipt/suppression timestamps and response
+classification, per-dispatch-truck departure/arrival, event audit metadata and
+dispatch-associated truck telemetry. It adds no tables and backfills no history.
+The supplied October 19 backup was inspected, not restored. It reported `0024`,
+which was missing from this branch. `0024_dispatch_audit_compatibility.py` is an
+explicit reconstruction of its three nullable dispatch audit columns, verified
+against the supplied schema; it is not the original migration source. Databases
+already at `0024` skip that reconstruction and apply `0025` normally.
+
+Measurement rules:
+
+- Receipt is explicitly confirmed in an intake form or the response modal. Incident
+  occurrence, record creation, reporter GPS and SMS delivery are not call receipt.
+- Processing is dispatch minus receipt; preparation is unit departure minus dispatch;
+  travel is unit arrival minus departure; suppression is verified fire out minus
+  verified suppression start. Non-fire suppression is N/A; unknown data remains null.
+- A legacy dispatch arrival is reused only for a single assigned truck with valid
+  ordering, and labeled as such. It is not copied to new columns. Ambiguous
+  multi-truck dispatch arrivals are not attributed to individual trucks.
+- CTA is first qualifying unit arrival minus receipt, once per incident. Summary
+  processing uses first dispatch per incident; preparation/travel include eligible
+  units. The breakdown uses one common complete fire-incident cohort and the first
+  arriving unit. Suppression is excluded from CTA, and the breakdown is explicitly
+  not a continuous timeline (arrival-to-suppression delay is not included).
+- Windows are rolling 1/7/30/182/365 days with equal preceding comparison windows.
+  Charts bucket in Asia/Manila. All period averages require a known receipt time;
+  legacy records are listed by occurrence date with a receipt-unknown label.
+
+Existing route generation is reused. Route generation/selection writes an audit
+snapshot into incident_events. Departure freezes the latest selection known at that
+event time, including alternatives, geometry, original ETA, distance and origin.
+Rerouting can replace live route rows without changing that frozen comparison.
+Delayed confirmations cannot borrow a selection recorded after departure. Missing
+historical selection means comparison unavailable, even if a current route exists.
+ETA difference is actual minus predicted; percentage is computed only for ETA > 0.
+
+Mobile `POST /api/location/update` accepts optional `accuracy_m` and `sample_id`.
+Existing payloads remain accepted. Automatic vehicle milestones require exactly one
+explicitly manned assignment, accuracy at most 35 m, a station fix within 100 m,
+then two fixes confidently beyond 150 m at least 5 seconds apart. Arrival requires
+two fixes confidently within 100 m of the incident after departure. Gaps over
+120 seconds reset detection. Device-time samples are sorted; duplicate sample keys
+are ignored. The modal only draws associated vehicle history within the response
+interval, breaking paths across gaps instead of joining missing travel.
+
+Limitations: the separate mobile application is not in this checkout and must send
+accuracy/sample IDs for GPS automation. Offline GPS is supported within a continuing
+manning session; after release/completion, explicit administrator confirmation is
+required rather than guessing historical vehicle occupancy. Suppression always needs
+human confirmation. No operational history was fabricated for the showcase database.
+The existing status/alarm/severity timeline continues to filter its own event types.
+
+The Command map also falls back to its existing Leaflet renderer after 15 seconds
+if a failed worker never emits a MapLibre load/error event. Tilt/rotation still
+require a working enhanced renderer; standard tiles remain available.
+
+Deployment: back up the target database, stop the backend, review `alembic current`,
+then run `venv\Scripts\python.exe -m alembic upgrade head` from `backend/` before
+restarting it. Build the frontend with `npm.cmd run build`. Downgrade to `0024`
+removes the new operational fields/history metadata, so preserve a backup first.
+
+Local validation includes a fresh migration chain through `0025`, downgrade/upgrade,
+multi-unit and missing-data calculations, ordering/idempotence, route snapshot
+survival, GPS gating/offline order, role/ownership checks, existing dispatch/mobile
+contracts, UI empty/error/modal/period behavior and the existing map test suite.
+Tests and local verification helpers remain unstaged according to repository policy.
 
 ## Important decisions and facts to confirm
 

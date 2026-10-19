@@ -252,6 +252,8 @@ def select_dispatch_route(
     )
     route.route_is_selected = True
     dispatch.route_id = body.route_id
+    from services.operational_times import snapshot_routes
+    snapshot_routes(db, dispatch)
     db.commit()
     db.refresh(route)
 
@@ -302,6 +304,17 @@ def mark_arrived(
     now = datetime.now(timezone.utc)
     dispatch.dispatch_status     = "on_scene"
     dispatch.dispatch_arrived_at = now
+
+    # A crew's explicit arrival confirmation can identify its sole assigned unit.
+    # Multiple trucks require separate confirmation; never assign one time to all.
+    if len(dispatch.dispatch_trucks) == 1:
+        from services.operational_times import record_milestone
+        unit = dispatch.dispatch_trucks[0]
+        if unit.arrived_at is None:
+            db.query(FireIncident).filter_by(fire_id=dispatch.fire_id).with_for_update().one()
+            db.refresh(unit)
+            if unit.arrived_at is None:
+                record_milestone(db, dispatch.fire_incident, "arrival", now, current_user, unit, source="crew_confirmation")
 
     if dispatch.is_deviated:
         dispatch.is_deviated                 = False
@@ -705,6 +718,8 @@ async def full_reroute(
         raise HTTPException(status_code=422, detail="Route computation returned no results.")
 
     # Delete only THIS dispatch's existing routes (release FK first).
+    from services.operational_times import snapshot_routes
+    snapshot_routes(db, dispatch)
     dispatch.route_id = None
     db.commit()
     db.query(Route).filter(Route.dispatch_id == dispatch.dispatch_id).delete(
@@ -735,6 +750,7 @@ async def full_reroute(
 
     selected = next((ro for ro, r in saved if r["is_selected"]), saved[0][0])
     dispatch.route_id                    = selected.route_id
+    snapshot_routes(db, dispatch)
     dispatch.is_deviated                 = False
     dispatch.deviation_connector_geojson = None
     dispatch.deviation_detected_at       = None

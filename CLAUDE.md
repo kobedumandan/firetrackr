@@ -19,6 +19,12 @@ Start with [main.py](backend/main.py), [App.jsx](frontend/src/App.jsx),
 Contracts live in [schemas.py](backend/schemas.py) and
 [serializers.py](backend/serializers.py); persistence lives in
 [models.py](backend/models.py) and [migrations](backend/alembic/versions/).
+Operational response measurements live in
+[operational_times.py](backend/services/operational_times.py), behind the
+[administrator API](backend/routers/operational_times.py); the standalone page is
+[OperationalTimePage.jsx](frontend/src/pages/OperationalTimePage.jsx). Apply migration
+`0025` before starting this revision. See KNOWLEDGE.md for timestamp semantics,
+the reconstructed `0024`, GPS eligibility and separate-mobile-client limitations.
 Use [routing_setup.py](backend/routing_setup.py) for engine construction,
 [services/routing.py](backend/services/routing.py) for reroutes,
 [auto_dispatch.py](backend/auto_dispatch.py) for team selection, and

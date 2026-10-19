@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import ReportReceiptFields from './ReportReceiptFields'
 import { fetchTeams } from '../api'
 import {
   SEVERITIES, ALARMS, STRUCTURES,
@@ -48,6 +49,8 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
   // handled offline) picks its own status and records when it happened.
   const [mode, setMode]             = useState('live')
   const [occurredAt, setOccurredAt] = useState('')
+  const [receivedAt, setReceivedAt] = useState('')
+  const [responseKind, setResponseKind] = useState('')
 
   const [allTeams, setAllTeams]     = useState([])
   const [units, setUnits]           = useState([])   // array of team objects
@@ -136,6 +139,8 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
     try {
       await onSubmit({
         ...form,
+        report_received_at: receivedAt ? new Date(`${receivedAt}+08:00`).toISOString() : null,
+        response_kind: responseKind || null,
         fire_latitude:       parseFloat(form.fire_latitude),
         fire_longitude:      parseFloat(form.fire_longitude),
         fire_units_assigned: showUnits ? units.length : 0,
@@ -182,6 +187,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
 
         {/* ── Right rail: details ── */}
         <form id="lim-form" className="eim-body lim-rail-form" onSubmit={handleSubmit}>
+          <ReportReceiptFields receivedAt={receivedAt} kind={responseKind} onReceipt={setReceivedAt} onKind={setResponseKind} />
 
           {/* ── Report type ── */}
           <section className="eim-section">

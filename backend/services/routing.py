@@ -139,6 +139,8 @@ def _persist_rebuilt_routes(
 
     # Release the FK on this dispatch, then delete only THIS dispatch's
     # routes (other dispatches on the same fire keep their own route sets).
+    from services.operational_times import snapshot_routes
+    snapshot_routes(db, dispatch)
     dispatch.route_id = None
     db.commit()
     db.query(Route).filter(Route.dispatch_id == dispatch.dispatch_id).delete(
@@ -169,6 +171,7 @@ def _persist_rebuilt_routes(
 
     selected = next((ro for ro, r in saved if r["is_selected"]), saved[0][0])
     dispatch.route_id = selected.route_id
+    snapshot_routes(db, dispatch)
     db.commit()
     return selected, saved
 

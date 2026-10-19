@@ -159,6 +159,8 @@ async def _perform_dispatch(
                 selected_obj = next((ro for ro, r in saved_routes if r["is_selected"]), None)
                 if selected_obj:
                     dispatch.route_id = selected_obj.route_id
+                    from services.operational_times import snapshot_routes
+                    snapshot_routes(db, dispatch)
                     db.commit()
         except Exception as exc:
             logger.warning("Route computation failed (dispatch will proceed): %s", exc)

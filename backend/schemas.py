@@ -1,5 +1,6 @@
 """Request/response models shared by the routers."""
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -165,6 +166,8 @@ class ReporterSmsBody(BaseModel):
 
 
 class IncidentCreate(BaseModel):
+    report_received_at: datetime | None = None
+    response_kind: Literal['fire', 'medical', 'rescue', 'other'] | None = None
     fire_location_name:  str | None = None
     fire_address:        str | None = None
     fire_latitude:       float
@@ -212,6 +215,8 @@ class SelectRouteBody(BaseModel):
 
 
 class LocationUpdateBody(BaseModel):
+    accuracy_m: float | None = Field(None, ge=0, allow_inf_nan=False)
+    sample_id: str | None = Field(None, max_length=80)
     latitude:    float
     longitude:   float
     recorded_at: str          # ISO 8601 from device clock
@@ -231,6 +236,14 @@ class PushTokenRef(BaseModel):
 
 class TruckManningBody(BaseModel):
     manning: bool
+
+
+class OperationalMilestoneBody(BaseModel):
+    kind: Literal['receipt', 'departure', 'arrival', 'suppression_start', 'fire_out', 'classification']
+    occurred_at: datetime
+    dispatch_truck_id: int | None = None
+    response_kind: Literal['fire', 'medical', 'rescue', 'other'] | None = None
+    idempotency_key: str = Field(min_length=8, max_length=100)
 
 
 class TruckCreate(BaseModel):

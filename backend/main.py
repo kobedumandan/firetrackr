@@ -22,7 +22,7 @@ from config import BLACKLIST_REAPER_INTERVAL_SECONDS, WATCHDOG_INTERVAL_SECONDS
 from routers import (
     auth, constraints, coverage, dispatch, geodata, incidents, metrics, mobile,
     obstructions, personnel, reporting, routing, shifts, stations, system, teams,
-    trucks,
+    trucks, operational_times,
 )
 from routing_setup import build_routing_engine
 from services.token_cleanup import (
@@ -146,6 +146,7 @@ app.include_router(constraints.router)
 app.include_router(reporting.router)
 app.include_router(incidents.router)
 app.include_router(metrics.router)
+app.include_router(operational_times.router)
 app.include_router(dispatch.router)
 app.include_router(mobile.router)
 app.include_router(trucks.router)

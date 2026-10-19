@@ -32,10 +32,23 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount())
   vi.unstubAllGlobals()
+  vi.useRealTimers()
   delete globalThis.IS_REACT_ACT_ENVIRONMENT
 })
 
 describe('standard map fallback', () => {
+  it('falls back when a worker stalls without a map error event', async () => {
+    vi.useFakeTimers()
+    const onUnavailable = vi.fn()
+    await act(async () => root.render(<RasterCommandMap
+      portalHost={document.getElementById('map')} controlsHost={document.getElementById('controls')}
+      active tileMode="street" onUnavailable={onUnavailable}
+    />))
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
+    expect(onUnavailable).toHaveBeenCalledOnce()
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
+    expect(onUnavailable).toHaveBeenCalledOnce()
+  })
   it('requests the original Leaflet renderer once when WebGL initialization fails', async () => {
     const onUnavailable = vi.fn()
     await act(async () => root.render(

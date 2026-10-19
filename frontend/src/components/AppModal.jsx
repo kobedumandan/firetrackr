@@ -1,4 +1,4 @@
-import { useEffect, useId } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import '../styles/AppModal.css'
 import { Icon } from './incidentForm'
@@ -16,9 +16,32 @@ import { ICON_CLOSE } from './incidentFormOptions'
  *                 blocks both Esc and backdrop clicks
  */
 export default function AppModal({
-  eyebrow, title, subtitle, onClose, children, width = 520, className = '', dismissible = true,
+  eyebrow, title, subtitle, onClose, children, width = 520, className = '', dismissible = true, manageFocus = false,
 }) {
   const titleId = useId()
+  const panelRef = useRef(null)
+  useEffect(() => {
+    if (!manageFocus) return
+    const previous = document.activeElement
+    const panel = panelRef.current
+    const before = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const focusable = () => [...panel.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), summary, a[href], [tabindex="0"]')].filter(el => {
+      if (el.hidden) return false
+      const closedDetails = el.closest('details:not([open])')
+      return !closedDetails || el === closedDetails.querySelector('summary')
+    })
+    focusable()[0]?.focus()
+    const onTab = event => {
+      if (event.key !== 'Tab') return
+      const elements = focusable()
+      const first = elements[0], last = elements.at(-1)
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+    }
+    panel.addEventListener('keydown', onTab)
+    return () => { panel.removeEventListener('keydown', onTab); document.body.style.overflow = before; if (previous?.isConnected) previous.focus() }
+  }, [manageFocus])
 
   useEffect(() => {
     if (!dismissible) return
@@ -31,6 +54,7 @@ export default function AppModal({
     <div className="apm-overlay" onMouseDown={e => dismissible && e.target === e.currentTarget && onClose()}>
       <div
         className={`apm-panel apm-shell ${className}`}
+        ref={panelRef}
         style={{ width }}
         role="dialog"
         aria-modal="true"
