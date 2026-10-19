@@ -105,7 +105,7 @@ Configuration and default values are catalogued in [KNOWLEDGE.md](KNOWLEDGE.md).
 
 ## Database and migration work
 
-The current chain ends at `0023_add_incident_events.py`. Add a new migration for
+The current chain ends at `0024_add_incident_dispatch_type.py`. Add a new migration for
 schema changes and review generated output; do not rewrite deployed history.
 From `backend/`, the standard Alembic generation command is:
 

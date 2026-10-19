@@ -87,6 +87,15 @@ Stable-Baselines3 installed separately. SUMO/TraCI integration has optional runt
 requires external software and scenario files. README prerequisites are guidance,
 not a verified version matrix for every current dependency.
 
+Incident intake from the map and register records a dispatch type: Fire Safety
+Enforcement, Firefighting Operations, Emergency Medical Services (EMS), Special
+Operations, Fire/Arson Investigation, or Disaster Management. New incidents default
+to Firefighting Operations; older incidents remain unspecified. The API accepts
+`fire_dispatch_type` on create/update and returns `dispatch_type` in incident JSON.
+The category is editable, appears in incident details, and is available in all
+register export formats. It classifies the incident; crew selection is unchanged.
+Apply migration `0024` before running the updated backend.
+
 ## Backend/frontend integration
 
 - API base URL is `VITE_API_BASE_URL` (default `http://localhost:8000`). WS URL is
@@ -112,7 +121,7 @@ Sources: [api.js](frontend/src/api.js), [App.jsx](frontend/src/App.jsx),
 ## Database structure and relationships
 
 [models.py](backend/models.py) defines the schema; [Alembic versions](backend/alembic/versions/)
-define migration history. The current linear chain ends at `0023` (incident events).
+define migration history. The current linear chain ends at `0024` (incident dispatch type).
 PostGIS must already be enabled; migration files do not create the extension.
 
 | Tables | Relationships and role |

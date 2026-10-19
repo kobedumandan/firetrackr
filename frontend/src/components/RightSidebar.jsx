@@ -770,6 +770,10 @@ export default function RightSidebar({
                 <span className="detail-label">Reported By</span>
                 <span className="detail-value">{incident.reporter || "—"}</span>
               </div>
+              <div className="detail-row">
+                <span className="detail-label">Dispatch type</span>
+                <span className="detail-value">{incident.dispatch_type || 'Unspecified'}</span>
+              </div>
               {incident.structure && (
                 <div className="detail-row">
                   <span className="detail-label">Structure</span>

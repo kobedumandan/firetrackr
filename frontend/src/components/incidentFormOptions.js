@@ -1,5 +1,14 @@
 // Option lists and icon paths shared by the incident log/edit modals.
 
+export const DISPATCH_TYPES = [
+  'Fire Safety Enforcement',
+  'Firefighting Operations',
+  'Emergency Medical Services (EMS)',
+  'Special Operations',
+  'Fire/Arson Investigation',
+  'Disaster Management',
+]
+
 export const STATUSES = [
   { value: 'pending',    label: 'Pending',    hint: 'Reported and awaiting a crew.' },
   { value: 'dispatched', label: 'Dispatched', hint: 'A crew is on the way or on scene.' },

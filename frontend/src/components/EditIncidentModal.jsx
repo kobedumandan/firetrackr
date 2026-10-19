@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { updateIncident } from '../api'
 import {
-  STATUSES, SEVERITIES, ALARMS, STRUCTURES, statusMetaOf,
+  STATUSES, SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES, statusMetaOf,
   ICON_CLOSE, ICON_MINUS, ICON_PLUS, ICON_LOCK,
 } from './incidentFormOptions'
 import {
@@ -15,6 +15,7 @@ const FIELD_META = [
   ['fire_severity',         'Severity'],
   ['fire_alarm_level',      'Alarm level'],
   ['fire_structure_type',   'Structure type'],
+  ['fire_dispatch_type',    'Dispatch type'],
   ['fire_units_assigned',   'Units assigned'],
   ['fire_casualties',       'Casualties'],
   ['fire_remarks',          'Remarks', null, true],
@@ -32,6 +33,7 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
     fire_status:           incident.status     || 'pending',
     fire_alarm_level:      incident.alarm      || '1st Alarm',
     fire_structure_type:   incident.structure  || 'Residential',
+    fire_dispatch_type:    incident.dispatch_type || '',
     fire_casualties:       incident.casualties || 'None',
     fire_units_assigned:   incident.units      ?? 0,
     fire_reporter_name:    incident.reporter && incident.reporter !== '—' ? incident.reporter : '',
@@ -142,6 +144,12 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
           <section className="eim-section">
             <SectionHead title="Assessment" desc="How serious the fire is and what's committed to it." />
 
+            <Field label="Dispatch type" changed={isChanged('fire_dispatch_type')}>
+              <select value={form.fire_dispatch_type} onChange={e => set('fire_dispatch_type', e.target.value)}>
+                <option value="">Unspecified</option>
+                {DISPATCH_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+              </select>
+            </Field>
             <Field label="Severity" required changed={isChanged('fire_severity')}>
               <Segmented label="Severity" options={SEVERITIES} value={form.fire_severity} onChange={v => set('fire_severity', v)} />
             </Field>

@@ -497,6 +497,7 @@ export default function IncidentDetailsPage({
       {/* ── Info ─────────────────────────────────────────────────────── */}
       <DetailsSection title="Incident Information">
         <DetailsGrid min={170}>
+          <DetailsField label="Dispatch type" value={incident.dispatch_type || "Unspecified"} />
           <DetailsField label="Structure type" value={incident.structure || "—"} />
           <DetailsField label="Reported via" value={incident.reporter || "—"} />
           <DetailsField label="Reported at" value={formatReported(incident.reported_at)} />

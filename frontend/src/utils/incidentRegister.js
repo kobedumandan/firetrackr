@@ -20,6 +20,7 @@ export const COLUMNS = [
   { key: 'reported_at', label: 'Date Reported', width: 1.35, on: true },
   { key: 'loc',         label: 'Location',      width: 2.0,  on: true },
   { key: 'addr',        label: 'Address',       width: 2.0,  on: false },
+  { key: 'dispatch_type', label: 'Dispatch Type', width: 1.6, on: true },
   { key: 'structure',   label: 'Structure',     width: 1.3,  on: true },
   { key: 'sev',         label: 'Severity',      width: 0.9,  on: true },
   { key: 'alarm',       label: 'Alarm',         width: 0.9,  on: true },

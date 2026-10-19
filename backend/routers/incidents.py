@@ -139,6 +139,7 @@ async def create_incident(
         fire_severity=body.fire_severity,
         fire_status=body.fire_status,
         fire_alarm_level=body.fire_alarm_level,
+        fire_dispatch_type=body.fire_dispatch_type,
         fire_structure_type=body.fire_structure_type,
         fire_casualties=body.fire_casualties,
         fire_units_assigned=body.fire_units_assigned,

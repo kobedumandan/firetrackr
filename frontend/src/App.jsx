@@ -735,6 +735,7 @@ export default function App() {
       fire_status:           'pending',
       fire_alarm_level:      formData.alarm,
       fire_structure_type:   formData.structure,
+      fire_dispatch_type:    formData.dispatchType,
       fire_casualties:       'None',
       fire_units_assigned:   0,
       fire_reporter_name:    formData.reporter,

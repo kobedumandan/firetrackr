@@ -1,5 +1,6 @@
 """Request/response models shared by the routers."""
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -164,6 +165,16 @@ class ReporterSmsBody(BaseModel):
     phone_number: str
 
 
+DispatchType = Literal[
+    "Fire Safety Enforcement",
+    "Firefighting Operations",
+    "Emergency Medical Services (EMS)",
+    "Special Operations",
+    "Fire/Arson Investigation",
+    "Disaster Management",
+]
+
+
 class IncidentCreate(BaseModel):
     fire_location_name:  str | None = None
     fire_address:        str | None = None
@@ -172,6 +183,7 @@ class IncidentCreate(BaseModel):
     fire_severity:       str = "Minor"
     fire_status:         str = "pending"
     fire_alarm_level:    str | None = None
+    fire_dispatch_type:  DispatchType = "Firefighting Operations"
     fire_structure_type: str | None = None
     fire_casualties:     str | None = None
     fire_units_assigned: int = 0
@@ -194,6 +206,7 @@ class IncidentUpdate(BaseModel):
     fire_severity:       str | None = None
     fire_status:         str | None = None
     fire_alarm_level:    str | None = None
+    fire_dispatch_type:  DispatchType | Literal[""] | None = None
     fire_structure_type: str | None = None
     fire_casualties:     str | None = None
     fire_units_assigned: int | None = None
