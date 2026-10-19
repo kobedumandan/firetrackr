@@ -34,7 +34,9 @@ from models import (  # noqa: F401 — import side-effects register all tables w
 config = context.config
 
 # Override sqlalchemy.url from .env so alembic.ini never holds credentials
-config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
+# ConfigParser treats percent signs as interpolation markers. Escape URL-encoded
+# passwords here; get_main_option/get_section restores the original URL.
+config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"].replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

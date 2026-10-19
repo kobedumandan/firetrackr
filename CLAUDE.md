@@ -39,18 +39,18 @@ imports use that directory as their module root.
 cd backend
 python -m venv venv
 .\venv\Scripts\Activate.ps1
-# CPU example from requirements.txt; choose the hardware-compatible build.
-python -m pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cpu
 python -m pip install -r requirements.txt
+# Only for GNN_INFERENCE_MODE=local:
+# python -m pip install -r requirements-ml.txt
 Copy-Item .env.example .env
 # Edit .env before starting; include DATABASE_URL and a strong JWT_SECRET.
 ```
 
 This is the recorded dependency workflow, not a verified complete install.
-`jose` is imported but `python-jose` is missing from the manifest. Gymnasium and
-Stable-Baselines3 are imported eagerly by AI modules despite their requirement
-lines being commented out. Resolve these gaps deliberately; do not silently
-claim installation success or pick unverified version pins.
+`jose` is imported but `python-jose` is missing from the manifest. Default exported
+inference with `USE_RL=false` skips optional ML/RL imports. Local inference requires
+`requirements-ml.txt`; experimental RL additionally needs Gymnasium and
+Stable-Baselines3. These modes do not implement the planned Lightning workflow.
 
 Provision a development PostgreSQL database and enable PostGIS before migrations.
 The following SQL is run against that intended database, not in PowerShell:

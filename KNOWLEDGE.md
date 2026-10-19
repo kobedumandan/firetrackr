@@ -80,10 +80,10 @@ ranges and resolved dependencies are in [package.json](frontend/package.json) an
 | External services | PhilSMS over HTTP; Expo push API; map tile providers configured in mapConfig.js |
 
 Dependency completeness is an existing limitation: `security.py` imports `jose`
-but `python-jose` is not declared. `ai/__init__.py` imports modules that eagerly
-import Gymnasium and Stable-Baselines3 even though those requirement lines are
-commented out. Consequently disabled `USE_RL` does not eliminate those import
-requirements. SUMO/TraCI integration has optional runtime guards; enabling it also
+but `python-jose` is not declared. Default `GNN_INFERENCE_MODE=exported` with
+`USE_RL=false` skips PyTorch/PyG and optional RL imports. Local GNN dependencies
+live in `backend/requirements-ml.txt`; experimental RL still needs Gymnasium and
+Stable-Baselines3 installed separately. SUMO/TraCI integration has optional runtime guards; enabling it also
 requires external software and scenario files. README prerequisites are guidance,
 not a verified version matrix for every current dependency.
 
@@ -159,11 +159,15 @@ schedules; [edge_weights.json](backend/data/edge_weights.json) is a fallback.
 The trained `best_gat_manual_threshold_model.pt` is an artifact, not the live model
 that generates road classifications on each request.
 
-The engine also constructs a generic GraphSAGE/GAT/PMGCN node model; configuration
-defaults to GraphSAGE with eight node features and the shipped GraphSAGE checkpoint.
-If no constraint costs are loaded, `_compute_edge_costs()` invokes live node scoring.
-Thus comments describing the development region as strictly raw-travel-time routing
-are simplified: inspect this fallback before relying on that claim.
+`GNN_INFERENCE_MODE=exported` (default) skips local model initialization and uses
+constraint GeoJSON, then exported edge weights. Missing exports log a warning and
+fall back to base travel times, including in routing pool workers. There is no
+implicit local GNN fallback. `GNN_INFERENCE_MODE=local` explicitly constructs the
+generic GraphSAGE/GAT/PMGCN node model and skips exported constraint costs. Local
+mode defaults to GraphSAGE with eight node features and the shipped GraphSAGE
+checkpoint; it is not the notebook's SegmentGAT. Install the optional ML
+requirements before enabling local mode. Routing status includes `inference_mode`;
+`gnn_type` is `exported` when no local model is constructed.
 
 ### Search and route products
 

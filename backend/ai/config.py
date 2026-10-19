@@ -94,6 +94,10 @@ if REGION not in REGIONS:
         f"Unknown REGION={REGION!r}. Valid regions: {', '.join(sorted(REGIONS))}"
     )
 
+GNN_INFERENCE_MODE = os.getenv("GNN_INFERENCE_MODE", "exported").strip().lower()
+if GNN_INFERENCE_MODE not in {"exported", "local"}:
+    raise ValueError("GNN_INFERENCE_MODE must be 'exported' or 'local'")
+
 _REGION_CFG = REGIONS[REGION]
 
 
@@ -155,6 +159,7 @@ class Config:
     SUMO_STEP_LEN   = 1.0  # seconds per simulation step
 
     # ── GNN hyperparameters ───────────────────────────────────────────────────
+    GNN_INFERENCE_MODE  = GNN_INFERENCE_MODE
     GNN_TYPE            = os.getenv("GNN_TYPE", "graphsage")  # 'graphsage' | 'gat' | 'pmgcn'
     NODE_FEATURE_DIM    = 8   # must match graph_builder.NODE_FEATURE_DIM
     GNN_HIDDEN          = 64
