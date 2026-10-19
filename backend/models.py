@@ -273,6 +273,7 @@ class FireIncident(Base):
     fire_severity          = Column(String(50))    # "Minor" | "Moderate" | "Critical"
     fire_status            = Column(String(50))    # "pending" | "active" | "dispatched" | "contained" | "closed"
     fire_alarm_level       = Column(String(50))    # "1st Alarm" | "2nd Alarm" | "3rd Alarm"
+    fire_dispatch_type     = Column(String(100), nullable=True)
     fire_structure_type    = Column(String(100))   # "Residential" | "Commercial" | ...
     fire_casualties        = Column(String(100))   # "None" | "Unconfirmed" | ...
     fire_units_assigned    = Column(Integer, default=0)

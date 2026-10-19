@@ -94,6 +94,7 @@ def _incident_dict(r: FireIncident) -> dict:
         "sev":            r.fire_severity       or "Minor",
         "status":         r.fire_status         or "pending",
         "alarm":          r.fire_alarm_level    or "1st Alarm",
+        "dispatch_type":  r.fire_dispatch_type or "",
         "structure":      r.fire_structure_type or "",
         "casualties":     r.fire_casualties     or "None",
         "units":          r.fire_units_assigned or 0,

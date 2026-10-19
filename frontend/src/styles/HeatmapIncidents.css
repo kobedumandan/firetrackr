@@ -1,0 +1,17 @@
+.heatmap-incident-pin { display: block; border: 0; border-radius: 50%; background: transparent; box-shadow: none; cursor: help; }
+.heatmap-incident-pin:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 1px; }
+.heatmap-incident-hover, .leaflet-tooltip.heatmap-incident-leaflet-tooltip { max-width: min(290px, calc(100vw - 16px)); padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); color: var(--text-primary); box-shadow: var(--shadow-md); font-family: var(--font-span); white-space: normal; }
+.heatmap-incident-hover { position: fixed; z-index: var(--z-tooltip, 6000); max-height: min(470px, calc(100vh - 16px)); overflow: hidden; pointer-events: none; }
+.heatmap-incident-leaflet-tooltip::before { display: none; }
+.heatmap-incident-details { min-width: 195px; max-width: 265px; font-family: var(--font-span); }
+.heatmap-incident-group, .heatmap-incident-more { font-size: 9px; color: var(--text-secondary); line-height: 1.5; }
+.heatmap-incident-group { margin-bottom: 8px; }
+.heatmap-incident-card + .heatmap-incident-card { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border); }
+.heatmap-incident-id { font-size: 9px; color: var(--accent-fire); margin-bottom: 5px; }
+.heatmap-incident-name { font-size: 12px; font-weight: 600; line-height: 1.5; }
+.heatmap-incident-address, .heatmap-incident-date { font-size: 9px; line-height: 1.5; color: var(--text-secondary); margin-top: 4px; overflow-wrap: anywhere; }
+.heatmap-incident-fields { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; margin: 9px 0 0; font-size: 9px; line-height: 1.4; }
+.heatmap-incident-fields dt { color: var(--text-secondary); }
+.heatmap-incident-fields dd { margin: 0; text-align: right; color: var(--text-primary); overflow-wrap: anywhere; }
+.heatmap-incident-more { margin-top: 8px; }
+.heatmap-incident-popup .leaflet-popup-content { margin: 12px; }

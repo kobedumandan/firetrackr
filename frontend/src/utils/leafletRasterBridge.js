@@ -1,10 +1,14 @@
 import { frameThrottle } from './commandMapData'
+import { attachIncidentHover } from './incidentHover'
+import { createRoadHover } from './roadHover'
 
 // Leaflet remains the dashboard's interaction model. MapLibre projects its
 // visible operational layers with the same camera as the tilted raster tiles.
 export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
   const markers = new Map()
   const clickTargets = new Map()
+  const roadHover = createRoadHover()
+  const hideRoadHover = () => { roadHover.hide(); map.getCanvas().classList.remove('command-road-hover') }
   let active = false
   let syncing = false
   let unloaded = false
@@ -26,6 +30,7 @@ export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
   }
   const refresh = frameThrottle(() => {
     if (!active || unloaded) return
+    hideRoadHover()
     const seen = new Set()
     const features = []
     clickTargets.clear()
@@ -57,12 +62,14 @@ export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
           }
           element.style.pointerEvents = options.interactive === false ? 'none' : 'auto'
           element.addEventListener('click', click)
+          const hover = attachIncidentHover(element, layer, () => active && !unloaded && !leaflet.getContainer().classList.contains('pick-cursor'))
           const move = () => { const point = layer.getLatLng(); marker.setLngLat([point.lng, point.lat]) }
           layer.on('move', move)
           const popup = layer.getPopup?.()
           const autoPan = popup?.options.autoPan
           if (popup) popup.options.autoPan = false
-          entry = { signature, marker, remove() {
+          entry = { signature, marker, hover, remove() {
+            hover?.dispose()
             layer.off('move', move); element.removeEventListener('click', click); marker.remove()
             if (popup) popup.options.autoPan = autoPan
           } }
@@ -127,22 +134,37 @@ export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
     leaflet.fire('click', { latlng: L.latLng(event.lngLat.lat, event.lngLat.lng), originalEvent: event.originalEvent })
   }
   function onMove(event) {
-    if (active) leaflet.fire('mousemove', { latlng: L.latLng(event.lngLat.lat, event.lngLat.lng), originalEvent: event.originalEvent })
+    if (!active || unloaded) return
+    leaflet.fire('mousemove', { latlng: L.latLng(event.lngLat.lat, event.lngLat.lng), originalEvent: event.originalEvent })
+    if (leaflet.getContainer().classList.contains('pick-cursor') || event.originalEvent?.buttons) {
+      hideRoadHover()
+      return
+    }
+    const road = map.queryRenderedFeatures(event.point, { layers: ['command-roads'] })
+      .find(feature => !feature.properties.normal)
+    if (road) {
+      map.getCanvas().classList.add('command-road-hover')
+      roadHover.show(road.properties, event)
+    } else hideRoadHover()
   }
-  const onOut = () => { if (active) leaflet.fire('mouseout') }
-  const onUnload = () => { unloaded = true }
+  const onOut = () => { hideRoadHover(); if (active) leaflet.fire('mouseout') }
+  const onUnload = () => { unloaded = true; hideRoadHover() }
+  const hideHover = () => { hideRoadHover(); markers.forEach(entry => entry.hover?.hide()) }
   leaflet.on('moveend', fromLeaflet).on('layeradd layerremove', refresh).on('unload', onUnload)
   // MapLibre 6 on() returns a Subscription rather than the map itself.
-  const listeners = [['moveend', saveCamera], ['move', readCamera], ['click', onClick], ['mousemove', onMove], ['mouseout', onOut]]
+  const listeners = [['movestart', hideHover], ['moveend', saveCamera], ['move', readCamera], ['click', onClick], ['mousemove', onMove], ['mouseout', onOut]]
   listeners.forEach(([name, handler]) => map.on(name, handler))
   return {
     refresh,
     setActive(value) {
       if (active && !value) saveCamera()
       active = value
+      if (!value) hideHover()
       if (value) { map.resize(); fromLeaflet(); refresh(); readCamera() }
     },
     dispose() {
+      hideRoadHover()
+      roadHover.dispose()
       saveCamera(); active = false; refresh.cancel(); readCamera.cancel()
       leaflet.off('moveend', fromLeaflet).off('layeradd layerremove', refresh).off('unload', onUnload)
       listeners.forEach(([name, handler]) => map.off(name, handler))
