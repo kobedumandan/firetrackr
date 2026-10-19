@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from 'react'
+import { act, StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import GooglePhotorealisticMap from '../src/components/GooglePhotorealisticMap'
@@ -45,6 +45,53 @@ afterEach(async () => { await act(async () => root.unmount()); vi.useRealTimers(
 const render = () => act(async () => root.render(<GooglePhotorealisticMap {...props} />))
 
 describe('photorealistic view regressions', () => {
+  it('activates the replacement renderer when the portal host changes', async () => {
+    await render()
+    bridge.setActive.mockClear()
+    const replacement = document.createElement('div')
+    document.body.append(replacement)
+    props.portalHost = replacement
+    await render()
+    expect(replacement.querySelector('test-google-map')).toBeTruthy()
+    expect(bridge.setActive).toHaveBeenCalledWith(true)
+    expect(roads.sync).toHaveBeenLastCalledWith(null)
+  })
+  it('returns to a real Leaflet container after navigation', async () => {
+    const real = await vi.importActual('react-leaflet')
+    useMap.mockImplementation(real.useMap)
+    function Page() {
+      const [mapHost, setMapHost] = useState(null)
+      const [toolsHost, setToolsHost] = useState(null)
+      return <><div ref={setMapHost} /><div ref={setToolsHost} />
+        <real.MapContainer center={[7.3, 125.6]} zoom={12}>
+          <GooglePhotorealisticMap {...props} portalHost={mapHost} controlsHost={toolsHost} />
+        </real.MapContainer>
+      </>
+    }
+    for (let visit = 0; visit < 3; visit++) {
+      await act(async () => root.render(<StrictMode><Page /></StrictMode>))
+      expect(document.querySelectorAll('test-google-map')).toHaveLength(1)
+      expect(document.querySelector('[aria-label="Increase tilt"]').disabled).toBe(false)
+      await act(async () => root.render(null))
+    }
+    useMap.mockReset()
+  })
+  it('initializes again after navigating away and returning with portal hosts', async () => {
+    function Page() {
+      const [mapHost, setMapHost] = useState(null)
+      const [toolsHost, setToolsHost] = useState(null)
+      return <><div ref={setMapHost} /><div ref={setToolsHost} />
+        <GooglePhotorealisticMap {...props} portalHost={mapHost} controlsHost={toolsHost} />
+      </>
+    }
+    for (let visit = 0; visit < 3; visit++) {
+      await act(async () => root.render(<StrictMode><Page /></StrictMode>))
+      expect(document.querySelectorAll('test-google-map')).toHaveLength(1)
+      expect(document.querySelector('[aria-label="Increase tilt"]').disabled).toBe(false)
+      await act(async () => root.render(null))
+      expect(document.querySelectorAll('test-google-map')).toHaveLength(0)
+    }
+  })
   it('enables camera controls without waiting for every tile, and never invents a 45-second error', async () => {
     await render()
     const tilt = controlsHost.querySelector('[aria-label="Increase tilt"]')

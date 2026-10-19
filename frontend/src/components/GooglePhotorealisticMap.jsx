@@ -15,6 +15,7 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
   const leaflet = useMap()
   const host = useRef(null)
   const runtime = useRef(null)
+  const [instance, setInstance] = useState(null)
   const [status, setStatus] = useState('loading')
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -66,6 +67,7 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
         roads: createGoogleConstraintOverlay(map, library, leaflet, L),
         barangays: createGoogleBarangayOverlay(map, library, reportBarangayError),
       }
+      setInstance(map)
       host.current.append(map)
       // Steady means *every* streamed tile is done, not that the map is usable.
       // Finer imagery can load while navigating. Only SDK errors are fatal.
@@ -86,15 +88,15 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
 
   useEffect(() => {
     const current = runtime.current
-    if (!current) return
+    if (!current || current.map !== instance) return
     current.bridge.setActive(active && status === 'ready')
     current.roads.setActive(active && status === 'ready')
-  }, [active, status])
-  useEffect(() => { if (active && status === 'ready') runtime.current?.bridge.refresh() }, [active, status, overlayRevision])
-  useEffect(() => { runtime.current?.roads.sync(gnnData) }, [gnnData, status])
+  }, [active, status, instance])
+  useEffect(() => { if (active && status === 'ready' && runtime.current?.map === instance) runtime.current.bridge.refresh() }, [active, status, overlayRevision, instance])
+  useEffect(() => { if (runtime.current?.map === instance) runtime.current?.roads.sync(gnnData) }, [gnnData, status, instance])
   useEffect(() => {
     const overlay = runtime.current?.barangays
-    if (!overlay) return
+    if (!overlay || runtime.current.map !== instance) return
     try {
       if (!active || status !== 'ready') {
         overlay.setActive(false)
@@ -109,7 +111,7 @@ export default function GooglePhotorealisticMap({ portalHost, controlsHost, acti
       // eslint-disable-next-line react-hooks/set-state-in-effect
       reportBarangayError(error)
     }
-  }, [active, barangayData, showBarangayLabels, status, reportBarangayError])
+  }, [active, barangayData, showBarangayLabels, status, reportBarangayError, instance])
 
   function act(action) {
     const map = runtime.current?.map
