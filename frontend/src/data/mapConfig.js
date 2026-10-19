@@ -126,6 +126,12 @@ export const TILE_OPTIONS = [
   },
 ]
 
+// Google 3D has its own renderer; keep raster-only picker maps unchanged.
+export const COMMAND_BASEMAP_OPTIONS = [
+  ...TILE_OPTIONS,
+  { id: 'google-3d', label: 'Photorealistic 3D', title: 'Google photorealistic map with tilt and rotation' },
+]
+
 /**
  * Layers of one TILE_OPTIONS entry, for maps that render a basemap without
  * offering a switcher (the metrics choropleth, the planning coverage map).
@@ -136,6 +142,7 @@ export const TILE_OPTIONS = [
  * Unknown ids fall back to 'dark' so a typo can never blank the basemap.
  */
 export function tileLayersFor(id) {
+  if (id === 'google-3d') return []
   const opt = TILE_OPTIONS.find((t) => t.id === id)
   return (opt ?? TILE_OPTIONS.find((t) => t.id === 'dark')).layers
 }

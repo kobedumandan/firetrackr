@@ -1,7 +1,23 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
-// Same host as the REST API (http→ws, https→wss), so pointing
-// VITE_API_BASE_URL at a tunnel moves the socket with it.
-export const WS_URL = `${BASE_URL.replace(/^http/, 'ws')}/ws`
+import { createAsyncCache } from './utils/asyncCache'
+
+// In development, requests use the page's own origin and Vite proxies them to
+// FastAPI. That keeps login working whether the dashboard was opened through
+// localhost, 127.0.0.1, or another development hostname. Deployments that host
+// the API elsewhere can still provide VITE_API_BASE_URL.
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+const constraintCache = createAsyncCache({ ttl: 5 * 60 * 1000 })
+function cachedConstraints(path) {
+  const key = `${BASE_URL}:${localStorage.getItem('bfp_token') || ''}:${path}`
+  return constraintCache.get(key, async () => {
+    const res = await apiFetch(path)
+    if (!res.ok) throw new Error(`Failed to fetch constraints (${res.status})`)
+    return res.json()
+  })
+}
+// Same host as the REST API (http→ws, https→wss). With no explicit API URL,
+// use the current page host so Vite can proxy the development WebSocket too.
+const pageOrigin = globalThis.location?.origin || 'http://localhost:5173'
+export const WS_URL = `${(BASE_URL || pageOrigin).replace(/^http/, 'ws')}/ws`
 
 export async function apiFetch(path, options = {}) {
   const token = localStorage.getItem('bfp_token')
@@ -393,14 +409,7 @@ export async function createObstruction(body) {
 
 // ── GNN Constraints ─────────────────────────────────────────────────────────
 export async function fetchGnnConstraints() {
-  const cached = _cacheGet('gnn-constraints')
-  if (cached) return cached
-
-  const res = await apiFetch('/api/routing/gnn-constraints')
-  if (!res.ok) throw new Error(`Failed to fetch GNN constraints (${res.status})`)
-  const data = await res.json()
-  _cacheSet('gnn-constraints', data)
-  return data
+  return cachedConstraints('/api/routing/gnn-constraints')
 }
 
 // ── Metrics summary (real dashboard aggregates) ─────────────────────────────
@@ -481,9 +490,7 @@ export async function sendReporterSms(token, phoneNumber) {
 
 // ── Custom GNN Constraints ──────────────────────────────────────────────────
 export async function fetchConstraints() {
-  const res = await apiFetch('/api/constraints')
-  if (!res.ok) throw new Error(`Failed to fetch constraints (${res.status})`)
-  return res.json()
+  return cachedConstraints('/api/constraints')
 }
 
 export async function createConstraint(body) {
@@ -492,7 +499,7 @@ export async function createConstraint(body) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail || `Failed to create constraint (${res.status})`)
   }
-  delete _cache['gnn-constraints']
+  constraintCache.clear()
   return res.json()
 }
 
@@ -502,7 +509,7 @@ export async function updateConstraint(id, body) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail || `Failed to update constraint (${res.status})`)
   }
-  delete _cache['gnn-constraints']
+  constraintCache.clear()
   return res.json()
 }
 
@@ -512,7 +519,7 @@ export async function deleteConstraint(id) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail || `Failed to delete constraint (${res.status})`)
   }
-  delete _cache['gnn-constraints']
+  constraintCache.clear()
 }
 
 // ── Trucks ───────────────────────────────────────────────────────────────────

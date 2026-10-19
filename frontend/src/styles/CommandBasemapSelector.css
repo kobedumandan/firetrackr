@@ -1,0 +1,43 @@
+.command-basemap {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: var(--z-map-label, 1500);
+  max-width: calc(100% - 24px);
+  padding: 8px;
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.command-basemap-label {
+  display: block;
+  margin: 0 3px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.command-basemap-options { display: flex; flex-wrap: wrap; gap: 4px; }
+.command-basemap button {
+  border: 1px solid var(--border-bright);
+  border-radius: 5px;
+  padding: 6px 10px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.command-basemap button:hover { background: var(--bg-hover); }
+.command-basemap button[aria-pressed="true"] {
+  border-color: var(--accent-fire);
+  color: var(--accent-fire);
+  font-weight: 700;
+}
+.command-basemap button:focus-visible {
+  outline: 2px solid var(--accent-fire);
+  outline-offset: 2px;
+}
