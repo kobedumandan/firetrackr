@@ -2,12 +2,11 @@
 import json
 
 import state
-from ai import Config
 
 
 # Properties carried through to the frontend per predicted-constraint feature.
 _CONSTRAINT_PROP_KEYS = (
-    "road_id", "barangay", "name", "highway",
+    "road_id", "segment_uid", "annotation_source", "barangay", "name", "highway",
     "display_constraint_type", "routing_constraint_type",
     "map_color", "map_weight", "map_opacity",
     "model_predicted_constrained", "model_probability_pct",
@@ -32,15 +31,27 @@ _CUSTOM_STYLE_KEY = {
 }
 
 
-def _load_constraint_style() -> dict:
-    if state.constraint_style_cache is None:
-        path = Config.CONSTRAINT_STYLE_PATH
-        if path and path.exists():
-            with open(path, encoding="utf-8") as f:
-                state.constraint_style_cache = json.load(f)
-        else:
-            state.constraint_style_cache = {}
-    return state.constraint_style_cache
+_CURRENT_SOURCE = object()
+
+
+def _load_constraint_style(source=_CURRENT_SOURCE) -> dict:
+    from services.model_source import constraint_paths
+    generation = state.routing_generation
+    if source is _CURRENT_SOURCE:
+        source = state.active_model_source
+    current = source is state.active_model_source
+    cached = state.constraint_style_cache
+    if current and cached is not None and cached[0] == generation and cached[1] is source:
+        return cached[2]
+    _, path = constraint_paths(source)
+    if path and path.exists():
+        with open(path, encoding="utf-8") as f:
+            style = json.load(f)
+    else:
+        style = {}
+    if current and generation == state.routing_generation and source is state.active_model_source:
+        state.constraint_style_cache = (generation, source, style)
+    return style
 
 
 def _label_for(dtype: str, style: dict) -> str:

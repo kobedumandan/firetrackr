@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Float, Text, DateTime,
-    Boolean, ForeignKey, Numeric,
+    Boolean, ForeignKey, Numeric, JSON, CheckConstraint, Index, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -504,6 +504,7 @@ class GnnConstraint(Base):
     constraint_type = Column(String(50), nullable=False)   # "narrow_road" | "traffic_area"
     name          = Column(String(255), nullable=True)
     coordinates   = Column(Text, nullable=False)           # JSON array of [lon, lat] pairs
+    segment_uids  = Column(JSON, nullable=True)             # NULL = legacy/unresolved
     highway       = Column(String(100), nullable=True)
     surface       = Column(String(100), nullable=True)
     maxspeed      = Column(String(50), nullable=True)
@@ -537,6 +538,38 @@ class TokenBlacklist(Base):
     jti        = Column(String(64), unique=True, nullable=False, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), default=_now)
+
+
+class ModelVersion(Base):
+    """Durable retrain history; artifacts are immutable, activation is separate."""
+    __tablename__ = "model_versions"
+    __table_args__ = (
+        CheckConstraint("status IN ('training','failed','candidate','scheduled','champion','rejected','archived')",
+                        name="ck_model_versions_status"),
+        Index("uq_model_versions_training", "status", unique=True,
+              postgresql_where=text("status = 'training'"), sqlite_where=text("status = 'training'")),
+        Index("uq_model_versions_champion", "status", unique=True,
+              postgresql_where=text("status = 'champion'"), sqlite_where=text("status = 'champion'")),
+    )
+
+    version = Column(String(64), primary_key=True)
+    status = Column(String(20), nullable=False)
+    label_hash = Column(String(64), nullable=False)
+    split_version = Column(String(100), nullable=False)
+    threshold = Column(Float, nullable=True)
+    metrics = Column(JSON, nullable=True)
+    report = Column(JSON, nullable=True)
+    job_id = Column(String(64), unique=True, nullable=True)
+    champion_version = Column(String(64), nullable=True)
+    bundle_manifest_sha256 = Column(String(64), nullable=True)
+    error = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.user_id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+    promoted_by = Column(Integer, ForeignKey("users.user_id"), nullable=True)
+    promoted_at = Column(DateTime(timezone=True), nullable=True)
+    rejected_by = Column(Integer, ForeignKey("users.user_id"), nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
 
 
 # ---------------------------------------------------------------------------

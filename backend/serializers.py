@@ -17,6 +17,7 @@ def _constraint_to_dict(c: GnnConstraint) -> dict:
         "constraint_type": c.constraint_type,
         "name":            c.name or "",
         "coordinates":     json.loads(c.coordinates),
+        "segment_uids":    c.segment_uids,
         "highway":         c.highway or "",
         "surface":         c.surface or "",
         "maxspeed":        c.maxspeed or "",

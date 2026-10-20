@@ -61,3 +61,8 @@ backend/requirements-dev.txt
 frontend/src/**/*.test.js
 # Local backups of regenerated data
 backend/data/*.bak.gpkg
+# Generated label baselines and retraining snapshots; regenerate from source.
+backend/data/retraining/
+.venv-training/
+.training-cache/
+backend/ai/models/versions/
