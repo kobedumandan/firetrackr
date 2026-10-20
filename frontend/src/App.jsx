@@ -14,7 +14,8 @@ import StationsPage from './pages/StationsPage'
 import TeamsPage from './pages/TeamsPage'
 import TrucksPage from './pages/TrucksPage'
 import MetricsPage from './pages/MetricsPage'
-import PlanningPage from './pages/PlanningPage'
+import AnalysisPage from './pages/AnalysisPage'
+import { invalidateOperationalTimes } from './api'
 import SettingsPage from './pages/SettingsPage'
 import LoginPage from './pages/LoginPage'
 import ToastStack from './components/ToastStack'
@@ -122,6 +123,8 @@ export default function App() {
 
   // ── Dashboard-only state ───────────────────────────────────────────────────
   const [activeNav, setActiveNav]                 = useState('Command')
+  const [analysisTab, setAnalysisTab]             = useState('response')
+  const [reviewIncident, setReviewIncident]       = useState(null)
   const [reviewStationId, setReviewStationId] = useState(null)
   const [showSettings, setShowSettings]           = useState(false)
   const [selectedIncident, setSelectedIncident]   = useState(null)
@@ -279,6 +282,7 @@ export default function App() {
     if (constraintEditing && nav === 'Incidents') return
     setConstraintEditing(false)
     setActiveNav(nav)
+    setReviewIncident(null)
     setShowSettings(false)
     setFocusedPersonnel(null)
     setMapFocus(null)
@@ -391,6 +395,7 @@ export default function App() {
               })
             }
           }
+          if (/^(operational_times_updated|incident_|dispatch_|route_updated)/.test(msg.type || '')) invalidateOperationalTimes()
           if (['incident_created', 'incident_updated', 'incident_deleted'].includes(msg.type)) {
             setHeatmapRevision(value => value + 1)
           }
@@ -769,6 +774,9 @@ export default function App() {
       fire_remarks:          '',
       auto_dispatch:         !!formData.autoDispatch,
       reporter_token:        formData.reporterToken || null,
+      report_received_at:    formData.reportReceivedAt || null,
+      response_kind:         formData.responseKind || null,
+      record_kind:           formData.recordKind || 'unknown',
     })
     cancelPicking()
     fetchActiveIncidents()
@@ -874,11 +882,12 @@ export default function App() {
           onAccountUpdate={handleAccountUpdate}
         />
       ) : activeNav === 'Metrics' ? (
-        <MetricsPage />
-      ) : activeNav === 'Planning' ? (
-        <PlanningPage />
+        <MetricsPage onOpenAnalysis={() => { setAnalysisTab('response'); navigateToPage('Analysis') }} />
+      ) : activeNav === 'Analysis' ? (
+        <AnalysisPage theme={theme} tab={analysisTab} onTabChange={setAnalysisTab} onOpenIncident={incident => { setReviewIncident(incident); setActiveNav('Incidents') }} />
       ) : activeNav === 'Incidents' ? (
         <IncidentsPage
+          initialIncident={reviewIncident}
           onShowOnMap={(inc) => {
             setActiveNav('Command')
             handleSelectIncident(inc.id)

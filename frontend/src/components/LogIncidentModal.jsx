@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import ReportReceiptFields from './ReportReceiptFields'
+import { manilaInput } from '../utils/operationalTimes'
 import { fetchTeams } from '../api'
 import {
   SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES,
@@ -49,6 +51,9 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
   // handled offline) picks its own status and records when it happened.
   const [mode, setMode]             = useState('live')
   const [occurredAt, setOccurredAt] = useState('')
+  const [receivedAt, setReceivedAt] = useState(() => manilaInput())
+  const [recordKind, setRecordKind] = useState('operational')
+  const [responseKind, setResponseKind] = useState('')
 
   const [allTeams, setAllTeams]     = useState([])
   const [units, setUnits]           = useState([])   // array of team objects
@@ -89,6 +94,8 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
   function handleModeChange(value) {
     setError(null)
     setMode(value)
+    setReceivedAt(value === 'past' ? '' : manilaInput())
+    setRecordKind(value === 'past' ? 'unknown' : 'operational')
     if (value === 'past') {
       // Backfilled records are usually finished incidents.
       setForm(prev => ({ ...prev, fire_status: 'closed' }))
@@ -137,6 +144,9 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
     try {
       await onSubmit({
         ...form,
+        report_received_at: receivedAt ? new Date(`${receivedAt}+08:00`).toISOString() : null,
+        response_kind: responseKind || null,
+        record_kind: recordKind,
         fire_latitude:       parseFloat(form.fire_latitude),
         fire_longitude:      parseFloat(form.fire_longitude),
         fire_units_assigned: showUnits ? units.length : 0,
@@ -183,6 +193,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
 
         {/* ── Right rail: details ── */}
         <form id="lim-form" className="eim-body lim-rail-form" onSubmit={handleSubmit}>
+          <ReportReceiptFields receivedAt={receivedAt} kind={responseKind} onReceipt={setReceivedAt} onKind={setResponseKind} recordKind={recordKind} onRecordKind={setRecordKind} />
 
           {/* ── Report type ── */}
           <section className="eim-section">

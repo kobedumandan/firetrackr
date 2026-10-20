@@ -1,50 +1,17 @@
 .plan-page {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background-color: var(--page-default-base);
 }
 
-/* ── Page topbar / header (mirrors .inc-header / .inc-title) ──────────────── */
-.plan-header {
-  background: transparent;
-  border-bottom: 1px solid var(--border-dim);
-  padding: 19px 20px 8px;
-  flex-shrink: 0;
-}
+.plan-view-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; }
+.plan-view-heading > div:first-child { min-width: 0; }
+.plan-view-heading .plan-btn { text-transform: none; font-size: 11px; }
 
-.plan-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-/* Title + unfold icon sit in a bare wrapper, exactly as on Metrics, so the two
-   headers line up pixel-for-pixel when navigating between the pages. */
-.plan-title-row > div:first-child {
-  display: flex;
-  justify-content: space-between;
-  align-content: center;
-  gap: 4px;
-}
-
-.plan-title {
-  font-family: var(--font-condensed);
-  font-size: 14.8px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-
-.plan-unfold-icon {
-  width: 16.8px;
-  height: 16.8px;
-}
-
-/* ── Header actions ──────────────────────────────────────────────────────── */
 .plan-header-actions {
   display: flex;
   align-items: center;
@@ -142,6 +109,8 @@
   gap: 14px;
   padding: 20px;
   overflow: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
 .plan-error {

@@ -11,6 +11,7 @@ import {
 
 // Review order and display labels for every editable field.
 const FIELD_META = [
+  ['record_kind',           'Record kind'],
   ['fire_status',           'Status', v => STATUSES.find(s => s.value === v)?.label ?? v],
   ['fire_severity',         'Severity'],
   ['fire_alarm_level',      'Alarm level'],
@@ -27,6 +28,7 @@ const FIELD_META = [
 
 export default function EditIncidentModal({ incident, onClose, onSubmit }) {
   const [initial] = useState(() => ({
+    record_kind:           incident.record_kind || 'unknown',
     fire_location_name:    incident.loc        || '',
     fire_address:          incident.addr       || '',
     fire_severity:         incident.sev        || 'Minor',
@@ -130,6 +132,7 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
         </div>
 
         <form id="eim-form" className="eim-body" onSubmit={handleSubmit}>
+          <section className="eim-section"><Field label="Record kind"><select value={form.record_kind} onChange={e => set('record_kind', e.target.value)}>{['operational', 'drill', 'test', 'unknown'].map(k => <option key={k}>{k}</option>)}</select></Field></section>
 
           {/* ── Status progression ── */}
           <section className="eim-section">

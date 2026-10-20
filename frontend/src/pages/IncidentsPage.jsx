@@ -55,7 +55,7 @@ const PERIODS = [
   { key: "year", label: "This Year" },
 ];
 
-export default function IncidentsPage({ onShowOnMap }) {
+export default function IncidentsPage({ onShowOnMap, initialIncident = null }) {
   const [incidents, setIncidents] = useState([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({
@@ -67,10 +67,10 @@ export default function IncidentsPage({ onShowOnMap }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(initialIncident?.id || null);
   // When set, the full-page incident details view replaces the list. Holds the
   // incident itself so the view survives a list refetch that drops the row.
-  const [detailsIncident, setDetailsIncident] = useState(null);
+  const [detailsIncident, setDetailsIncident] = useState(initialIncident);
   const [showLogModal, setShowLogModal] = useState(false);
   const [editingIncident, setEditingIncident] = useState(null);
   const [deletingIncident, setDeletingIncident] = useState(null);
@@ -299,7 +299,7 @@ export default function IncidentsPage({ onShowOnMap }) {
           </div>
           <div className="inc-header-actions">
             <button
-              className="inc-btn-secondary"
+              className="inc-btn-secondary table-export-btn"
               // The live search box, not the debounced query.search, so text
               // typed a moment before clicking is still in scope.
               onClick={() => setExportQuery({ ...query, search })}

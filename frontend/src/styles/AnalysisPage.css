@@ -1,0 +1,12 @@
+.analysis-page, .analysis-panel { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--page-default-base); }
+.analysis-header { padding-bottom: 0; background: var(--bg-panel); min-width: 0; }
+.analysis-tabs { display: flex; align-items: end; gap: 5px; margin: 17px 0 -1px; overflow-x: auto; scrollbar-width: none; }
+.analysis-tabs::-webkit-scrollbar { display: none; }
+.analysis-tabs [role="tab"] { position: relative; display: inline-flex; align-items: center; gap: 9px; flex-shrink: 0; min-height: 40px; padding: 10px 18px; border: 1px solid transparent; border-radius: 10px 10px 0 0; color: color-mix(in srgb, var(--text-primary) 65%, var(--bg-panel)); background: transparent; font: 500 12px var(--font-condensed); cursor: pointer; transition: background .16s, color .16s; white-space: nowrap; }
+.analysis-tabs [role="tab"] svg { width: 16px; height: 16px; flex-shrink: 0; }
+.analysis-tabs [role="tab"]:hover { color: var(--text-primary); background: var(--bg-hover); }
+.analysis-tabs [role="tab"][aria-selected="true"] { color: var(--text-primary); background: var(--page-default-base); border-color: var(--border-dim); border-bottom-color: var(--page-default-base); }
+.analysis-tabs [role="tab"][aria-selected="true"] svg { color: var(--accent-fire); }
+.analysis-tabs [role="tab"]:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: -4px; }
+@media (max-width: 540px) { .analysis-tabs [role="tab"] { padding: 10px 12px; gap: 7px; font-size: 11px; } }
+@media (prefers-reduced-motion: reduce) { .analysis-tabs [role="tab"] { transition: none; } }
