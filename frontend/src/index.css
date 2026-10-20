@@ -467,107 +467,153 @@ body {
    sitting on a white surface, which is how --accent-gold, --accent-purple and
    --text-tertiary were washing out before.
 
-   Accents are darkened rather than merely desaturated: a hue tuned to glow on
-   #101011 has nowhere near 4.5:1 against #ffffff. */
+   Light accents retain their saturated hue; body copy uses the slate text ramp. */
 [data-theme="light"] {
-  --bg-base: #f0f3f7;
+  /* White shell and content; faint inset fills and shadows separate cards. */
+  --bg-base: #ffffff;
   --bg-panel: #ffffff;
-  --bg-card: #f4f7fb;
-  --bg-hover: #e6edf5;
-  --border: #d0dce8;
-  --border-dim: #bcc4cc;
-  --border-bright: #b8ccda;
-  --accent-fire: #e8390d;
-  --accent-fire-dim: rgba(232, 57, 13, 0.1);
-  --accent-amber: #c07800;
-  --accent-amber-dim: rgba(192, 120, 0, 0.1);
-  --accent-blue: #0070d8;
-  --accent-blue-dim: rgba(0, 112, 216, 0.1);
-  --accent-green: #007a3d;
-  --accent-green-dim: rgba(0, 122, 61, 0.1);
-  --accent-gold: #8a6b00;
-  --accent-gold-dim: rgba(138, 107, 0, 0.1);
-  --accent-purple: #7c3aed;
-  --accent-purple-dim: rgba(124, 58, 237, 0.1);
-  --text-primary: #0d1520;
-  --text-secondary: #3d5a72;
-  --text-tertiary: #6f8ba3;
-  --text-muted: #7a95ab;
+  --bg-card: #f7f9fc;
+  --bg-hover: #f0f4f8;
+  --border: #e9edf2;
+  --border-dim: #f0f2f5;
+  --border-bright: #dce3eb;
+  --accent-fire: #ff4d1a;
+  --accent-fire-dim: rgba(255, 77, 26, 0.09);
+  --accent-amber: #f5a623;
+  --accent-amber-dim: rgba(245, 166, 35, 0.12);
+  --accent-blue: #1687f8;
+  --accent-blue-dim: rgba(22, 135, 248, 0.09);
+  --accent-green: #16b86a;
+  --accent-green-dim: rgba(22, 184, 106, 0.1);
+  --accent-gold: #eab308;
+  --accent-gold-dim: rgba(234, 179, 8, 0.12);
+  --accent-purple: #9c50eb;
+  --accent-purple-dim: rgba(156, 80, 235, 0.1);
+  --text-primary: #253449;
+  --text-secondary: #475b70;
+  --text-tertiary: #50647a;
+  --text-muted: #53677d;
 
-  --page-default-base: #e7e7e7;
+  --page-default-base: #ffffff;
 
   /* Re-toned triplets so every rgba(var(--x-rgb), a) tint follows the theme. */
-  --accent-fire-rgb:   232, 57, 13;
-  --accent-amber-rgb:  192, 120, 0;
-  --accent-blue-rgb:   0, 112, 216;
-  --accent-green-rgb:  0, 122, 61;
-  --accent-gold-rgb:   138, 107, 0;
-  --accent-purple-rgb: 124, 58, 237;
-  --accent-cyan-rgb:    3, 105, 161;
-  --accent-red-rgb:     197, 34, 34;
+  --accent-fire-rgb:   255, 77, 26;
+  --accent-amber-rgb:  245, 166, 35;
+  --accent-blue-rgb:   22, 135, 248;
+  --accent-green-rgb:  22, 184, 106;
+  --accent-gold-rgb:   234, 179, 8;
+  --accent-purple-rgb: 156, 80, 235;
+  --accent-cyan-rgb:    14, 165, 233;
+  --accent-red-rgb:     239, 68, 68;
   --accent-slate-rgb:   100, 116, 139;
-  --accent-emerald-rgb: 21, 128, 61;
-  --accent-warn-rgb:    161, 98, 7;
+  --accent-emerald-rgb: 16, 185, 129;
+  --accent-warn-rgb:    245, 158, 11;
 
-  --accent-cyan: #0369a1;
-  --accent-cyan-dim: rgba(3, 105, 161, 0.1);
-  --accent-red: #c52222;
-  --accent-red-dim: rgba(197, 34, 34, 0.1);
-  --accent-emerald: #15803d;
-  --accent-warn: #a16207;
-  --accent-trend-up: #15803d;
-  --accent-trend-down: #c52222;
+  --accent-cyan: #0ea5e9;
+  --accent-cyan-dim: rgba(14, 165, 233, 0.1);
+  --accent-red: #ef4444;
+  --accent-red-dim: rgba(239, 68, 68, 0.1);
+  --accent-emerald: #10b981;
+  --accent-warn: #f59e0b;
+  --accent-trend-up: #16b86a;
+  --accent-trend-down: #ef4444;
 
-  /* Light-mode green is dark, so its label flips to white (see dark block). */
-  --on-accent-green: #ffffff;
-  --accent-fire-disabled: #e9b3a5;
+  /* Bright green fills use a deep green label. */
+  --on-accent-green: #073b25;
+  --accent-fire-disabled: #ffc4b3;
 
   /* Map panels become white cards; the text ramp inverts with them, and the
      label halo flips from black to white so labels stay legible on tiles. */
   --map-panel-rgb: 255, 255, 255;
-  --map-text: #24313f;
-  --map-text-dim: #4a5d70;
-  --map-text-faint: #6b7d8f;
-  --map-text-bright: #0d1520;
+  --map-text: #253449;
+  --map-text-dim: #475b70;
+  --map-text-faint: #53677d;
+  --map-text-bright: #253449;
   --map-text-ghost: #9aa8b5;
   --map-label: #0c4a6e;
   --map-label-accent: #0369a1;
   --map-label-shadow: rgba(255, 255, 255, 0.9);
   --map-eco-surface: #d8ece0;
 
-  --surface-sunken: #eef1f5;
+  --surface-sunken: #f5f7fa;
 
-  /* Still recessive, but the label darkens enough to stay legible on the tint
-     (--text-muted at #7a95ab over this fill is only ~2.2:1). */
-  --chip-muted-bg: rgba(61, 90, 114, 0.12);
-  --chip-muted-fg: #52708a;
+  /* Muted status labels remain readable over their soft slate tint. */
+  --chip-muted-bg: rgba(71, 91, 112, 0.1);
+  --chip-muted-fg: #475b70;
 
   --grid-line: rgba(13, 21, 32, 0.08);
 
   /* Hover DARKENS the fill in light mode; brightening it would wash out. */
-  --accent-fire-hover: #c22e08;
-  --accent-fire-focus: rgba(232, 57, 13, 0.55);
-  --accent-fire-glow: 0 0 0 3px rgba(232, 57, 13, 0.15);
+  --accent-fire-hover: #ed4210;
+  --accent-fire-focus: rgba(255, 77, 26, 0.65);
+  --accent-fire-glow: 0 0 0 3px rgba(255, 77, 26, 0.15);
 
   --on-accent: #ffffff;
 
   /* Films press down with ink instead of lifting with white. */
-  --surface-raise: rgba(13, 21, 32, 0.04);
-  --surface-raise-strong: rgba(13, 21, 32, 0.1);
-  --border-subtle: rgba(13, 21, 32, 0.12);
+  --surface-raise: rgba(37, 52, 73, 0.025);
+  --surface-raise-strong: rgba(37, 52, 73, 0.06);
+  --border-subtle: rgba(37, 52, 73, 0.06);
 
   --scrim: rgba(13, 21, 32, 0.45);
-  --shadow-xs: 0 1px 2px rgba(13, 21, 32, 0.12);
-  --shadow-sm: 0 2px 8px rgba(13, 21, 32, 0.08);
-  --shadow-md: 0 4px 16px rgba(13, 21, 32, 0.1);
-  --shadow-lg: 0 24px 48px rgba(13, 21, 32, 0.16);
+  --shadow-xs: 0 1px 3px rgba(37, 52, 73, 0.04);
+  --shadow-sm: 0 2px 10px rgba(37, 52, 73, 0.06);
+  --shadow-md: 0 5px 18px rgba(37, 52, 73, 0.08);
+  --shadow-lg: 0 24px 48px rgba(37, 52, 73, 0.16);
 
   --map-base: #c8d8e8;
-  --map-panel-grad: linear-gradient(135deg, #ffffff, #eef3f9);
+  --map-panel-grad: linear-gradient(135deg, #ffffff, #f7f9fc);
 }
 
 [data-theme="light"] body {
   background: var(--bg-base);
+}
+
+/* Keep the shell seam faint and give content cards depth on the white canvas.
+   Explicit card classes avoid adding shadows to tables, map layers or controls. */
+[data-theme="light"] .app-content {
+  border-color: var(--border-dim);
+}
+
+[data-theme="light"] :is(
+  .kpi-card, .m-card, .plan-card, .ota-card, .ota-toolbar,
+  .rp-view .rp-card, .rp-filter-panel,
+  .per-card, .tea-card, .trk-card
+) {
+  box-shadow: var(--shadow-sm);
+}
+
+/* Only Analysis filter panels receive an inset fill. */
+[data-theme="light"] :is(.rp-filter-panel, .ota-toolbar) {
+  background: var(--surface-sunken);
+}
+
+[data-theme="light"] .rp-kpis .kpi-card {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Dark actions echo the Command shortcut without darkening selector tabs. */
+[data-theme="light"] :is(
+  .table-export-btn, .rp-view .rp-export, .plan-header-actions .plan-btn,
+  .topbar-signout-btn, .user-avatar, .map-camera-buttons button
+) {
+  background: #17191c;
+  border-color: #17191c;
+  color: #ffffff;
+}
+
+[data-theme="light"] :is(
+  .table-export-btn, .rp-view .rp-export, .plan-header-actions .plan-btn,
+  .topbar-signout-btn, .map-camera-buttons button
+):hover:not(:disabled) {
+  background: #30343a;
+  border-color: #30343a;
+  color: #ffffff;
+}
+
+[data-theme="light"] .table-export-btn:disabled {
+  opacity: 0.45;
 }
 
 /* ── Reduced motion ──────────────────────────────────────────────────────────

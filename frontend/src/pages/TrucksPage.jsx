@@ -373,7 +373,7 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
               <UnfoldIcon />
             </div>
             <div className="trk-header-actions">
-              <button className="trk-btn-secondary">
+              <button className="trk-btn-secondary table-export-btn">
                 <ExportIcon />
                 Export
               </button>
