@@ -78,30 +78,34 @@ export default function ResponseAnalysisModal({ fireId, theme, onClose }) {
   }, [fireId, retry])
   const unit = data?.units.find(u => u.id === unitId) || data?.units.find(u => u.id === data.first_unit_id) || data?.units[0]
   const selectedRoute = unit?.routes.find(r => r.route_id === unit.selected_route_id)
+  const demo = data?.timing_basis === 'synthetic_demo'
+  const timeline = demo ? data.synthetic_timeline : null
   const pairs = data ? {
-    processing: [['Report received', data.reported_at], ['Unit dispatched', unit?.dispatch_at]],
-    preparation: [['Unit dispatched', unit?.dispatch_at], ['Truck departed', unit?.departed_at]],
-    travel: [['Truck departed', unit?.departed_at], ['Truck arrived', unit?.arrived_at]],
-    suppression: [['Suppression started', data.suppression_started_at], ['Fire controlled', data.controlled_at], ['Fire out', data.fire_out_at]],
+    processing: [['Report received', timeline?.report_received_at || data.reported_at], ['Unit dispatched', timeline?.dispatch_at || unit?.dispatch_at]],
+    preparation: [['Unit dispatched', timeline?.dispatch_at || unit?.dispatch_at], ['Truck departed', timeline?.departed_at || unit?.departed_at]],
+    travel: [['Truck departed', timeline?.departed_at || unit?.departed_at], ['Truck arrived', timeline?.arrived_at || unit?.arrived_at]],
+    suppression: [['Suppression started', timeline?.suppression_started_at || data.suppression_started_at], ['Fire controlled', data.controlled_at], ['Fire out', timeline?.fire_out_at || data.fire_out_at]],
   } : {}
   const sourceKinds = { processing: ['op_receipt'], preparation: ['op_departure'], travel: ['op_departure', 'op_arrival'], suppression: ['op_suppression_start', 'op_fire_out'] }
   return <AppModal title={`Response Analysis · INC-${fireId}`} subtitle={data ? `${data.response_kind || 'Unclassified'} · ${data.barangay || 'Barangay unknown'} · ${data.status}` : 'Loading incident details…'} width={1240} className="ota-dialog" onClose={onClose} manageFocus>
     {error && <div className="ota-error" role="alert">{error} <button onClick={() => setRetry(n => n + 1)}>Retry</button></div>}
     {!data && !error && <div className="ota-empty" role="status">Loading response analysis…</div>}
+    {demo && <p className="m-data-note">Synthesized demonstration timeline · {data.source_record_id}. The source workbook records a date, not response timestamps. No real truck, crew or driven route is assigned to this simulation.</p>}
+    {data?.location_specification && <p className="ota-note">{data.location_specification.label}: {data.location_specification.specification}</p>}
     {data && <><div className="ota-modal-meta"><span>Report: {dateTime(data.reported_at)} · {data.address || 'Address unavailable'}</span><span>Station: {unit?.station || 'No assigned station'}</span>
       {data.units.length > 0 ? <label>Responding unit <select value={unit?.id || ''} onChange={e => setUnitId(Number(e.target.value))}>{data.units.map(u => <option key={u.id} value={u.id}>{u.truck} · {u.team} · dispatch #{u.dispatch_id}</option>)}</select></label> : <span>No truck assigned</span>}
       <span>Incident call-to-arrival: <strong>{duration(data.durations.cta)}</strong> · first valid arrival</span>
     </div><div className="ota-modal-layout"><ResponseMap data={data} unit={unit} stage={stage} theme={theme} />
-      <div className="ota-details"><div className="ota-stages" role="group" aria-label="Operational stage">{STAGES.map(s => <button key={s.key} className={s.key === stage ? 'active' : ''} aria-pressed={s.key === stage} onClick={() => setStage(s.key)}><span>{s.label}</span><strong>{s.key === 'suppression' && data.response_kind && data.response_kind !== 'fire' ? 'N/A' : duration(s.key === 'suppression' ? data.durations.suppression : unit?.durations[s.key])}</strong></button>)}</div>
+      <div className="ota-details"><div className="ota-stages" role="group" aria-label="Operational stage">{STAGES.map(s => <button key={s.key} className={s.key === stage ? 'active' : ''} aria-pressed={s.key === stage} onClick={() => setStage(s.key)}><span>{s.label}</span><strong>{s.key === 'suppression' && data.response_kind && data.response_kind !== 'fire' ? 'N/A' : duration(demo || s.key === 'suppression' ? data.durations[s.key] : unit?.durations[s.key])}</strong></button>)}</div>
         <dl>{pairs[stage].map(([label, at]) => <div key={label}><dt>{label}</dt><dd>{dateTime(at)}</dd></div>)}</dl>
         {['processing', 'preparation'].includes(stage) && unit?.dispatch_at && <p className="ota-note">Dispatch time source: the unit’s existing dispatch record.</p>}
         {stage === 'travel' && unit?.arrival_source === 'legacy_single_truck_dispatch' && <p className="ota-note">Arrival source: existing dispatch arrival record, with exactly one truck assigned.</p>}
         <div className="ota-sources">{data.events.filter(e => sourceKinds[stage].includes(e.type) && (!e.unit_id || e.unit_id === unit?.id)).map((e, i) => <p key={i}>{e.type.replace('op_', '').replaceAll('_', ' ')}: {e.source || 'Unknown source'} · {e.actor || 'System'} · {e.verified ? 'Verified' : 'Unverified'}<small>Received {dateTime(e.received_at)}</small></p>)}</div>
-        {stage === 'travel' && <section className="ota-comparison"><h3>Travel Time vs. Selected Route ETA</h3><dl>{[['Selected route', unit?.baseline_available && selectedRoute ? `Route ${selectedRoute.rank}` : 'Original selection unavailable'], ['Estimated travel', duration(unit?.eta_seconds)], ['Actual travel', duration(unit?.durations.travel)], ['Difference', unit?.difference_seconds == null ? 'No data' : `${unit.difference_seconds >= 0 ? '+' : '−'}${duration(unit.difference_seconds)}`], ['Deviation', unit?.error_percent == null ? 'No data' : `${unit.error_percent >= 0 ? '+' : ''}${unit.error_percent.toFixed(1)}%`]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+        {stage === 'travel' && !demo && <section className="ota-comparison"><h3>Travel Time vs. Selected Route ETA</h3><dl>{[['Selected route', unit?.baseline_available && selectedRoute ? `Route ${selectedRoute.rank}` : 'Original selection unavailable'], ['Estimated travel', duration(unit?.eta_seconds)], ['Actual travel', duration(unit?.durations.travel)], ['Difference', unit?.difference_seconds == null ? 'No data' : `${unit.difference_seconds >= 0 ? '+' : '−'}${duration(unit.difference_seconds)}`], ['Deviation', unit?.error_percent == null ? 'No data' : `${unit.error_percent >= 0 ? '+' : ''}${unit.error_percent.toFixed(1)}%`]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
           {unit?.difference_seconds != null && <p>Actual travel {unit.difference_seconds === 0 ? 'matched the selected route’s predicted duration.' : `took ${duration(unit.difference_seconds)} ${unit.difference_seconds > 0 ? 'longer' : 'less'} than the selected route’s predicted duration.`}</p>}
           <p className="ota-note">Unit report-to-arrival: {duration(unit?.durations.cta)}. ETA is a prediction; actual travel uses departure and arrival timestamps.</p>
         </section>}
-        <MilestoneForm key={`${data.fire_id}:${unit?.id}:${data.response_kind}`} data={data} unit={unit} onSaved={setData} />
+        {!demo && <MilestoneForm key={`${data.fire_id}:${unit?.id}:${data.response_kind}`} data={data} unit={unit} onSaved={setData} />}
       </div>
     </div></>}
   </AppModal>

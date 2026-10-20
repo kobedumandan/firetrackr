@@ -10,6 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from models import DispatchRecord, FireIncident, IncidentEvent, Route, TruckLog
 from services.incident_events import actor_name
+from services.historical_incidents import attach_history, history, demo_times
+from services.reporting_periods import reporting_window
 
 UTC = timezone.utc
 MANILA = ZoneInfo("Asia/Manila")
@@ -189,26 +191,39 @@ def incident_times(inc):
 
 def record_dict(inc):
     durations, units, first, _ = incident_times(inc)
+    demo = demo_times(inc)
+    source = history(inc)
     return {"fire_id": inc.fire_id, "reported_at": iso(inc.report_received_at),
             "occurred_at": iso(inc.fire_incident_datetime), "response_kind": inc.response_kind,
-            "status": inc.fire_status, "durations": durations, "unit_count": len(units),
+            "status": inc.fire_status, "durations": demo or durations, "unit_count": len(units),
+            "timing_basis": "synthetic_demo" if demo else "recorded",
+            "source_record_id": source.get("record_id"),
+            "location_specification": source.get("pin_specification"),
+            "synthetic_timeline": source.get("synthetic_timeline") if demo else None,
             "first_unit_id": first.dispatch_truck_id if first else None,
             "barangay": inc.barangay.brgy_name if inc.barangay else inc.fire_location_name}
 
 
 def load_incidents(db, start, end):
-    return db.query(FireIncident).options(
+    incidents = db.query(FireIncident).options(
         selectinload(FireIncident.dispatches).selectinload(DispatchRecord.dispatch_trucks),
         selectinload(FireIncident.barangay),
     ).filter(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) >= start,
              func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) < end
     ).order_by(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime).desc(), FireIncident.fire_id.desc()).all()
+    return attach_history(db, incidents)
 
 
-def samples(incidents):
+def samples(incidents, include_demo=False):
     data = {s: [] for s in STAGES}
     common = []
     for inc in incidents:
+        demo = demo_times(inc) if include_demo and inc.fire_status not in EXCLUDED else None
+        if demo:
+            for stage in STAGES:
+                data[stage].append(demo[stage])
+            common.append(demo)
+            continue
         if inc.report_received_at is None or inc.fire_status in EXCLUDED:
             continue
         durations, units, first, processing = incident_times(inc)
@@ -227,14 +242,19 @@ def samples(incidents):
     return data, common
 
 
-def analytics(db, period, page=1, now=None):
+def analytics(db, period, page=1, now=None, source="recorded"):
     now = now or datetime.now(UTC)
-    span = timedelta(days=PERIOD_DAYS[period])
-    start = now - span
+    earliest = db.query(func.min(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime))).scalar() if period == "all" else None
+    start, now = reporting_window(period, now, earliest)
+    span = now - start
     current = load_incidents(db, start, now)
-    previous = load_incidents(db, start - span, start)
-    data, common = samples(current)
-    prior, _ = samples(previous)
+    previous = [] if period == "all" else load_incidents(db, start - span, start)
+    # Demo mode is a separate population, never silently blended into real KPIs.
+    is_demo = source == "demo"
+    current = [i for i in current if bool(demo_times(i)) == is_demo]
+    previous = [i for i in previous if bool(demo_times(i)) == is_demo]
+    data, common = samples(current, include_demo=is_demo)
+    prior, _ = samples(previous, include_demo=is_demo)
     summary = {}
     for stage in STAGES:
         avg = mean(data[stage]) if data[stage] else None
@@ -244,27 +264,34 @@ def analytics(db, period, page=1, now=None):
     # Calendar buckets in Philippine time, clipped to the same rolling window.
     local_start = start.astimezone(MANILA)
     cursor = local_start.replace(minute=0, second=0, microsecond=0) if period == "1d" else local_start.replace(hour=0, minute=0, second=0, microsecond=0)
-    if period in ("6m", "1y"):
+    if period in ("6m", "1y", "2023-2024", "all"):
         cursor = cursor.replace(day=1)
     buckets = []
     while cursor < now:
-        if period in ("6m", "1y"):
+        if period in ("6m", "1y", "2023-2024", "all"):
             following = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
         else:
             following = cursor + (timedelta(hours=1) if period == "1d" else timedelta(days=1))
-        subset = [i for i in current if i.report_received_at and cursor <= i.report_received_at < following]
-        values, _ = samples(subset)
+        subset = [i for i in current if (i.report_received_at or (i.fire_incident_datetime if is_demo else None))
+                  and cursor <= (i.report_received_at or i.fire_incident_datetime) < following]
+        values, _ = samples(subset, include_demo=is_demo)
         buckets.append({"at": iso(cursor), "values": {s: mean(values[s]) if values[s] else None for s in STAGES},
                         "counts": {s: len(values[s]) for s in STAGES}})
         cursor = following
     breakdown = {s: mean([r[s] for r in common]) if common else None for s in STAGES[:-1]}
+    page_size = 5
+    total_pages = max(1, (len(current) + page_size - 1) // page_size)
+    page = min(max(1, page), total_pages)
     return {"period": period, "start": iso(start), "end": iso(now), "timezone": "Asia/Manila",
             "summary": summary, "breakdown": {"count": len(common), "seconds": breakdown}, "trends": buckets,
-            "records": [record_dict(i) for i in current[(page-1)*15:page*15]], "total": len(current), "page": page,
-            "missing_receipt_count": sum(i.report_received_at is None for i in current)}
+            "records": [record_dict(i) for i in current[(page-1)*page_size:page*page_size]], "total": len(current), "page": page,
+            "page_size": page_size, "total_pages": total_pages, "source": source,
+            "synthetic_count": len(current) if is_demo else 0,
+            "missing_receipt_count": sum(i.report_received_at is None for i in current) if not is_demo else 0}
 
 
 def detail(db, inc):
+    attach_history(db, [inc])
     result = record_dict(inc)
     events = db.query(IncidentEvent).filter_by(fire_id=inc.fire_id).order_by(IncidentEvent.created_at, IncidentEvent.event_id).all()
     result.update({"location": [inc.fire_latitude, inc.fire_longitude], "address": inc.fire_address,

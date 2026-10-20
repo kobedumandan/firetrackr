@@ -17,6 +17,61 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### BFP historical import and metrics (2026-10-20)
+
+- `backend/import_bfp_history.py` validates source Excel rows against the cleaned
+  location review, prepares deterministic demonstration timings, and imports one
+  incident per source record. It performs no schema DDL. A caller must back up the
+  database and supply an explicit, reviewed list of dummy IDs before replacement.
+  The task-local import artifacts and backup are outside the Git repository under
+  the parent workspace's `outputs/bfp_history_import/` directory.
+- The imported workbook contains 78 incidents dated 2023–2024. Actual times, alarm
+  levels, crew assignments, severity and casualties were not provided. Source and
+  normalized cause/category values, geocode review flags, and synthesized timings
+  are preserved in one `incident_events` row of type `bfp_import` per incident.
+  A unique content-derived `idempotency_key` prevents repeat imports. Synthetic
+  operational timestamps stay in `event_metadata.synthetic_timeline`; they do not
+  populate the actual incident/dispatch/truck timestamp columns. No fake team,
+  truck, dispatch, route or personnel report is created for imported history.
+- Alarm levels use the earlier reviewed showcase assumptions (58 first alarm,
+  20 second alarm), not official BFP alarm observations. Source incident dates stay
+  on their original dates, stored at midnight PHT with date-only precision noted
+  in metadata. Unknown severity remains null and displays as Not recorded.
+- `services/historical_incidents.py` batch-loads provenance. Operational analytics
+  defaults to recorded data; `source=demo` explicitly selects synthesized import
+  timelines. Real operational timestamps/dispatches take precedence. The current
+  dashboard initially opens the labeled demo view and the All period. It
+  provides a selector for recorded data. Demo timelines never enter recorded KPIs.
+- `services/reporting_periods.py` supplies an All window from the earliest incident
+  through now for Metrics and Operational Time Analysis; the old fixed historical
+  API period remains supported. All has no previous-period comparison.
+  Operational pagination returns `page_size=5`,
+  `page`, `total`, and `total_pages`, with invalid high pages clamped to the last
+  page. Compact numbered navigation with previous/next arrows sits at bottom right.
+  The frontend cache includes the recorded/demo source. The details modal
+  displays demo intervals without suggesting a real truck or historical route.
+- Metrics retains the severity API for compatibility and adds `alarm_levels`,
+  `top_causes`, source-quality counts, and the historical period. Causes count each
+  incident once; imported source causes take precedence, otherwise the latest
+  non-empty personnel report cause is used. Barangay counts prefer the known FK;
+  legacy spatial fallback selects one polygon to avoid double-counting overlaps.
+  Unresolved imported barangays are not inferred from approximate coordinates.
+- The Metrics donut displays alarm levels. The barangay map/ranking and top-ten
+  cause bars sit side by side on wide screens and stack on smaller screens. The
+  map refits to boundaries on resize. Unknown severity and response duration are
+  shown as unavailable rather than synthesized into the recorded KPI cards.
+- All 78 imports now have explicitly estimated heatmap pins: 52 address candidates
+  inside the matched barangay, 25 reproducible points inside the barangay polygon,
+  and one Panabo reference point for the unresolved Brgy Lemonsito address.
+  `services/historical_pins.py` records the coordinate basis and limitations in
+  `event_metadata.pin_specification`. These are not verified fire-site coordinates.
+  Heatmap detail cards show the specification, date-only precision, and assumed
+  alarm basis. Shared representative pins can create apparent area hotspots;
+  they must not be interpreted as exact property-level clusters. The unresolved
+  barangay remains null and is not inferred from its display pin. The local
+  `incident_pin_specifications.csv` records the coordinates used, and
+  `before_representative_pins.dump` preserves the database before this update.
+
 FireTrackr supports BFP Panabo City dispatchers in recording fires, choosing response
 resources, viewing routes and responder locations, and assessing station reachability.
 It connects incident information and personnel/fleet status rather than requiring

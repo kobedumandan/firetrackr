@@ -21,11 +21,17 @@ export function heatmapIncidentDetails(points, limit = points.length) {
     add(card, 'div', 'heatmap-incident-id', heatmapIncidentId(point))
     add(card, 'div', 'heatmap-incident-name', incident.loc || 'Recorded fire location')
     if (incident.addr) add(card, 'div', 'heatmap-incident-address', incident.addr)
+    const pin = point.location_specification
+    if (pin) {
+      add(card, 'div', 'heatmap-incident-address', pin.label)
+      add(card, 'div', 'heatmap-incident-address', pin.specification)
+      add(card, 'div', 'heatmap-incident-address', `Pin: ${point.lat.toFixed(6)}, ${point.lng.toFixed(6)} · estimated`)
+    }
     const date = new Date(point.occurred_at)
     if (point.occurred_at && Number.isFinite(date.getTime())) {
-      add(card, 'div', 'heatmap-incident-date', `${date.toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })} (PH)`)
+      add(card, 'div', 'heatmap-incident-date', `${date.toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', ...(point.occurrence_precision === 'date_only' ? {} : { hour: 'numeric', minute: '2-digit' }) })} (PH)${point.occurrence_precision === 'date_only' ? ' · time not recorded' : ''}`)
     }
-    const fields = [['Severity', incident.sev], ['Alarm', incident.alarm], ['Status', incident.status], ['Structure', incident.structure], ['Casualties', incident.casualties]]
+    const fields = [['Severity', incident.sev], ['Alarm', point.alarm_basis === 'synthetic_demo' ? `${incident.alarm} (showcase assumption)` : incident.alarm], ['Status', incident.status], ['Structure', incident.structure], ['Casualties', incident.casualties]]
     const list = add(card, 'dl', 'heatmap-incident-fields', '')
     for (const [label, value] of fields) if (value) {
       add(list, 'dt', '', label)

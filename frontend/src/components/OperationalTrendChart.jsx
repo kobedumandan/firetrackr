@@ -8,7 +8,7 @@ export default function OperationalTrendChart({ points = [], period }) {
   const max = Math.max(60, ...values) * 1.15
   const x = index => 50 + index * 900 / Math.max(1, points.length - 1)
   const y = value => 180 - value / max * 150
-  const label = at => new Intl.DateTimeFormat('en-PH', period === '1d' ? { timeZone: 'Asia/Manila', hour: 'numeric' } : { timeZone: 'Asia/Manila', month: 'short', ...(period === '1w' || period === '1m' ? { day: 'numeric' } : {}) }).format(new Date(at))
+  const label = at => new Intl.DateTimeFormat('en-PH', period === '1d' ? { timeZone: 'Asia/Manila', hour: 'numeric' } : { timeZone: 'Asia/Manila', month: 'short', ...(['2023-2024', 'all'].includes(period) ? { year: '2-digit' } : {}), ...(period === '1w' || period === '1m' ? { day: 'numeric' } : {}) }).format(new Date(at))
   return <section className="ota-card">
     <div className="ota-section-head"><div><h2>Operational Time Trends</h2><p>Average duration per stage over time · Philippine time</p></div>
       <select aria-label="Trend metric" value={metric} onChange={e => setMetric(e.target.value)}><option value="all">All Stages</option>{ALL_METRICS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}</select>

@@ -91,7 +91,7 @@ def _incident_dict(r: FireIncident) -> dict:
         "fire_id":        r.fire_id,
         "loc":            r.fire_location_name  or f"{r.fire_latitude:.4f}, {r.fire_longitude:.4f}",
         "addr":           r.fire_address        or "",
-        "sev":            r.fire_severity       or "Minor",
+        "sev":            r.fire_severity or ("Not recorded" if r.fire_location_source == "bfp_historical_import" else "Minor"),
         "status":         r.fire_status         or "pending",
         "alarm":          r.fire_alarm_level    or "1st Alarm",
         "dispatch_type":  r.fire_dispatch_type or "",

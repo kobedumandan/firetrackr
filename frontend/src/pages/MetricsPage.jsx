@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
+import { useEffect, useMemo, useState } from "react";
+import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "../styles/MetricsPage.css";
@@ -62,13 +62,25 @@ const PERIODS = [
   { key: "1m", label: "1m" },
   { key: "6m", label: "6m" },
   { key: "1y", label: "1y" },
+  { key: "all", label: "All" },
 ];
 
-const SEVERITY_COLORS = {
-  Critical: "var(--accent-fire)",
-  Moderate: "var(--accent-amber)",
-  Minor: "var(--accent-green)",
-};
+const ALARM_COLORS = ["#ffad33", "#ff4d1a", "#dc3447", "#9b59b6", "#64748b"];
+
+function FitBarangays({ bounds }) {
+  const map = useMap();
+  useEffect(() => {
+    const fit = () => {
+      map.invalidateSize();
+      if (bounds) map.fitBounds(bounds, { padding: [8, 8], maxZoom: 12, animate: false });
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(map.getContainer());
+    return () => observer.disconnect();
+  }, [map, bounds]);
+  return null;
+}
 
 function UnfoldIcon() {
   return (
@@ -113,6 +125,7 @@ function MapIcon() {
 }
 
 function DonutChart({ data, total }) {
+  if (!total) return <div className="m-empty">No incidents in this period</div>;
   const radius = 52;
   const stroke = 16.8;
   const gap = 3.2;
@@ -121,11 +134,10 @@ function DonutChart({ data, total }) {
   const labelR = outer + 12;
   const viewExtent = labelR + 16;
   const viewSize = viewExtent * 2;
-  let cumulative = 0;
-  const labels = data.map((d) => {
+  const labels = data.map((d, i) => {
     const frac = d.value / total;
+    const cumulative = data.slice(0, i).reduce((sum, item) => sum + item.value / total, 0);
     const midFrac = cumulative + frac / 2;
-    cumulative += frac;
     const angle = midFrac * 2 * Math.PI - Math.PI / 2;
     return {
       color: d.color,
@@ -134,7 +146,6 @@ function DonutChart({ data, total }) {
       y: Math.sin(angle) * labelR,
     };
   });
-  let offset = 0;
   return (
     <svg
       viewBox={`${-viewExtent} ${-viewExtent} ${viewSize} ${viewSize}`}
@@ -143,6 +154,7 @@ function DonutChart({ data, total }) {
       <g transform="rotate(-90)">
         {data.map((d, i) => {
           const slice = (d.value / total) * circ;
+          const offset = data.slice(0, i).reduce((sum, item) => sum + item.value / total * circ, 0);
           const len = Math.max(slice - gap, 0);
           const seg = (
             <circle
@@ -157,7 +169,6 @@ function DonutChart({ data, total }) {
               strokeDashoffset={-offset}
             />
           );
-          offset += slice;
           return seg;
         })}
       </g>
@@ -179,6 +190,7 @@ function DonutChart({ data, total }) {
 }
 
 function LineChart({ points, labels, labelTicks, height = 180, width = 560 }) {
+  if (!points.length) return <div className="m-empty">No monthly data</div>;
   const padL = 24,
     padR = 12,
     padT = 12,
@@ -304,7 +316,7 @@ function BarangayBar({ name, value, max, color }) {
   const pct = max ? (value / max) * 100 : 0;
   return (
     <div className="m-bar-row">
-      <div className="m-bar-name">{name}</div>
+      <div className="m-bar-name" title={name}>{name}</div>
       <div className="m-bar-track">
         <div
           className="m-bar-fill"
@@ -317,22 +329,17 @@ function BarangayBar({ name, value, max, color }) {
 }
 
 export default function MetricsPage() {
-  const [period, setPeriod] = useState("1y");
-  const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState("all");
+  const [result, setResult] = useState(null);
+  const summary = result?.period === period ? result.data : null;
+  const error = result?.period === period ? result.error : null;
+  const loading = !summary && !error;
   const [barangays, setBarangays] = useState(null);
   // Re-resolved whenever the theme flips — a [] dep here would freeze the
   // choropleth on whichever palette happened to be active at mount.
   const theme = useTheme();
-  const bucketColors = useMemo(
-    // `theme` is not read in the body on purpose: readCssVar resolves against
-    // the DOM, so the theme flip — not any JS value — is what makes the
-    // previously resolved colours stale.
-    () => BUCKET_COLOR_VARS.map((b) => readCssVar(b.varName, b.fallback)),
-    [theme]
-  );
+  const bucketColors = BUCKET_COLOR_VARS.map((b) => readCssVar(b.varName, b.fallback));
 
-  const mapRef = useRef(null);
   const barangayBounds = useMemo(() => {
     if (!barangays?.features?.length) return null;
     const layer = L.geoJSON(barangays);
@@ -340,23 +347,19 @@ export default function MetricsPage() {
     return b.isValid() ? b : null;
   }, [barangays]);
 
-  useEffect(() => {
-    if (mapRef.current && barangayBounds) {
-      mapRef.current.fitBounds(barangayBounds, { padding: [4, 4] });
-    }
-  }, [barangayBounds]);
 
   // Real per-barangay incident counts (keyed by brgy_name) from the summary.
   const byBarangay = useMemo(() => summary?.by_barangay ?? {}, [summary]);
 
   useEffect(() => {
-    setLoading(true);
+    let alive = true;
     fetchMetricsSummary(period)
       .then((data) => {
-        setSummary(data);
-        setLoading(false);
+        if (!alive) return;
+        setResult({ period, data });
       })
-      .catch(() => setLoading(false));
+      .catch((err) => { if (alive) setResult({ period, error: err.message }); });
+    return () => { alive = false; };
   }, [period]);
 
   useEffect(() => {
@@ -371,28 +374,12 @@ export default function MetricsPage() {
   const deltas = summary?.deltas ?? {};
   const avgResponse = summary?.avg_response_minutes;
 
-  const donutData = [
-    {
-      label: "Critical",
-      value: severity.Critical || 0,
-      color: SEVERITY_COLORS.Critical,
-    },
-    {
-      label: "Moderate",
-      value: severity.Moderate || 0,
-      color: SEVERITY_COLORS.Moderate,
-    },
-    {
-      label: "Minor",
-      value: severity.Minor || 0,
-      color: SEVERITY_COLORS.Minor,
-    },
-  ];
+  const donutData = Object.entries(summary?.alarm_levels || {}).map(([label, value], index) => ({
+    label, value, color: ALARM_COLORS[index % ALARM_COLORS.length],
+  }));
   const donutTotal = donutData.reduce((a, b) => a + b.value, 0);
-  // A zero-total donut renders nothing — fall back to equal slices for the ring.
-  const donutChartData =
-    donutTotal > 0 ? donutData : donutData.map((d) => ({ ...d, value: 1 }));
-  const donutChartTotal = donutTotal > 0 ? donutTotal : donutChartData.length;
+  const causes = summary?.top_causes || [];
+  const maxCause = Math.max(1, ...causes.map(c => c.count));
 
   // Incidents-per-month over the last 12 months (real).
   const monthNames = (summary?.monthly ?? []).map((p) => p.month);
@@ -403,8 +390,7 @@ export default function MetricsPage() {
     [byBarangay]
   );
 
-  const topBarangays = useMemo(() => {
-    return Object.entries(byBarangay)
+  const topBarangays = Object.entries(byBarangay)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([name, value]) => ({
@@ -412,7 +398,6 @@ export default function MetricsPage() {
         value,
         color: bucketColors[bucketIndexFor(value, buckets)],
       }));
-  }, [byBarangay, buckets, bucketColors]);
   const maxBar = Math.max(...topBarangays.map((b) => b.value), 1);
 
   return (
@@ -474,7 +459,8 @@ export default function MetricsPage() {
           <KpiCard
             icon={<AlertIcon />}
             label="Critical Incidents"
-            value={(severity.Critical ?? 0).toLocaleString()}
+            value={total > 0 && summary?.unknown_severity_count === total ? KPI_EMPTY : (severity.Critical ?? 0).toLocaleString()}
+            sub={summary?.unknown_severity_count > 0 ? `${summary.unknown_severity_count} records have no reported severity` : undefined}
             loading={loading}
             trend={trendOf(deltas.critical)}
             accent="fire"
@@ -492,16 +478,16 @@ export default function MetricsPage() {
         <div className="m-grid">
           <div className="m-card m-card-donut">
             <div className="m-card-head">
-              <div className="m-card-title">Fire Types by Severity</div>
+              <div className="m-card-title">Fire Incidents by Alarm Level</div>
               <div className="m-card-sub">
                 {PERIODS.find((p) => p.key === period)?.label}
               </div>
             </div>
             <div className="m-donut-wrap">
-              <DonutChart data={donutChartData} total={donutChartTotal} />
+              <DonutChart data={donutData} total={donutTotal} />
               <div className="m-legend-table">
                 <div className="m-legend-thead">
-                  <span>Type</span>
+                  <span>Alarm level</span>
                   <span>Percentage</span>
                   <span>Cases</span>
                 </div>
@@ -530,25 +516,27 @@ export default function MetricsPage() {
           <div className="m-card m-card-line">
             <div className="m-card-head">
               <div className="m-card-title">Incidents per Month</div>
-              <div className="m-card-sub">Last 12 months</div>
+              <div className="m-card-sub">{period === "all" ? "All recorded dates" : "Last 12 months"}</div>
             </div>
-            <LineChart points={linePoints} labels={monthNames} />
+            <LineChart points={linePoints} labels={monthNames} labelTicks={monthNames.map((text, index) => ({ text, index })).filter((_, i) => i % Math.max(1, Math.ceil(monthNames.length / 12)) === 0)} />
           </div>
 
+          <div className="m-bottom-grid">
           <div className="m-card m-card-bars">
             <div className="m-card-head">
               <div className="m-card-title">Fire Occurrences by Barangay</div>
               <div className="m-card-sub">Top 8</div>
             </div>
+            {summary?.unresolved_barangay_count > 0 && <p className="m-card-sub">{summary.unresolved_barangay_count} incident has an unresolved barangay and is excluded from this map.</p>}
             <div className="m-brgy-split">
               <div className="m-brgy-map-col">
                 <div className="m-brgy-map-wrap">
                   <MapContainer
                     center={MAP_CENTER}
-                    zoom={11}
-                    ref={mapRef}
+                    zoom={11.5}
+                    zoomSnap={0.1}
                     className="m-brgy-map"
-                    attributionControl={false}
+                    attributionControl
                     dragging={false}
                     scrollWheelZoom={false}
                     doubleClickZoom={false}
@@ -557,6 +545,7 @@ export default function MetricsPage() {
                     keyboard={false}
                     zoomControl={false}
                   >
+                    <FitBarangays bounds={barangayBounds} />
                     {tileLayersFor(theme === "light" ? "street" : "dark").map(
                       (layer, i) => (
                         <TileLayer key={`${theme}-${i}`} {...layer} />
@@ -564,7 +553,7 @@ export default function MetricsPage() {
                     )}
                     {barangays && (
                       <GeoJSON
-                        key={barangays.features?.length || 0}
+                        key={`${period}-${theme}-${JSON.stringify(byBarangay)}`}
                         data={barangays}
                         style={(feature) => {
                           const name = feature.properties?.brgy_name ?? "";
@@ -613,6 +602,13 @@ export default function MetricsPage() {
                 )}
               </div>
             </div>
+          </div>
+          <section className="m-card m-card-causes" aria-label="Top 10 reported fire causes">
+            <div className="m-card-head"><div className="m-card-title">Top 10 Reported Fire Causes</div><div className="m-card-sub">Incidents</div></div>
+            <p className="m-card-sub">Source cause labels, one count per incident</p>
+            <div className="m-bar-list">{causes.map(c => <BarangayBar key={c.cause} name={c.cause} value={c.count} max={maxCause} color="var(--accent-fire)" />)}</div>
+            {!causes.length && <div className="m-empty">No cause data in this period</div>}
+          </section>
           </div>
         </div>
       </div>

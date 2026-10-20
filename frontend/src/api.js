@@ -17,8 +17,8 @@ async function operationalRequest(path, options) {
   if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Operational analysis unavailable (${res.status})`)
   return data
 }
-export function fetchOperationalTimes(period, page = 1) {
-  return operationalCache.get(`${localStorage.getItem('bfp_token')}:${period}:${page}`, () => operationalRequest(`?period=${period}&page=${page}`))
+export function fetchOperationalTimes(period, page = 1, source = 'recorded') {
+  return operationalCache.get(`${localStorage.getItem('bfp_token')}:${period}:${page}:${source}`, () => operationalRequest(`?period=${period}&page=${page}&source=${source}`))
 }
 export function fetchOperationalDetail(fireId) { return operationalRequest(`/${fireId}`) }
 export async function confirmOperationalMilestone(fireId, body) {

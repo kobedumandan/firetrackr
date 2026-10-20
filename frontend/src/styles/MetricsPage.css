@@ -146,10 +146,17 @@
 }
 
 .m-card-bars { grid-column: 1 / -1; }
+.m-bottom-grid { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
+.m-bottom-grid .m-card-bars { grid-column: auto; min-width: 0; }
+.m-card-causes { min-width: 0; }
+.m-card-causes .m-bar-row { grid-template-columns: minmax(130px, 1.4fr) minmax(60px, 1fr) 26px; gap: 10px; }
+.m-card-causes .m-bar-name { white-space: normal; font-size: 10px; line-height: 1.4; }
+.m-card-causes .m-bar-list { margin-top: 14px; }
+.m-data-note { padding: 12px 14px; border: 1px solid var(--border); border-left: 3px solid var(--accent-amber); border-radius: 8px; font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
 
 .m-brgy-split {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 0.85fr);
   gap: 16px;
   align-items: stretch;
 }
@@ -162,7 +169,7 @@
 }
 
 .m-brgy-map-wrap {
-  height: 340px;
+  height: 320px;
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -216,6 +223,11 @@
   align-items: start;
   padding: 8px 4px;
 }
+.m-brgy-bars .m-bar-row { grid-template-columns: minmax(75px, 1fr) minmax(45px, 1fr) 22px; gap: 7px; }
+.m-brgy-bars .m-bar-name { font-size: 11px; white-space: normal; }
+.m-period-group { flex-wrap: wrap; }
+.m-brgy-legend { flex-wrap: wrap; }
+@media (max-width: 1250px) { .m-bottom-grid { grid-template-columns: 1fr; } }
 
 .m-brgy-bars .m-bar-list,
 .m-brgy-bars .m-empty {

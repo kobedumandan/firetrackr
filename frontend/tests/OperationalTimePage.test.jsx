@@ -31,13 +31,24 @@ const render = async () => act(async () => { root.render(<OperationalTimePage th
 const click = async element => act(async () => { element.click() })
 
 describe('Operational time analysis', () => {
-  it('uses a separate page with five periods and real measured records', async () => {
+  it('offers historical dates and explicitly labeled demo timing data', async () => {
     await render()
     expect(host.querySelector('h1').textContent).toBe('Operational Time Analysis')
-    expect(host.querySelectorAll('.m-period-btn')).toHaveLength(5)
+    expect(host.querySelectorAll('.m-period-btn')).toHaveLength(6)
+    expect(host.textContent).toContain('Demonstration timing')
     expect(host.textContent).toContain('INC-7')
     await click([...host.querySelectorAll('.m-period-btn')].find(b => b.textContent === '1w'))
-    expect(fetchOperationalTimes).toHaveBeenLastCalledWith('1w', 1)
+    expect(fetchOperationalTimes).toHaveBeenLastCalledWith('1w', 1, 'demo')
+  })
+  it('uses server pagination and resets the page when changing data source', async () => {
+    fetchOperationalTimes.mockImplementation((period, page, source) => Promise.resolve({ ...overview, page, source, total: 78, page_size: 5, total_pages: 16 }))
+    await render()
+    await click(host.querySelector('[aria-label="Page 16"]'))
+    expect(fetchOperationalTimes).toHaveBeenLastCalledWith('all', 16, 'demo')
+    expect(host.querySelector('[aria-label="Next page"]').disabled).toBe(true)
+    await act(async () => { const select = host.querySelector('[aria-label="Timing data"]'); select.value = 'recorded'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(fetchOperationalTimes).toHaveBeenLastCalledWith('all', 1, 'recorded')
+    expect(host.textContent).not.toContain('Demonstration timing')
   })
   it('shows loading, errors, and empty data without fabricated values', async () => {
     fetchOperationalTimes.mockReturnValue(new Promise(() => {}))
