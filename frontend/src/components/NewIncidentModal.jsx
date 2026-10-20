@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import ReportReceiptFields from './ReportReceiptFields'
+import { manilaInput } from '../utils/operationalTimes'
 import '../styles/AppModal.css'
 import { SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES, ICON_CLOSE, ICON_PIN, ICON_BOLT } from './incidentFormOptions'
 import { Icon, Field, SectionHead, Segmented } from './incidentForm'
@@ -25,6 +27,8 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
     mobile:       '',
     autoDispatch: true,
     locationSource: 'manual',
+    receivedAt: manilaInput(),
+    recordKind: 'operational',
     ...(initial || {}),
   }))
   const [saving, setSaving] = useState(false)
@@ -59,6 +63,9 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
         autoDispatch: form.autoDispatch,
         locationSource: form.locationSource,
         reporterToken: form.reporterToken,
+        reportReceivedAt: form.receivedAt ? new Date(`${form.receivedAt}+08:00`).toISOString() : null,
+        responseKind: form.responseKind || null,
+        recordKind: form.recordKind,
       })
     } catch (err) {
       setError(err.message || 'Failed to log incident')
@@ -81,6 +88,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
         </div>
 
         <form id="nim-form" className="eim-body" onSubmit={handleSubmit}>
+          <ReportReceiptFields receivedAt={form.receivedAt} kind={form.responseKind} onReceipt={v => set('receivedAt', v)} onKind={v => set('responseKind', v)} recordKind={form.recordKind} onRecordKind={v => set('recordKind', v)} />
 
           {/* ── Location ── */}
           <section className="eim-section">

@@ -8,23 +8,20 @@ the logic they share in `services/`, and process-wide mutable state in
 """
 import asyncio
 import logging
-from concurrent.futures import ProcessPoolExecutor
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-import routing_pool
 import state
-from config import ROUTING_POOL_SIZE, UPLOAD_ROOT
+from config import UPLOAD_ROOT
 from config import BLACKLIST_REAPER_INTERVAL_SECONDS, WATCHDOG_INTERVAL_SECONDS
 from routers import (
     auth, constraints, coverage, dispatch, geodata, incidents, metrics, mobile,
     obstructions, personnel, reporting, routing, shifts, stations, system, teams,
-    trucks,
+    trucks, models, operational_times,
 )
-from routing_setup import build_routing_engine
 from services.token_cleanup import (
     _acquire_reaper_lock, _release_reaper_lock, _token_blacklist_reaper,
 )
@@ -41,35 +38,15 @@ logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI):
     state.main_event_loop = asyncio.get_running_loop()
 
-    # Main-process engine: serves the /api/routing/* endpoints and the
-    # stale-driver watchdog. The per-request deviation routing goes through the
-    # process pool below instead.
-    state.routing_engine = build_routing_engine(register_gym=True)
-    if state.routing_engine is not None:
-        logger.info("GeoAI routing engine ready. Graph: %s", state.routing_engine.graph.summary())
-    else:
-        logger.warning("Routing engine failed to start (non-fatal); routing endpoints unavailable.")
+    from services.routing_reload import reload_routing, poll_routing_changes
 
-    # Process pool for CPU-bound route computation (see _run_routing_via_pool).
-    if ROUTING_POOL_SIZE > 0:
-        try:
-            state.routing_pool_executor = ProcessPoolExecutor(
-                max_workers=ROUTING_POOL_SIZE, initializer=routing_pool.init_worker
-            )
-            # Warm the pool so all workers load their graph now, not on the
-            # first deviation request (avoids cold-start latency spikes).
-            warm_futs = [
-                state.routing_pool_executor.submit(routing_pool.warmup, 0.3)
-                for _ in range(ROUTING_POOL_SIZE * 2)
-            ]
-            ready = sum(1 for f in warm_futs if f.result(timeout=180))
-            logger.info(
-                "Routing process pool started and warmed (workers=%s, ready=%s).",
-                ROUTING_POOL_SIZE, ready,
-            )
-        except Exception as exc:
-            logger.warning("Routing pool failed to start (%s); using in-process fallback.", exc)
-            state.routing_pool_executor = None
+    try:
+        await reload_routing(force=True, register_gym=True)
+    except Exception:
+        logger.exception("Routing initialization failed; endpoints remain unavailable until synchronization succeeds")
+    routing_sync_task = asyncio.create_task(poll_routing_changes())
+    from services.model_registry import poll_model_jobs
+    model_jobs_task = asyncio.create_task(poll_model_jobs())
 
     watchdog_task = None
     if _acquire_watchdog_lock():
@@ -90,7 +67,7 @@ async def lifespan(_app: FastAPI):
 
     yield  # server runs here
 
-    for task in (watchdog_task, reaper_task):
+    for task in (watchdog_task, reaper_task, routing_sync_task, model_jobs_task):
         if task is not None:
             task.cancel()
             try:
@@ -143,9 +120,11 @@ app.include_router(teams.router)
 app.include_router(geodata.router)
 app.include_router(obstructions.router)
 app.include_router(constraints.router)
+app.include_router(models.router)
 app.include_router(reporting.router)
 app.include_router(incidents.router)
 app.include_router(metrics.router)
+app.include_router(operational_times.router)
 app.include_router(dispatch.router)
 app.include_router(mobile.router)
 app.include_router(trucks.router)

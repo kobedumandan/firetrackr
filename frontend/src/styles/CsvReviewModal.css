@@ -1,0 +1,8 @@
+.csv-review-panel { display: flex; flex-direction: column; max-height: 90dvh; overflow: hidden; }
+.csv-review-body { min-height: 0; overflow: auto; padding: 20px; background: var(--surface-sunken); }
+.csv-review-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 16px 20px; border-top: 1px solid var(--border-dim); color: var(--text-secondary); font-size: 12px; }
+.csv-review-footer > div { display: flex; gap: 8px; }
+.csv-review-footer button { padding: 8px 14px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); color: var(--text-primary); font: inherit; cursor: pointer; }
+.csv-review-footer .csv-review-download { background: var(--accent-fire); border-color: var(--accent-fire); color: var(--on-accent); }
+[data-theme="light"] .csv-review-footer .csv-review-download { background: #17191c; border-color: #17191c; color: #ffffff; }
+.csv-review-footer button:hover { filter: brightness(0.95); }

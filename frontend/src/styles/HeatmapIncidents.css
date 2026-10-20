@@ -1,4 +1,4 @@
-.heatmap-incident-pin { display: block; border: 0; border-radius: 50%; background: transparent; box-shadow: none; cursor: help; }
+.heatmap-incident-pin { display: block; border: 0; border-radius: 50%; background: transparent; box-shadow: none; cursor: pointer; }
 .heatmap-incident-pin:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 1px; }
 .heatmap-incident-hover, .leaflet-tooltip.heatmap-incident-leaflet-tooltip { max-width: min(290px, calc(100vw - 16px)); padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); color: var(--text-primary); box-shadow: var(--shadow-md); font-family: var(--font-span); white-space: normal; }
 .heatmap-incident-hover { position: fixed; z-index: var(--z-tooltip, 6000); max-height: min(470px, calc(100vh - 16px)); overflow: hidden; pointer-events: none; }
@@ -15,3 +15,5 @@
 .heatmap-incident-fields dd { margin: 0; text-align: right; color: var(--text-primary); overflow-wrap: anywhere; }
 .heatmap-incident-more { margin-top: 8px; }
 .heatmap-incident-popup .leaflet-popup-content { margin: 12px; }
+
+.heatmap-incident-dot { display: block; width: 12px; height: 12px; margin: 6px; border: 2px solid white; border-radius: 50%; background: var(--accent-fire); box-shadow: 0 2px 8px rgba(0,0,0,.35); }

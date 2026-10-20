@@ -1,6 +1,64 @@
 # Response Performance implementation plan
 
-Status: proposed, not implemented. Prepared 2026-10-18.
+Status: combined web implementation; web review and mobile field acceptance pending. Prepared
+2026-10-18; implementation status updated 2026-10-20.
+
+## Integration delivery status
+
+The combined implementation is now installed in the original `firetrackr` checkout,
+on its existing `feature/gnn-inference-mode` branch, alongside model management and
+the constraint editor. Existing local source changes and private environment files
+are preserved. The original local `bfp_capstone` database was backed up and upgraded
+from 0026 to 0028; all existing row counts, including 214 incidents, are preserved.
+No synthetic records were seeded and no old receipt times or record kinds were
+invented. That installation did not commit, push or merge the work to main.
+
+`../firetrackr-web-response-performance` on `feature/web-response-performance`
+remains the combined review snapshot with its separate synthetic database. The
+earlier response-only worktree and `firetrackr_review` database remain separate.
+The original-checkout run instructions remain in the local, uncommitted
+`documentation/web-response-performance-review.md` guide. Test-database launchers,
+fixtures and review guides are excluded from application commits.
+
+Mobile is `../firetrackr-mobile-response-performance` on
+`feature/response-performance-integration`; the user deferred physical phone review.
+That review is tracked separately from the web implementation.
+
+Implemented: a Metrics overview and an Analysis page with Response Performance,
+Operational Times and Coverage Planning tabs; explicit date/team/kind/
+station/barangay/severity filters, independent overall first arrival, per-dispatch
+observations, monthly team trends with gaps and accessible tables, mean/median/p90,
+quality counts and reasons, equal-window comparisons, retained route revisions and
+assignment context, filtered full CSV export, and server-received mobile acknowledge/
+depart actions. New intake displays receipt time and record kind explicitly;
+backdated intake clears receipt and defaults to unknown. Legacy records remain
+unclassified. The original web chain's already-applied `0025` (constraint segment
+identities) and `0026` (model registry) are preserved. New `0027` adds operational
+timing; new `0028` adds response performance. The colleague's compatibility repair
+is unnecessary here because authoritative `0024` already adds dispatch type.
+Do not point this chain at the earlier response-only review database: its same
+numeric revision IDs represent a different schema. Use a fresh database or the
+verified original constraint/model chain with a backup and explicit migration step.
+
+Attributable GPS stores dispatch/personnel and only assigns truck identity when
+manning is verified. Retry keys deduplicate fixes. Dispatch deletion cascades sample
+history, and incident deletion explicitly removes associated vehicle logs.
+Collection has no automatic age-based purge yet; a deployment retention policy still
+needs agreement. GPS milestone automation defaults off behind
+`OPERATIONAL_GPS_AUTOMATION`; phone validation is required before enabling it.
+Existing stage-analysis maps remain available, while the new history view presents
+preserved planned routes. ETA comparisons require a reliable departure fix matching
+the predicted origin.
+
+Validation uses a separate disposable PostGIS cluster and local test fixtures.
+Fresh migration upgrade, isolated rollback/re-upgrade, backend/API behavior and
+frontend unit checks are exercised; see KNOWLEDGE.md for final results. Outstanding
+acceptance: physical-phone actions/screen-lock/delayed-network checks, intended-data
+read-only sufficiency audit, deployment retention agreement and field demonstration.
+No calibrated performance or AI improvement is claimed. Migration reconciliation
+in this branch adds new revisions after the original history. Original applied
+migration IDs are unchanged; the original local database received the additive
+0027/0028 schema changes after a verified backup.
 
 ## Purpose and delivery boundary
 
@@ -9,9 +67,11 @@ and trace a monthly statistic back to its dispatch records and route information
 This is descriptive operational analysis, not a team leaderboard or proof that AI
 routing caused faster responses.
 
-Deliver a dedicated Response Performance view inside the existing Metrics page.
+Deliver a dedicated Response Performance view inside the Analysis page. Metrics
+retains the overview; the sidebar's former standalone stage-analysis and Planning
+entries are grouped under Analysis as Operational Times and Coverage Planning.
 Use the current React state navigation, API client, CSS tokens, Leaflet components,
-and admin authorization. The separate mobile project is at `../../firetrackr_mobile/`.
+and admin authorization. The separate mobile project is at `../firetrackr_mobile/`.
 
 Defense scope: monthly team comparisons, incident/dispatch drill-down, transparent
 data-quality counts, mobile acknowledgement/departure collection, and preserved
@@ -86,7 +146,7 @@ where recorded. They do not attribute delay or performance causally to a team.
 
 ## Data collection and migrations
 
-Use new Alembic revisions after the actual current head (currently 0023); leave
+Use new Alembic revisions after the actual current head (0026 at integration start); leave
 existing migrations and user changes untouched. New historical fields are nullable.
 
 1. Incident context: add `call_received_at`, `created_at`, and a constrained

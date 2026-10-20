@@ -6,6 +6,49 @@ import { createAsyncCache } from './utils/asyncCache'
 // the API elsewhere can still provide VITE_API_BASE_URL.
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 const constraintCache = createAsyncCache({ ttl: 5 * 60 * 1000 })
+const operationalCache = createAsyncCache({ ttl: 30000 })
+export function invalidateOperationalTimes() {
+  operationalCache.clear()
+  for (const key of Object.keys(_cache)) if (key.startsWith('metrics-summary-')) delete _cache[key]
+  window.dispatchEvent(new Event('operational-times-updated'))
+}
+async function operationalRequest(path, options) {
+  const res = await apiFetch(`/api/operational-times${path}`, options)
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Operational analysis unavailable (${res.status})`)
+  return data
+}
+export function fetchOperationalTimes(period, page = 1, source = 'recorded') {
+  return operationalCache.get(`${localStorage.getItem('bfp_token')}:${period}:${page}:${source}`, () => operationalRequest(`?period=${period}&page=${page}&source=${source}`))
+}
+export function fetchOperationalDetail(fireId) { return operationalRequest(`/${fireId}`) }
+async function performanceRequest(path, query, signal) {
+  const res = await apiFetch(`/api/metrics/response-performance${path}?${query}`, { signal })
+  if (!res.ok) throw new Error(await _detail(res, `Response analysis unavailable (${res.status})`))
+  return res
+}
+export async function fetchResponsePerformance(query, signal) {
+  return (await performanceRequest('', query, signal)).json()
+}
+export async function fetchResponseDispatches(query, signal) {
+  return (await performanceRequest('/dispatches', query, signal)).json()
+}
+export async function fetchResponseDispatch(id, signal) {
+  return (await performanceRequest(`/dispatches/${id}`, '', signal)).json()
+}
+export async function exportResponsePerformance(query, { download = true } = {}) {
+  const blob = await (await performanceRequest('/export.csv', query)).blob()
+  if (!download) return blob
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url; link.download = 'response-performance.csv'; link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+export async function confirmOperationalMilestone(fireId, body) {
+  const data = await operationalRequest(`/${fireId}/milestones`, { method: 'POST', body: JSON.stringify(body) })
+  invalidateOperationalTimes()
+  return data
+}
 function cachedConstraints(path) {
   const key = `${BASE_URL}:${localStorage.getItem('bfp_token') || ''}:${path}`
   return constraintCache.get(key, async () => {
@@ -36,6 +79,10 @@ export async function apiFetch(path, options = {}) {
     localStorage.removeItem('bfp_token')
     localStorage.removeItem('bfp_user')
     window.location.reload()
+  }
+
+  if (res.ok && options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase()) && /^\/api\/(incidents|dispatch)(\/|$)/.test(path)) {
+    invalidateOperationalTimes()
   }
 
   return res
@@ -640,4 +687,43 @@ export async function fetchLoginHistory(limit = 5) {
   const res = await apiFetch(`/api/auth/login-history?limit=${limit}`)
   if (!res.ok) throw new Error(await _detail(res, `Failed to load login history (${res.status})`))
   return res.json()
+}
+
+// Model management stays uncached: readiness and job state change independently
+// of the dashboard's personnel/constraint caches.
+async function modelRequest(path, options = {}) {
+  const res = await apiFetch(`/api/models${path}`, options)
+  if (!res.ok) {
+    const error = new Error(res.status === 503
+      ? 'Model management is unavailable. Refresh the status or contact your administrator.'
+      : await _detail(res, `Model request failed (${res.status})`))
+    error.status = res.status
+    throw error
+  }
+  return res.json()
+}
+
+export const fetchModelSummary = (signal) => modelRequest('/summary', { signal })
+export const fetchModelVersions = (offset = 0, signal) => modelRequest(`?limit=20&offset=${offset}`, { signal })
+export const fetchModelReport = (version, signal) => modelRequest(`/${encodeURIComponent(version)}/report`, { signal })
+export const fetchModelPreview = (version, signal) => modelRequest(`/${encodeURIComponent(version)}/preview`, { signal })
+export const initializeModels = () => modelRequest('/initialize', { method: 'POST' })
+export const retrainModel = () => modelRequest('/retrain', { method: 'POST' })
+export const rejectModel = (version) => modelRequest(`/${encodeURIComponent(version)}/reject`, { method: 'POST' })
+export async function promoteModel(version, expectedChampion) {
+  const result = await modelRequest(`/${encodeURIComponent(version)}/promote`, {
+    method: 'POST', body: JSON.stringify({ expected_champion: expectedChampion }),
+  })
+  invalidateModelRouting()
+  return result
+}
+
+export function invalidateModelRouting() {
+  constraintCache.clear()
+  clearCoverageCache()
+  window.dispatchEvent(new Event('firetrackr:model-routing'))
+}
+
+export function notifyModelUpdate() {
+  window.dispatchEvent(new Event('firetrackr:model-update'))
 }

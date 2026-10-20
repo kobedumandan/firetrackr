@@ -22,7 +22,7 @@
   z-index: var(--z-sidebar);
   width: 290px;
   max-width: calc(100% - 20px);
-  max-height: calc(100% - 20px);
+  max-height: calc(100% - 255px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -30,15 +30,13 @@
   scrollbar-width: none;
 }
 .right-sidebar-dock-top { display: flex; flex-direction: row-reverse; justify-content: flex-start; align-items: center; gap: 8px; }
-.right-sidebar-dock .command-map-camera-slot { flex-shrink: 0; }
-.right-sidebar-dock .command-map-camera-slot:empty { display: none; }
 .command-map-layer-slot { min-height: 0; max-height: min(320px, 45vh); overflow-y: auto; scrollbar-width: none; flex: 0 0 auto; }
 .right-sidebar-dock::-webkit-scrollbar, .command-map-layer-slot::-webkit-scrollbar { display: none; }
 .command-map-layer-slot:empty { display: none; }
 .right-sidebar-dock:has(.command-map-tools) .sidebar-right { min-height: min(160px, 25vh); }
 .right-sidebar-dock:has(.command-map-tools) .command-map-layer-slot { min-height: 88px; }
 @media (max-width: 760px) {
-  .right-sidebar-dock { top: 138px; max-height: calc(100% - 148px); }
+  .right-sidebar-dock { top: 138px; max-height: calc(100% - 383px); }
 }
 .sidebar-right {
   position: relative;

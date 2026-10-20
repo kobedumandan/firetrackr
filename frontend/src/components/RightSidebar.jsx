@@ -351,8 +351,8 @@ export default function RightSidebar({
   viewMode = "normal",
   onViewModeChange,
   focusNonce = 0,
-  onCameraHostChange,
   onLayerToolsHostChange,
+  constraintEditing = false,
 }) {
   const viewModeButtons = (
     <div
@@ -375,6 +375,7 @@ export default function RightSidebar({
           key={key}
           className={`view-mode-btn${viewMode === key ? " active" : ""}`}
           onClick={() => onViewModeChange?.(key)}
+          disabled={constraintEditing && key !== 'gnn'}
           title={label}
           aria-label={label}
         >
@@ -399,6 +400,13 @@ export default function RightSidebar({
   const [forceRerouteConfirm, setForceRerouteConfirm] = useState(null);
   const [forceRerouteBusy, setForceRerouteBusy] = useState(null);
 
+  if (constraintEditing) {
+    return <div className="right-sidebar-dock right-sidebar-dock--collapsed">
+      {viewModeButtons}
+      <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+    </div>;
+  }
+
   if (collapsed) {
     return (
       <div className="right-sidebar-dock right-sidebar-dock--collapsed">
@@ -413,7 +421,6 @@ export default function RightSidebar({
         </button>
         {viewModeButtons}
         </div>
-        <div ref={onCameraHostChange} className="command-map-camera-slot" />
         <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
       </div>
     );
@@ -919,7 +926,6 @@ export default function RightSidebar({
         )}
       </aside>
       {viewModeButtons}
-      <div ref={onCameraHostChange} className="command-map-camera-slot" />
       <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
       </div>
 

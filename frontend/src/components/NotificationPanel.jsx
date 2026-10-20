@@ -10,6 +10,7 @@ const TABS = [
   { key: "incidents", label: "Incidents" },
   { key: "dispatch", label: "Dispatch" },
   { key: "devices", label: "Devices" },
+  { key: "models", label: "Models" },
 ];
 
 /* Relative for the first hour — "4m ago" is what matters on a live board —

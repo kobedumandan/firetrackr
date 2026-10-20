@@ -10,10 +10,21 @@ explicit load here, a populated .env is silently ignored and every setting
 falls back to its default.
 """
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Local training is opt-in through the admin API; no job starts during startup.
+_RETRAIN_REPO_ROOT = Path(__file__).resolve().parent.parent
+RETRAIN_RUNNER = os.getenv("RETRAIN_RUNNER", "local")
+RETRAIN_PYTHON = Path(os.getenv("RETRAIN_PYTHON", str(
+    _RETRAIN_REPO_ROOT / ".venv-training" / ("Scripts/python.exe" if os.name == "nt" else "bin/python"))))
+RETRAIN_TIMEOUT_MIN = float(os.getenv("RETRAIN_TIMEOUT_MIN", "60"))
+RETRAIN_POLL_SECONDS = 10
+MODEL_VERSIONS_ROOT = _RETRAIN_REPO_ROOT / "backend/ai/models/versions"
+RETRAIN_WORK_ROOT = _RETRAIN_REPO_ROOT / "backend/data/retraining/registry"
 
 
 JWT_SECRET      = os.getenv("JWT_SECRET", "change-me")
@@ -104,4 +115,5 @@ BLACKLIST_REAPER_GRACE_MINUTES    = 5
 # the request (blocking it — the pre-optimisation behaviour, useful for A/B
 # comparison). Default false = deferred to a background task.
 _REROUTE_INLINE = os.getenv("LOCATION_REROUTE_INLINE", "false").lower() == "true"
+OPERATIONAL_GPS_AUTOMATION = os.getenv("OPERATIONAL_GPS_AUTOMATION", "false").lower() == "true"
 CONNECTOR_MERGE_TOLERANCE_M = 20

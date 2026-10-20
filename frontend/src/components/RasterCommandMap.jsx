@@ -60,6 +60,8 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
           fallback('The enhanced map renderer is unavailable. Using the standard map instead.')
         }
       })
+      // Worker startup can fail without emitting MapLibre's error event. In
+      // that case return control to the existing Leaflet renderer.
       startupTimer = setTimeout(() => fallback('The enhanced map did not finish loading. Using the standard map instead.'), 15000)
       map.on('error', event => {
         if (!event.sourceId) fallback('The enhanced map renderer is unavailable. Using the standard map instead.')

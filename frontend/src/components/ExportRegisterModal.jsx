@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import AppModal from './AppModal'
+import CsvSheet from './CsvSheet'
 import { Icon, Field, SectionHead, Segmented, FieldError } from './incidentForm'
 import { ICON_CHECK, ICON_MINUS, ICON_PLUS, ICON_WARN } from './incidentFormOptions'
 import {
@@ -31,7 +32,6 @@ const ORIENTATIONS = [
 // Portrait aspect (h / w) per paper, for skeleton pages before the render lands.
 const PAPER_RATIO = { a4: 297 / 210, letter: 11 / 8.5, legal: 14 / 8.5 }
 const PREVIEW_PAGES = 20
-const PREVIEW_CSV_ROWS = 100
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 let pdfjsPromise = null
@@ -472,36 +472,5 @@ function Toggle({ icon, title, desc, checked, onChange }) {
       </span>
       <input type="checkbox" role="switch" className="nim-switch" checked={checked} onChange={e => onChange(e.target.checked)} />
     </label>
-  )
-}
-
-function CsvSheet({ doc }) {
-  if (!doc) return null
-  const shown = doc.rows.slice(0, PREVIEW_CSV_ROWS)
-  return (
-    <div className="xpm-sheet-wrap">
-      <table className="xpm-sheet">
-        <thead>
-          <tr>
-            <th className="xpm-sheet-n" aria-label="Row" />
-            {doc.columns.map(c => <th key={c.key}>{c.label}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {shown.map((r, i) => (
-            <tr key={i}>
-              <td className="xpm-sheet-n">{i + 1}</td>
-              {r.cells.map((v, j) => <td key={j}>{v}</td>)}
-            </tr>
-          ))}
-          {!shown.length && (
-            <tr><td className="xpm-sheet-empty" colSpan={doc.columns.length + 1}>No incidents match these filters.</td></tr>
-          )}
-        </tbody>
-      </table>
-      {doc.rows.length > PREVIEW_CSV_ROWS && (
-        <div className="xpm-more">Showing {PREVIEW_CSV_ROWS} of {doc.rows.length} rows. The file includes all of them.</div>
-      )}
-    </div>
   )
 }

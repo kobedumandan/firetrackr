@@ -63,6 +63,15 @@ async def _perform_dispatch(
         team_id=team_id,
         dispatch_status="dispatched",
         dispatch_truck_count=0,
+        context_snapshot={
+            "provenance": "assignment",
+            "team_name": team.team_name,
+            "station_id": team.station_id,
+            "station_name": team.station.station_name if team.station else None,
+            "shift_name": team.shift.shift_name if team.shift else None,
+            "truck_id": team.truck_id,
+            "truck": team.truck.truck_platenum if team.truck else None,
+        },
     )
     db.add(dispatch)
 
@@ -160,6 +169,8 @@ async def _perform_dispatch(
                 selected_obj = next((ro for ro, r in saved_routes if r["is_selected"]), None)
                 if selected_obj:
                     dispatch.route_id = selected_obj.route_id
+                    from services.operational_times import snapshot_routes
+                    snapshot_routes(db, dispatch, reason="initial_selection")
                     db.commit()
         except Exception as exc:
             logger.warning("Route computation failed (dispatch will proceed): %s", exc)
