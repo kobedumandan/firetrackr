@@ -189,111 +189,71 @@ function DonutChart({ data, total }) {
   );
 }
 
-function LineChart({ points, labels, labelTicks, height = 180, width = 560 }) {
+function LineChart({ points, labels, labelTicks, height = 210, width = 680 }) {
   if (!points.length) return <div className="m-empty">No monthly data</div>;
-  const padL = 24,
-    padR = 12,
-    padT = 12,
-    padB = 26;
+  const padL = 42,
+    padR = 14,
+    padT = 14,
+    padB = 30;
   const w = width - padL - padR;
   const h = height - padT - padB;
-  const max = Math.max(...points, 1);
-  const min = 0;
+  const highest = Math.max(...points, 1);
+  const rawStep = highest / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalized = rawStep / magnitude;
+  const niceStep = Math.max(1, (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude);
+  const max = niceStep * 4;
   const sx = (i) => padL + (i * w) / Math.max(points.length - 1, 1);
-  const sy = (v) => padT + h - ((v - min) / (max - min || 1)) * h;
+  const sy = (v) => padT + h - (v / max) * h;
 
-  // Smooth Catmull-Rom → cubic Bezier path
   const n = points.length;
-  let path = `M${sx(0)},${sy(points[0])}`;
-  for (let i = 0; i < n - 1; i++) {
-    const i0 = Math.max(i - 1, 0);
-    const i3 = Math.min(i + 2, n - 1);
-    const x0 = sx(i0),
-      y0 = sy(points[i0]);
-    const x1 = sx(i),
-      y1 = sy(points[i]);
-    const x2 = sx(i + 1),
-      y2 = sy(points[i + 1]);
-    const x3 = sx(i3),
-      y3 = sy(points[i3]);
-    const cp1x = x1 + (x2 - x0) / 6;
-    const cp1y = y1 + (y2 - y0) / 6;
-    const cp2x = x2 - (x3 - x1) / 6;
-    const cp2y = y2 - (y3 - y1) / 6;
-    path += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${x2},${y2}`;
-  }
+  const path = points.map((value, index) => `${index ? "L" : "M"}${sx(index)},${sy(value)}`).join(" ");
   const area = `${path} L${sx(n - 1)},${padT + h} L${sx(0)},${padT + h} Z`;
-  const gridY = [0, 0.25, 0.5, 0.75, 1].map((p) => padT + h * (1 - p));
-  const gridX = points.map((_, i) => sx(i));
+  const gridSteps = [0, 0.25, 0.5, 0.75, 1];
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
       className="m-line"
-      preserveAspectRatio="none"
+      role="img"
+      aria-label="Monthly fire incident trend"
     >
       <defs>
-        <linearGradient id="lineFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="var(--accent-fire)" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="var(--accent-fire)" stopOpacity="0" />
+        <linearGradient id="incidentLineFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="var(--accent-fire)" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="var(--accent-fire)" stopOpacity="0.025" />
         </linearGradient>
-        <linearGradient id="gridFade" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#000" stopOpacity="0" />
-          <stop offset="55%" stopColor="#fff" stopOpacity="1" />
-          <stop offset="100%" stopColor="#fff" stopOpacity="1" />
-        </linearGradient>
-        <mask id="gridMask" maskUnits="userSpaceOnUse">
-          <rect x={padL} y={padT} width={w} height={h} fill="url(#gridFade)" />
-        </mask>
       </defs>
-      <g mask="url(#gridMask)">
-        <rect
-          x={padL}
-          y={padT}
-          width={w}
-          height={h}
-          className="m-line-grid-bg"
-        />
-        {gridY.map((y, i) => (
+      {gridSteps.map((step) => {
+        const y = padT + h * (1 - step);
+        return (
+          <g key={step}>
           <line
-            key={`gy-${i}`}
             x1={padL}
             x2={width - padR}
             y1={y}
             y2={y}
             className="m-line-grid"
           />
-        ))}
-        {gridX.map((x, i) => (
-          <line
-            key={`gx-${i}`}
-            x1={x}
-            x2={x}
-            y1={padT}
-            y2={padT + h}
-            className="m-line-grid"
-          />
-        ))}
-      </g>
-      {[0.25, 0.5, 0.75, 1].map((p, i) => (
-        <text
-          key={i}
-          x={padL - 11}
-          y={padT + h * (1 - p) + 3}
-          textAnchor="end"
-          className="m-line-ytick"
-        >
-          {Math.round(max * p)}
-        </text>
-      ))}
-      <path d={area} fill="url(#lineFill)" />
+            <text x={padL - 10} y={y + 3} textAnchor="end" className="m-line-ytick">
+              {Math.round(max * step)}
+            </text>
+          </g>
+        );
+      })}
+      <path d={area} fill="url(#incidentLineFill)" />
       <path
         d={path}
         fill="none"
         stroke="var(--accent-fire)"
-        strokeWidth="1.1"
+        strokeWidth="2.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+      {points.map((value, index) => (
+        <circle key={index} cx={sx(index)} cy={sy(value)} r="3.5" className="m-line-point">
+          <title>{`${labels[index]}: ${value} incident${value === 1 ? "" : "s"}`}</title>
+        </circle>
+      ))}
       {(labelTicks
         ? labelTicks
         : labels.map((text, i) => ({ text, index: i }))
@@ -514,9 +474,15 @@ export default function MetricsPage() {
           </div>
 
           <div className="m-card m-card-line">
-            <div className="m-card-head">
-              <div className="m-card-title">Incidents per Month</div>
-              <div className="m-card-sub">{period === "all" ? "All recorded dates" : "Last 12 months"}</div>
+            <div className="m-line-head">
+              <div>
+                <div className="m-card-title">Incidents per Month</div>
+                <div className="m-card-sub">Fire incidents recorded over time</div>
+              </div>
+              <div className="m-line-total">
+                <strong>{total.toLocaleString()}</strong>
+                <span>{period === "all" ? "across all recorded dates" : `in the selected ${PERIODS.find((p) => p.key === period)?.label} period`}</span>
+              </div>
             </div>
             <LineChart points={linePoints} labels={monthNames} labelTicks={monthNames.map((text, index) => ({ text, index })).filter((_, i) => i % Math.max(1, Math.ceil(monthNames.length / 12)) === 0)} />
           </div>
