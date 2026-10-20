@@ -108,6 +108,7 @@ const KIND_META = {
   onScene:            { Icon: OnSceneIcon,     accent: "blue",   label: "Unit On Scene",        group: "dispatch" },
   autoDispatchFailed: { Icon: NoUnitIcon,      accent: "red",    label: "Auto-Dispatch Failed", group: "dispatch" },
   deviceOffline:      { Icon: OfflineIcon,     accent: "slate",  label: "Device Offline",       group: "devices" },
+  modelUpdates:       { Icon: ReportIcon,      accent: "blue",   label: "Model Update",         group: "models" },
 };
 
 export function kindMeta(kind) {

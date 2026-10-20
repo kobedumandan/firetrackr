@@ -121,6 +121,7 @@ const NAV_ITEMS = [
 
 export default function TopBar({
   activeNav,
+  constraintEditing = false,
   onNavChange,
   theme,
   onThemeToggle,
@@ -171,7 +172,7 @@ export default function TopBar({
       <div className="topbar-spacer" />
 
       <nav className="topbar-nav">
-        {NAV_ITEMS.map(({ label, Icon }) => (
+        {NAV_ITEMS.filter(({ label }) => !constraintEditing || label !== "Incidents").map(({ label, Icon }) => (
           <span key={label} style={{ display: "contents" }}>
             {label === "Incidents" && <div className="section-divider" />}
             <button

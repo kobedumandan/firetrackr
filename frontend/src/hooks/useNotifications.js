@@ -17,6 +17,7 @@ export const NOTIF_DEFAULTS = {
   onScene:            true,
   deviceOffline:      true,
   autoDispatchFailed: true,
+  modelUpdates:       true,
   sound:              false,
 }
 

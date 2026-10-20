@@ -30,7 +30,7 @@ export function rasterMapStyle() {
         'line-dasharray': ['case', ['get', 'dashed'], ['literal', [2, 2]], ['literal', [1, 0]]],
       } },
       { id: 'command-points', type: 'circle', source: 'command-overlays', filter: ['==', ['geometry-type'], 'Point'], paint: {
-        'circle-radius': ['get', 'radius'], 'circle-color': ['get', 'fillColor'], 'circle-opacity': ['get', 'opacity'],
+        'circle-pitch-alignment': 'map', 'circle-radius': ['get', 'radius'], 'circle-color': ['get', 'fillColor'], 'circle-opacity': ['get', 'opacity'],
       } },
       { id: 'command-boundary', type: 'line', source: 'command-boundary', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: {
         'line-color': PANABO_BOUNDARY_COLOR, 'line-width': 3.5, 'line-opacity': 1,

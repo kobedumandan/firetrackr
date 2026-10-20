@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { lazy, Suspense, useState, useRef, useEffect } from "react";
 import "../styles/SettingsPage.css";
 import { useSessionTimer } from "../hooks/useSessionTimer";
 import SignOutModal from "../components/SignOutModal";
@@ -9,6 +9,7 @@ import {
   updateAccountProfile,
 } from "../api";
 import { describeUserAgent, formatLoginStamp } from "../utils/session";
+const ModelSettings = lazy(() => import("../components/ModelSettings"));
 
 function IcoAccount({ className }) {
   return (
@@ -123,7 +124,10 @@ const SIDEBAR_ITEMS = [
   {
     section: "system",
     label: "System",
-    items: [{ id: "about", Icon: IcoAbout, label: "About" }],
+    items: [
+      { id: "model", Icon: IcoMapDisplay, label: "Model", adminOnly: true },
+      { id: "about", Icon: IcoAbout, label: "About" },
+    ],
   },
 ];
 
@@ -300,7 +304,7 @@ function SectionProfile({ user, onAccountUpdate = () => {} }) {
 
   return (
     <>
-      <div className="settings-section-title">Profile</div>
+      <h2 className="settings-section-title">Profile</h2>
       <div className="section-desc">
         Your account information and identity details.
       </div>
@@ -617,7 +621,7 @@ function SectionSecurity({ user, onAccountUpdate = () => {} }) {
 
   return (
     <>
-      <div className="section-title">Security</div>
+      <h2 className="settings-section-title">Security</h2>
       <div className="section-desc">
         Manage your password and login credentials.
       </div>
@@ -683,7 +687,7 @@ function SectionSession({ onLogout }) {
 
   return (
     <>
-      <div className="section-title">Session</div>
+      <h2 className="settings-section-title">Session</h2>
       <div className="section-desc">
         Current login session details and activity.
       </div>
@@ -771,7 +775,7 @@ function SectionAppearance({
 }) {
   return (
     <>
-      <div className="section-title">Appearance</div>
+      <h2 className="settings-section-title">Appearance</h2>
       <div className="section-desc">
         Customize how the FireTrackr interface looks.
       </div>
@@ -855,7 +859,7 @@ function SectionAppearance({
    - Auto-dispatch failure was already broadcast and silently dropped, which
      meant nobody being en route to a logged fire showed up nowhere on the
      dashboard. It gets its own row. */
-function SectionNotifications({ prefs, onPrefChange }) {
+function SectionNotifications({ prefs, onPrefChange, isAdmin }) {
   const bind = (key) => ({
     on: !!prefs[key],
     onChange: (v) => onPrefChange(key, v),
@@ -863,7 +867,7 @@ function SectionNotifications({ prefs, onPrefChange }) {
 
   return (
     <>
-      <div className="section-title">Notifications</div>
+      <h2 className="settings-section-title">Notifications</h2>
       <div className="section-desc">
         Control how and when you receive system alerts.
       </div>
@@ -968,6 +972,10 @@ function SectionNotifications({ prefs, onPrefChange }) {
         <div className="block-header">
           <div className="block-title">Delivery</div>
         </div>
+        {isAdmin && <div className="block-row">
+          <div className="row-left"><div className="row-label">Model updates</div><div className="row-sub">Notify when training finishes or the active model changes</div></div>
+          <div className="row-right"><Toggle {...bind("modelUpdates")} /></div>
+        </div>}
         <div className="block-row">
           <div className="row-left">
             <div className="row-label">Alert Sound</div>
@@ -1017,7 +1025,7 @@ const MAP_LAYER_ROWS = [
 function SectionMapDisplay({ prefs, onPrefChange }) {
   return (
     <>
-      <div className="section-title">Map Display</div>
+      <h2 className="settings-section-title">Map Display</h2>
       <div className="section-desc">
         Configure what is shown on the GIS command map. The Heat Map and
         Barangay view modes always show their own layer.
@@ -1049,7 +1057,7 @@ function SectionMapDisplay({ prefs, onPrefChange }) {
 function SectionAbout() {
   return (
     <>
-      <div className="section-title">About</div>
+      <h2 className="settings-section-title">About</h2>
       <div className="section-desc">
         System information and version details.
       </div>
@@ -1182,6 +1190,7 @@ export default function SettingsPage({
           <SectionNotifications
             prefs={notifPrefs}
             onPrefChange={onNotifPrefChange}
+            isAdmin={user?.role === "admin"}
           />
         );
       case "display":
@@ -1193,6 +1202,8 @@ export default function SettingsPage({
         );
       case "about":
         return <SectionAbout />;
+      case "model":
+        return user?.role === "admin" ? <Suspense fallback={<p role="status">Loading model settings…</p>}><ModelSettings /></Suspense> : null;
       default:
         return null;
     }
@@ -1205,17 +1216,18 @@ export default function SettingsPage({
           {SIDEBAR_ITEMS.map(({ section, label, items }) => (
             <div key={section}>
               <div className="sidebar-section-label">{label}</div>
-              {items.map((item) => (
-                <div
+              {items.filter((item) => !item.adminOnly || user?.role === "admin").map((item) => (
+                <button type="button"
                   key={item.id}
                   className={`settings-sidebar-item${
                     activeId === item.id ? " active" : ""
                   }`}
                   onClick={() => setActiveId(item.id)}
+                  aria-current={activeId === item.id ? "page" : undefined}
                 >
                   <item.Icon className="sidebar-item-icon" />
                   {item.label}
-                </div>
+                </button>
               ))}
               <div className="sidebar-gap" />
               {section === "system" ? null : <hr className="sidebar-divider" />}

@@ -5,7 +5,7 @@ import MapControlIcon from './MapControlIcon'
 import PanelToggleIcon from './PanelToggleIcon'
 import '../styles/MapActions.css'
 
-export default function CommandBasemapSelector({ value, onChange }) {
+export default function CommandBasemapSelector({ value, onChange, editing = false }) {
   const [collapsed, setCollapsed] = useState(true)
   if (collapsed) {
     return <button type="button" className="map-actions-float-btn command-basemap-float-btn"
@@ -33,6 +33,7 @@ export default function CommandBasemapSelector({ value, onChange }) {
             aria-pressed={value === id}
             aria-label={label}
             onClick={() => onChange(id)}
+            disabled={editing && id === 'google-3d'}
             title={title ?? `${label} street map`}
             className="command-basemap-option"
           >

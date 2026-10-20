@@ -452,14 +452,14 @@ function exportCsv(rows, stations) {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-export default function StationsPage({ onShowOnMap }) {
+export default function StationsPage({ onShowOnMap, initialStationId = null }) {
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(() => initialStationId == null ? null : stationKey(initialStationId));
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [deleting, setDeleting] = useState(null);
@@ -575,7 +575,7 @@ export default function StationsPage({ onShowOnMap }) {
             <UnfoldIcon />
           </div>
           <div className="sta-header-actions">
-            <button className="sta-btn-secondary" onClick={() => exportCsv(filtered, stations)} disabled={filtered.length === 0}>
+            <button className="sta-btn-secondary table-export-btn" onClick={() => exportCsv(filtered, stations)} disabled={filtered.length === 0}>
               <ExportIcon />
               Export
             </button>

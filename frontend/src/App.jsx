@@ -20,7 +20,7 @@ import LoginPage from './pages/LoginPage'
 import ToastStack from './components/ToastStack'
 import NotificationPanel from './components/NotificationPanel'
 import { useNotifications, readNotifPrefs, NOTIF_STORAGE_KEY } from './hooks/useNotifications'
-import { fetchActiveIncidents, fetchPersonnel, fetchStations, fetchDispatches, selectRoute, fetchPersonnelLocations, fullReroute, createIncident, fetchReporterSessions, WS_URL } from './api'
+import { fetchActiveIncidents, fetchPersonnel, fetchStations, fetchDispatches, selectRoute, fetchPersonnelLocations, fullReroute, createIncident, fetchReporterSessions, invalidateModelRouting, notifyModelUpdate, WS_URL } from './api'
 import { readMapLayerPrefs, MAP_LAYER_STORAGE_KEY } from './utils/mapLayers'
 import useCommandShortcut from './hooks/useCommandShortcut'
 import './App.css'
@@ -122,6 +122,7 @@ export default function App() {
 
   // ── Dashboard-only state ───────────────────────────────────────────────────
   const [activeNav, setActiveNav]                 = useState('Command')
+  const [reviewStationId, setReviewStationId] = useState(null)
   const [showSettings, setShowSettings]           = useState(false)
   const [selectedIncident, setSelectedIncident]   = useState(null)
   // Persisted: without this the dashboard snapped back to dark on every
@@ -156,6 +157,7 @@ export default function App() {
   const [mapControlsHost, setMapControlsHost]     = useState(null)
   const [mapLayerToolsHost, setMapLayerToolsHost] = useState(null)
   const [viewMode, setViewMode]                   = useState("normal")
+  const [constraintEditing, setConstraintEditing] = useState(false)
   const [heatmapRevision, setHeatmapRevision] = useState(0)
   const [pickingMode, setPickingMode]             = useState(false)
   const [pickedLocation, setPickedLocation]       = useState(null)
@@ -229,6 +231,7 @@ export default function App() {
     const inc = activeIncidents.find(i => i.fire_id === fireId)
     if (!inc) return
     closeAlerts()
+    setConstraintEditing(false)
     setShowSettings(false)
     setActiveNav('Command')
     handleSelectIncident(inc.id)
@@ -273,11 +276,13 @@ export default function App() {
   }, [])
 
   const navigateToPage = useCallback(nav => {
+    if (constraintEditing && nav === 'Incidents') return
+    setConstraintEditing(false)
     setActiveNav(nav)
     setShowSettings(false)
     setFocusedPersonnel(null)
     setMapFocus(null)
-  }, [])
+  }, [constraintEditing])
   useCommandShortcut(navigateToPage, route.view === 'dashboard')
 
   // Auto-select the first incident when the list loads or changes
@@ -375,6 +380,17 @@ export default function App() {
         if (e.data === 'pong') return
         try {
           const msg = JSON.parse(e.data)
+          if (['model_candidate_ready', 'model_training_failed', 'model_promoted'].includes(msg.type)) {
+            if (msg.type === 'model_promoted') invalidateModelRouting()
+            notifyModelUpdate()
+            if (route.user?.role === 'admin') {
+              pushNotif('modelUpdates', {
+                title: msg.type === 'model_candidate_ready' ? `${msg.data.version} is ready for review`
+                  : msg.type === 'model_promoted' ? `${msg.data.version} is now active` : `${msg.data.version} training failed`,
+                body: 'Open Settings → Model to review the current status.',
+              })
+            }
+          }
           if (['incident_created', 'incident_updated', 'incident_deleted'].includes(msg.type)) {
             setHeatmapRevision(value => value + 1)
           }
@@ -784,6 +800,7 @@ export default function App() {
   }
 
   function handleLogin(user) {
+    setConstraintEditing(false)
     setRoute({ view: 'dashboard', user })
   }
 
@@ -800,6 +817,7 @@ export default function App() {
   }
 
   function handleLogout() {
+    setConstraintEditing(false)
     // Both are diff baselines, not data: a new session has to reseed them or it
     // would alert on everything that changed while nobody was signed in.
     incidentSnapRef.current = new Map()
@@ -829,7 +847,8 @@ export default function App() {
         onNavChange={navigateToPage}
         theme={theme}
         onThemeToggle={toggleTheme}
-        onOpenSettings={() => setShowSettings(s => !s)}
+        onOpenSettings={() => { setConstraintEditing(false); setShowSettings(s => !s) }}
+        constraintEditing={constraintEditing && activeNav === 'Command' && !showSettings}
         showingSettings={showSettings}
         user={route.user}
         onLogout={handleLogout}
@@ -884,6 +903,7 @@ export default function App() {
         />
       ) : activeNav === 'Stations' ? (
         <StationsPage
+          initialStationId={reviewStationId}
           onShowOnMap={(s) => {
             setActiveNav('Command')
             setMapFocus({ lat: s.latitude, lng: s.longitude, nonce: Date.now() })
@@ -911,6 +931,7 @@ export default function App() {
             newIncidents={loggedIncidents}
             reporterLocations={reporterLocations}
             stations={stations}
+            onViewStation={stationId => { setReviewStationId(stationId); navigateToPage('Stations') }}
             personnel={personnel}
             livePersonnelLocations={livePersonnelLocations}
             dispatchRoutes={dispatchRoutes}
@@ -920,21 +941,24 @@ export default function App() {
             onIncidentClick={handleSelectIncident}
             leftCollapsed={leftCollapsed}
             viewMode={viewMode}
+            constraintEditing={constraintEditing && viewMode === 'gnn'}
+            onConstraintEditingChange={editing => { if (editing) cancelPicking(); setConstraintEditing(editing) }}
             layerPrefs={mapLayerPrefs}
             focusedPersonnel={focusedPersonnel}
             mapFocus={mapFocus}
           />
-          <MapActions
+          {!constraintEditing && <MapActions
             pickingMode={pickingMode}
             onStartPicking={startPicking}
             onOpenLocationRequest={() => setShowLocationRequest(true)}
             reporterCount={reporterLocations.length}
-          />
+          />}
+          <div ref={setMapControlsHost} className="command-map-camera-slot" />
           <RightSidebar
-            onCameraHostChange={setMapControlsHost}
             onLayerToolsHostChange={setMapLayerToolsHost}
             viewMode={viewMode}
-            onViewModeChange={setViewMode}
+            onViewModeChange={mode => { setConstraintEditing(false); setViewMode(mode) }}
+            constraintEditing={constraintEditing && viewMode === 'gnn'}
             incident={selectedInc}
             incidentRoutes={dispatchRoutes.filter(r => r.fire_id === (selectedInc?.fire_id ?? null))}
             incidentDispatches={dispatches.filter(d => d.fire_id === (selectedInc?.fire_id ?? null))}

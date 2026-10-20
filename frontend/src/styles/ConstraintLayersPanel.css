@@ -1,0 +1,31 @@
+.constraint-layers { position: absolute; top: 12px; left: 12px; bottom: 12px; width: 310px; max-width: calc(100% - 24px); z-index: var(--z-sidebar); display: flex; flex-direction: column; overflow: hidden; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg); color: var(--text-primary); font-size: 11px; pointer-events: auto; }
+.constraint-layers header { padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+.constraint-layers h2 { font-size: 14px; margin: 0; }
+.constraint-layers header span, .constraint-layers small { color: var(--text-secondary); }
+.constraint-layers button { font: inherit; color: var(--text-primary); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 5px; padding: 6px 9px; cursor: pointer; }
+.constraint-layers button:hover:not(:disabled) { background: var(--bg-hover); }
+.constraint-layers button:disabled { opacity: .45; cursor: not-allowed; }
+.constraint-layers button[aria-pressed="true"] { border-color: var(--accent-fire); }
+.constraint-layers :is(button,input,select):focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+.constraint-layers-add, .constraint-layers-filters, .constraint-layers-draft { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.constraint-layers-add > div, .constraint-layers-draft > div, .constraint-layers-filters > div { display: flex; gap: 7px; margin-top: 6px; }
+.constraint-layers-filters label { display: flex; flex-direction: column; flex: 1; gap: 4px; min-width: 0; margin-bottom: 7px; color: var(--text-secondary); }
+.constraint-layers input, .constraint-layers select { min-width: 0; width: 100%; box-sizing: border-box; background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border); padding: 7px; border-radius: 5px; font: inherit; }
+.constraint-layers-count { padding: 0 14px; margin: 8px 0; }
+.constraint-layers-count span { display: block; color: var(--text-secondary); font-size: 10px; }
+.constraint-layers-list { flex: 1; min-height: 80px; overflow-y: auto; overscroll-behavior: contain; }
+.constraint-layers-list > p { padding: 10px 14px; }
+.constraint-layer-row { display: flex; gap: 5px; align-items: center; padding: 6px 10px; border-top: 1px solid var(--border); }
+.constraint-layer-row.selected { background: var(--bg-hover); box-shadow: inset 3px 0 var(--accent-fire); }
+.constraint-layers .constraint-layer-select { display: flex; flex: 1; gap: 8px; align-items: flex-start; min-width: 0; text-align: left; border: 0; background: transparent; padding: 4px; }
+.constraint-layer-select > span:last-child { min-width: 0; }
+.constraint-layer-select strong, .constraint-layer-select small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.constraint-layer-swatch { width: 5px; height: 25px; border-radius: 3px; flex-shrink: 0; margin-top: 2px; }
+.constraint-layers .constraint-layer-eye { font-size: 10px; padding: 5px; }
+.constraint-layer-inspector { padding: 12px 14px; border-top: 1px solid var(--border); max-height: 170px; overflow-y: auto; }
+.constraint-layer-inspector p { margin: 6px 0; line-height: 1.5; }
+.constraint-layer-inspector > div { display: flex; gap: 8px; margin-bottom: 8px; }
+.constraint-layers-notice { margin: 6px 12px; padding: 8px; border-left: 2px solid var(--accent-fire); line-height: 1.5; }
+.map-area--constraint-editing :is(.command-basemap,.command-basemap-float-btn) { left: 336px; }
+.view-mode-btn:disabled { opacity: .4; cursor: not-allowed; }
+@media (max-width: 850px) { .constraint-layers { width: 270px; } .map-area--constraint-editing :is(.command-basemap,.command-basemap-float-btn) { left: 296px; } }

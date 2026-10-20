@@ -641,3 +641,42 @@ export async function fetchLoginHistory(limit = 5) {
   if (!res.ok) throw new Error(await _detail(res, `Failed to load login history (${res.status})`))
   return res.json()
 }
+
+// Model management stays uncached: readiness and job state change independently
+// of the dashboard's personnel/constraint caches.
+async function modelRequest(path, options = {}) {
+  const res = await apiFetch(`/api/models${path}`, options)
+  if (!res.ok) {
+    const error = new Error(res.status === 503
+      ? 'Model management is unavailable. Refresh the status or contact your administrator.'
+      : await _detail(res, `Model request failed (${res.status})`))
+    error.status = res.status
+    throw error
+  }
+  return res.json()
+}
+
+export const fetchModelSummary = (signal) => modelRequest('/summary', { signal })
+export const fetchModelVersions = (offset = 0, signal) => modelRequest(`?limit=20&offset=${offset}`, { signal })
+export const fetchModelReport = (version, signal) => modelRequest(`/${encodeURIComponent(version)}/report`, { signal })
+export const fetchModelPreview = (version, signal) => modelRequest(`/${encodeURIComponent(version)}/preview`, { signal })
+export const initializeModels = () => modelRequest('/initialize', { method: 'POST' })
+export const retrainModel = () => modelRequest('/retrain', { method: 'POST' })
+export const rejectModel = (version) => modelRequest(`/${encodeURIComponent(version)}/reject`, { method: 'POST' })
+export async function promoteModel(version, expectedChampion) {
+  const result = await modelRequest(`/${encodeURIComponent(version)}/promote`, {
+    method: 'POST', body: JSON.stringify({ expected_champion: expectedChampion }),
+  })
+  invalidateModelRouting()
+  return result
+}
+
+export function invalidateModelRouting() {
+  constraintCache.clear()
+  clearCoverageCache()
+  window.dispatchEvent(new Event('firetrackr:model-routing'))
+}
+
+export function notifyModelUpdate() {
+  window.dispatchEvent(new Event('firetrackr:model-update'))
+}

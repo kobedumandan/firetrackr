@@ -1,3 +1,4 @@
+import { attachProjectedPopup } from './projectedPopup'
 import { rangeToZoom, zoomToRange } from './googleMaps3D'
 import { frameThrottle } from './commandMapData'
 import { setGoogleLinePath, setGooglePolygonPaths } from './googleMapGeometry'
@@ -41,6 +42,16 @@ function labelFor(layer) {
 // dispatch filtering, live positions, layer toggles and existing click actions.
 export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, { initiallyActive = true } = {}) {
   const overlays = new Map()
+  let clickPoint
+  const popups = attachProjectedPopup(leaflet, popup => {
+    const element = overlays.get(popup._source)?.element
+    const container = leaflet.getContainer?.()?.getBoundingClientRect() || { left: 0, top: 0 }
+    if (element) {
+      const rect = (element.firstElementChild || element).getBoundingClientRect()
+      return { x: rect.left + rect.width / 2 - container.left, y: rect.top - container.top }
+    }
+    return clickPoint
+  }, () => active && !disposed && !unloaded)
   let syncing = false
   let disposed = false
   let unloaded = false
@@ -85,10 +96,14 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
     if (!active) return
     if (leaflet.getContainer?.().classList.contains('pick-cursor')) return
     event.stopPropagation()
+    const pointer = event.domEvent || event
+    const rect = leaflet.getContainer?.()?.getBoundingClientRect() || { left: 0, top: 0 }
+    clickPoint = Number.isFinite(pointer.clientX) ? { x: pointer.clientX - rect.left, y: pointer.clientY - rect.top } : null
     const latlng = layer.getLatLng?.() ?? (event.position && L.latLng(event.position.lat, event.position.lng))
+    if (layer.options?.hoverOnly) { leaflet.closePopup(); layer.closeTooltip?.() }
     layer.fire('click', { latlng, originalEvent: event })
-    if (!layer.getPopup?.() && layer.getTooltip?.() && latlng) {
-      L.popup({ autoPan: false }).setLatLng(latlng).setContent(layer.getTooltip().getContent()).openOn(leaflet)
+    if (!layer.options?.hoverOnly && !layer.getPopup?.() && layer.getTooltip?.() && latlng) {
+      L.popup({ autoPan: false }, layer).setLatLng(latlng).setContent(layer.getTooltip().getContent()).openOn(leaflet)
     }
   }
 
@@ -180,13 +195,20 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
     }
     googleMap.append(...elements)
     const move = () => schedule()
-    layer.on('move', move)
+    layer.on('move iconchange', move)
     return {
       signature: JSON.stringify(description),
+      element: elements[0],
+      align() {
+        if (layer.options.mapAligned) {
+          const icon = elements[0]?.firstElementChild
+          if (icon) icon.style.transform = `rotateX(${googleMap.tilt || 0}deg)`
+        }
+      },
       hideHover() { hover?.hide() },
       remove() {
         hover?.dispose()
-        layer.off('move', move)
+        layer.off('move iconchange', move)
         elements.forEach(element => element.remove())
         if (popup) popup.options.autoPan = previousAutoPan
       },
@@ -204,7 +226,9 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
       const current = overlays.get(layer)
       if (current?.signature === JSON.stringify(description)) return
       current?.remove()
-      overlays.set(layer, createOverlay(layer, description))
+      const overlay = createOverlay(layer, description)
+      overlays.set(layer, overlay)
+      overlay.align()
     })
     for (const [layer, overlay] of overlays) {
       if (!seen.has(layer)) {
@@ -218,11 +242,12 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
     if (!disposed && frame === null) frame = requestAnimationFrame(refresh)
   }
   const readCamera = frameThrottle(() => {
+    popups.update()
     if (active) onCamera({ tilt: googleMap.tilt ?? 0, heading: googleMap.heading ?? 0, range: googleMap.range })
   })
   function cameraChanged() {
     if (!active) return
-    overlays.forEach(overlay => overlay.hideHover())
+    overlays.forEach(overlay => { overlay.hideHover(); overlay.align() })
     readCamera()
     clearTimeout(cameraTimer)
     cameraTimer = setTimeout(saveCamera, 150)
@@ -250,6 +275,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
       // Carry the last position back even if the user switches mid-gesture.
       saveCamera()
       disposed = true
+      popups.dispose()
       readCamera.cancel()
       clearTimeout(cameraTimer)
       if (frame !== null) cancelAnimationFrame(frame)

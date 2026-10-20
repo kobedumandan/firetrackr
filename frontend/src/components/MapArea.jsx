@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, memo, Fragment } from "react";
 import { createPortal } from "react-dom";
 import PanelToggleIcon from "./PanelToggleIcon";
-import MapControlIcon from "./MapControlIcon";
+import StationMapMarker from "./StationMapMarker";
 import {
   MapContainer,
   AttributionControl,
@@ -23,6 +23,8 @@ import CommandBasemapSelector from "./CommandBasemapSelector";
 import GooglePhotorealisticMap from "./GooglePhotorealisticMap";
 import RasterCommandMap from "./RasterCommandMap";
 import HeatmapPanel from "./HeatmapPanel";
+import ConstraintLayersPanel from "./ConstraintLayersPanel";
+import { buildConstraintLayers, constraintLayerId } from "../utils/constraintLayers";
 import HeatmapIncidents from "./HeatmapIncidents";
 import { useHeatmap } from "../hooks/useHeatmap";
 import { EMPTY_HEATMAP, filterHeatmapPoints, heatmapSurface } from "../utils/heatmap";
@@ -295,6 +297,21 @@ function stationIcon() {
     <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="var(--accent-green)"><path d="M300-240v-360h360v360-360H300v360Zm-60 0h60v-360h360v360h60v-366L480-780 240-606v366Zm120-240h240v-60H360v60Zm120-160q17 0 28.5-11.5T520-680q0-17-11.5-28.5T480-720q-17 0-28.5 11.5T440-680q0 17 11.5 28.5T480-640ZM160-160v-400H39l441-320 440 320H800v400H600v-260H360v260H160Z"/>
     </svg></div>`,
   });
+}
+
+function IncidentMapTooltip({ id, status, location, severity, alarm, units }) {
+  return <div className="command-incident-tooltip">
+    <div className="command-tooltip-header">
+      <span className="command-tooltip-id">{id}</span>
+      <span className="command-tooltip-status">{status?.replaceAll("_", " ")}</span>
+    </div>
+    <div className="command-tooltip-heading">{location || "Incident location"}</div>
+    <div className="command-tooltip-meta">
+      {severity && <span>{severity}</span>}
+      {alarm && <span>{alarm}</span>}
+      {units != null && <span>{units} unit{units !== 1 ? "s" : ""}</span>}
+    </div>
+  </div>;
 }
 
 // ── Road obstruction types & icon ────────────────────────────────────────────
@@ -878,99 +895,22 @@ function ObstructionPanel({
 }
 
 function CloseIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"
-      aria-hidden="true">
-      <line x1="6" y1="6" x2="18" y2="18" />
-      <line x1="18" y1="6" x2="6" y2="18" />
-    </svg>
-  );
+  return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>;
 }
 
-function ConstraintEditorPanel({
-  data,
-  loadError,
-  onRetry,
-  drawingType,
-  pointCount,
-  onFinishDraw,
-  onStartDraw,
-  onCancelDraw,
-  customConstraints,
-  onDelete,
-  onEdit,
-}) {
+function ConstraintEditorPanel({ data, loadError, onRetry, editing, onToggleEdit, blocked }) {
   const [open, setOpen] = useState(true);
-  if (!open) return (
-    <button type="button" className="constraint-float-btn" onClick={() => setOpen(true)} aria-label="Expand GAT constraints" aria-expanded={false}>
-      <PanelToggleIcon />GAT constraints
-    </button>
-  );
-  return (
-    <section className="constraint-editor" aria-label="GAT constraints">
-      <div className="constraint-editor-head">
-        <button type="button" className="constraint-collapse-btn" onClick={() => setOpen(false)} aria-label="Collapse GAT constraints" aria-expanded={true} title="Collapse">
-          <PanelToggleIcon expanded />
-        </button>
-        <span className="constraint-editor-title">GAT constraints</span>
-      </div>
-      <div className="constraint-editor-body">
-        {data ? <GnnLegend data={data} /> : <div className="constraint-load-state" role="status">
-          <span>{loadError ? "Could not load road constraints." : "Loading road constraints..."}</span>
-          {loadError && <button type="button" onClick={onRetry}>Retry</button>}
-        </div>}
-        <div className="constraint-section-heading"><span>Draw a constraint</span><span className="constraint-section-note">Manual</span></div>
-        <div className="constraint-editor-types">
-          {CONSTRAINT_TYPES.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className="constraint-draw-btn"
-              style={{ "--constraint-color": t.color }}
-              onClick={() => onStartDraw(t.id)}
-              aria-label={`Draw ${t.label.toLowerCase()}`}
-              aria-pressed={drawingType === t.id}
-            >
-              <span className="constraint-type-icon"><MapControlIcon name={t.id === "narrow_road" ? "narrow" : "traffic"} width="16" height="16" /></span>
-              <span>{t.id === "narrow_road" ? "Narrow road" : "Traffic area"}</span>
-            </button>
-          ))}
-        </div>
-        {drawingType ? <div className="constraint-drawing-hint" role="status">
-          <span>{pointCount} point{pointCount !== 1 ? "s" : ""}<small>{pointCount < 2 ? "Select at least two points on the map." : "Continue drawing or save this constraint."}</small></span>
-          <div className="constraint-drawing-actions">
-            <button type="button" disabled={pointCount < 2} onClick={onFinishDraw}>Save</button>
-            <button type="button" onClick={onCancelDraw}>Cancel</button>
-          </div>
-        </div> : <p className="constraint-help">Choose a type, then draw along a road.</p>}
-        <div className="constraint-list">
-          <div className="constraint-section-heading">
-            <span>Custom constraints</span><span className="constraint-count">{customConstraints.length}</span>
-          </div>
-          {customConstraints.length === 0 && <div className="constraint-list-empty">No custom constraints yet.</div>}
-          <div className="constraint-list-scroll">
-            {customConstraints.map((c) => {
-              const info = CONSTRAINT_TYPES.find((t) => t.id === c.constraint_type) || CONSTRAINT_TYPES[0];
-              return <div key={c.id} className="constraint-list-item">
-                <span className="constraint-item-swatch" style={{ background: info.color }} />
-                <span className="constraint-item-name" title={c.name || "Unnamed constraint"}>{c.name || "Unnamed constraint"}</span>
-                <button type="button" className="constraint-item-btn" title="Edit" aria-label={`Edit ${c.name || "unnamed constraint"}`} onClick={() => onEdit(c)}>
-                  <MapControlIcon name="edit" width="13" height="13" />
-                </button>
-                <button type="button" className="constraint-item-btn constraint-item-btn--del" title="Delete" aria-label={`Delete ${c.name || "unnamed constraint"}`} onClick={() => onDelete(c.id)}>
-                  <CloseIcon />
-                </button>
-              </div>;
-            })}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
+  if (!open) return <button type="button" className="constraint-float-btn" onClick={() => setOpen(true)} aria-label="Expand GAT constraints" aria-expanded={false}><PanelToggleIcon />GAT constraints</button>;
+  return <section className="constraint-editor" aria-label="GAT constraints">
+    <div className="constraint-editor-head"><button type="button" className="constraint-collapse-btn" onClick={() => setOpen(false)} aria-label="Collapse GAT constraints" aria-expanded={true}><PanelToggleIcon expanded /></button><span className="constraint-editor-title">GAT constraints</span></div>
+    <div className="constraint-editor-body">
+      {data ? <GnnLegend data={data} /> : <div className="constraint-load-state" role="status"><span>{loadError ? 'Could not load road constraints.' : 'Loading road constraints...'}</span>{loadError && <button type="button" onClick={onRetry}>Retry</button>}</div>}
+      <button type="button" className="constraint-draw-btn" style={{ '--constraint-color': 'var(--accent-fire)' }} disabled={blocked || (!data && !editing)} aria-pressed={editing} onClick={onToggleEdit}>{editing ? 'Done editing' : 'Edit constraints'}</button>
+      <p className="constraint-help">{editing ? 'Select a layer on the left to inspect or edit a drawing.' : 'Enter editing mode to browse layers and manage drawings.'}</p>
+    </div>
+  </section>;
 }
 
-// ── Save dialog after drawing is complete ───────────────────────────────────
 function ConstraintSaveDialog({
   constraintType,
   onSave,
@@ -981,12 +921,23 @@ function ConstraintSaveDialog({
   const [highway, setHighway] = useState(editingConstraint?.highway || "");
   const [surface, setSurface] = useState(editingConstraint?.surface || "");
   const [maxspeed, setMaxspeed] = useState(editingConstraint?.maxspeed || "");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const saveLock = useRef(false);
+  async function submit() {
+    if (saveLock.current) return;
+    saveLock.current = true;
+    setSaving(true); setSaveError('');
+    try { await onSave({ name, highway, surface, maxspeed }); }
+    catch (error) { setSaveError(error.message || 'Could not save this drawing.'); setSaving(false); saveLock.current = false; }
+  }
   const info =
     CONSTRAINT_TYPES.find((t) => t.id === constraintType) ||
     CONSTRAINT_TYPES[0];
 
   return (
-    <div className="constraint-save-dialog">
+    <div className="constraint-save-dialog" role="dialog" aria-modal="true" aria-label="Save constraint drawing" aria-busy={saving}>
+      {saveError && <p role="alert" className="constraint-help">{saveError}</p>}
       <div className="constraint-save-title" style={{ color: info.color }}>
         {info.symbol} {editingConstraint ? "Edit" : "Save"} {info.label}
       </div>
@@ -1025,11 +976,12 @@ function ConstraintSaveDialog({
       <div className="constraint-save-actions">
         <button
           className="constraint-save-btn"
-          onClick={() => onSave({ name, highway, surface, maxspeed })}
+          onClick={submit}
+          disabled={saving}
         >
-          {editingConstraint ? "Update" : "Save"}
+          {saving ? "Saving..." : editingConstraint ? "Update" : "Save"}
         </button>
-        <button className="constraint-cancel-btn" onClick={onCancel}>
+        <button className="constraint-cancel-btn" onClick={onCancel} disabled={saving}>
           Cancel
         </button>
       </div>
@@ -1137,8 +1089,11 @@ export default function MapArea({
   focusedIncidentId = null,
   ripplingIncidentId = null,
   onIncidentClick,
+  onViewStation,
   leftCollapsed = false,
   viewMode = "normal",
+  constraintEditing = false,
+  onConstraintEditingChange = () => {},
   layerPrefs = null,
   focusedPersonnel = null,
   mapFocus = null,
@@ -1185,10 +1140,18 @@ export default function MapArea({
   const [gnnAttempt, setGnnAttempt] = useState(0);
 
   useEffect(() => {
+    const refreshModel = () => { setGnnData(null); setGnnError(null); setGnnAttempt(value => value + 1); };
+    window.addEventListener('firetrackr:model-routing', refreshModel);
+    return () => window.removeEventListener('firetrackr:model-routing', refreshModel);
+  }, []);
+
+  useEffect(() => {
     if (!activeLayers.has("GNN Constraints") || gnnData) return;
+    let alive = true;
     fetchGnnConstraints()
-      .then((data) => { setGnnData(data); setGnnError(null); })
-      .catch((err) => { setGnnError(err); console.error("GNN constraints fetch failed:", err); });
+      .then((data) => { if (alive) { setGnnData(data); setGnnError(null); } })
+      .catch((err) => { if (alive) { setGnnError(err); console.error("GNN constraints fetch failed:", err); } });
+    return () => { alive = false; };
   }, [activeLayers, gnnData, gnnAttempt]);
 
   // ── Custom constraint drawing ─────────────────────────────────────────────
@@ -1197,18 +1160,41 @@ export default function MapArea({
   const [drawPoints, setDrawPoints] = useState([]); // [[lat, lon], ...]
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [editingConstraint, setEditingConstraint] = useState(null);
+  const [hiddenConstraints, setHiddenConstraints] = useState(new Set());
+  const [selectedConstraint, setSelectedConstraint] = useState(null);
+  const [constraintNotice, setConstraintNotice] = useState('');
+  const [constraintError, setConstraintError] = useState('');
+  const [exitConstraintMode, setExitConstraintMode] = useState(false);
+  function cancelConstraintDraft() {
+    setDrawingType(null); setDrawPoints([]); setShowSaveDialog(false); setEditingConstraint(null);
+  }
+  function finishConstraintMode() {
+    cancelConstraintDraft(); setSelectedConstraint(null); setHiddenConstraints(new Set());
+    setExitConstraintMode(false); onConstraintEditingChange(false);
+  }
+  function toggleConstraintMode() {
+    if (showSaveDialog) return;
+    if (!constraintEditing) {
+      onConstraintEditingChange(true);
+      if (isGoogle3D) changeBasemap(theme === 'light' ? 'street' : 'dark');
+    } else if (drawingType && drawPoints.length) setExitConstraintMode(true);
+    else finishConstraintMode();
+  }
 
   useEffect(() => {
     if (!activeLayers.has("GNN Constraints")) return;
+    let alive = true;
     fetchConstraints()
-      .then(setCustomConstraints)
-      .catch((err) => console.error("Custom constraints fetch failed:", err));
-  }, [activeLayers]);
+      .then(rows => { if (alive) { setCustomConstraints(rows); setConstraintError(''); } })
+      .catch(() => { if (alive) setConstraintError('Saved drawings could not load. Retry before editing.'); });
+    return () => { alive = false; };
+  }, [activeLayers, gnnAttempt]);
 
   // Keyboard: Enter to finish drawing, Esc to cancel
   useEffect(() => {
-    if (!constraintsView || !drawingType) return;
+    if (!constraintEditing || !constraintsView || !drawingType || showSaveDialog) return;
     function handleKey(e) {
+      if (e.target.matches?.("input, textarea, select")) return;
       if (e.key === "Enter" && drawPoints.length >= 2) {
         setShowSaveDialog(true);
       } else if (e.key === "Escape") {
@@ -1219,10 +1205,10 @@ export default function MapArea({
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [constraintsView, drawingType, drawPoints]);
+  }, [constraintEditing, constraintsView, drawingType, drawPoints, showSaveDialog]);
 
   function handleDrawPoint(latlng) {
-    if (!drawingType || showSaveDialog) return;
+    if (!constraintEditing || !drawingType || showSaveDialog) return;
     setDrawPoints((prev) => [...prev, latlng]);
   }
 
@@ -1233,24 +1219,19 @@ export default function MapArea({
       coordinates: coords,
       ...fields,
     };
-    try {
-      if (editingConstraint) {
-        const updated = await updateConstraint(editingConstraint.id, body);
-        setCustomConstraints((prev) =>
-          prev.map((c) => (c.id === updated.id ? updated : c))
-        );
-      } else {
-        const saved = await createConstraint(body);
-        setCustomConstraints((prev) => [saved, ...prev]);
-      }
-      setGnnData(null); // force refetch to include the new constraint
-    } catch (err) {
-      console.error("Save constraint failed:", err);
+    let saved;
+    if (editingConstraint) {
+      saved = await updateConstraint(editingConstraint.id, body);
+      setCustomConstraints(prev => prev.map(row => row.id === saved.id ? saved : row));
+    } else {
+      saved = await createConstraint(body);
+      setCustomConstraints(prev => [saved, ...prev]);
     }
-    setDrawingType(null);
-    setDrawPoints([]);
-    setShowSaveDialog(false);
-    setEditingConstraint(null);
+    setConstraintNotice(!saved.segment_uids?.length ? 'Saved, but no road segments matched. Adjust the drawing to follow the road.'
+      : saved.routing_applied === false ? 'Saved. Routing refresh is pending.' : 'Saved. Routing has been updated.');
+    setGnnData(null);
+    setGnnAttempt(value => value + 1);
+    cancelConstraintDraft();
   }
 
   // Deleting changes what the router avoids, so both obstruction and
@@ -1267,15 +1248,19 @@ export default function MapArea({
     await deleteConstraint(id);
     setCustomConstraints((prev) => prev.filter((c) => c.id !== id));
     setGnnData(null);
+    setSelectedConstraint(null);
+    setConstraintNotice('Drawing removed. Baseline annotations remain available.');
+    setGnnAttempt(value => value + 1);
   }
 
   function handleEditConstraint(c) {
+    if (!constraintEditing) return;
     setEditingConstraint(c);
     setDrawingType(c.constraint_type);
     setDrawPoints(c.coordinates.map(([lon, lat]) => [lat, lon]));
   }
 
-  const isDrawing = constraintsView && !!drawingType && !showSaveDialog;
+  const isDrawing = constraintEditing && constraintsView && !!drawingType && !showSaveDialog;
   const drawColor =
     CONSTRAINT_TYPES.find((t) => t.id === drawingType)?.color || "#fff";
 
@@ -1428,12 +1413,24 @@ export default function MapArea({
 
   // ── Barangay boundaries ────────────────────────────────────────────────────
   const [barangays, setBarangays] = useState(null);
+  const [barangayError, setBarangayError] = useState(false);
+  const [barangayAttempt, setBarangayAttempt] = useState(0);
   useEffect(() => {
-    if (!activeLayers.has("Barangay") || barangays) return;
+    if ((!activeLayers.has("Barangay") && !constraintEditing) || barangays) return;
     fetchBarangays()
-      .then(setBarangays)
-      .catch((err) => console.error("Barangay fetch failed:", err));
-  }, [activeLayers, barangays]);
+      .then(data => { setBarangays(data); setBarangayError(false); })
+      .catch(() => setBarangayError(true));
+  }, [activeLayers, barangays, constraintEditing, barangayAttempt]);
+
+  const constraintLayers = useMemo(() => buildConstraintLayers(gnnData, customConstraints, barangays), [gnnData, customConstraints, barangays]);
+  const selectedLayer = constraintLayers.find(row => row.key === selectedConstraint?.key);
+  const visibleGnnData = useMemo(() => {
+    if (!activeLayers.has('GNN Constraints')) return null;
+    if (!constraintEditing || !gnnData) return gnnData;
+    return { ...gnnData, constraints: { ...gnnData.constraints, features: gnnData.constraints.features
+      .filter(feature => !hiddenConstraints.has(constraintLayerId(feature)))
+      .map(feature => constraintLayerId(feature) === selectedConstraint?.key ? { ...feature, properties: { ...feature.properties, map_color: '#ffb020', map_weight: 8, map_opacity: 1 } } : feature) } };
+  }, [activeLayers, constraintEditing, gnnData, hiddenConstraints, selectedConstraint]);
 
   // Only data/theme changes reconcile operational overlays. Camera readout
   // updates stay inside the renderer and never trigger a whole-layer scan.
@@ -1441,16 +1438,15 @@ export default function MapArea({
     activeIncidents, newIncidents, reporterLocations, stations, personnel,
     livePersonnelLocations, dispatchRoutes, dispatches, focusedIncidentId,
     ripplingIncidentId, pickedLocation, ghost, obstructions, barangays, theme,
-    drawPoints, isDrawing, customConstraints, mapZoom, recentlyUpdatedIds, activeLayers,
+    drawPoints, isDrawing, customConstraints, mapZoom, recentlyUpdatedIds, activeLayers, visibleGnnData,
   ]);
-  const visibleGnnData = activeLayers.has("GNN Constraints") ? gnnData : null;
 
   return (
-    <div className={`map-area${isGoogle3D || !rasterFallback ? " map-area--projected" : ""}${isGoogle3D ? " map-area--3d" : ""}`}>
+    <div className={`map-area${constraintEditing ? " map-area--constraint-editing" : ""}${isGoogle3D || !rasterFallback ? " map-area--projected" : ""}${isGoogle3D ? " map-area--3d" : ""}`}>
       <div ref={setGoogleHost} className="command-renderer-host" hidden={!isGoogle3D} />
       <div ref={setRasterHost} className="command-renderer-host" hidden={isGoogle3D || rasterFallback} />
       {/* Outside Leaflet so choosing a style never places a marker/drawing point. */}
-      <CommandBasemapSelector value={tileMode} onChange={changeBasemap} />
+      <CommandBasemapSelector value={tileMode} onChange={changeBasemap} editing={constraintEditing} />
       {/* Picking-mode banner */}
       {pickingMode && (
         <div className="map-pick-banner">
@@ -1552,7 +1548,7 @@ export default function MapArea({
           focusedPersonnel={focusedPersonnel}
           livePersonnelLocations={livePersonnelLocations}
         />
-        <MapFocuser mapFocus={mapFocus} />
+        <MapFocuser mapFocus={constraintEditing && selectedConstraint ? selectedConstraint.focus : mapFocus} />
 
         {/* Live preview of constraint being drawn */}
         {isDrawing && <DrawPreview points={drawPoints} color={drawColor} />}
@@ -1562,7 +1558,7 @@ export default function MapArea({
         {rasterFallback && heatmapActive && <HeatmapLayer data={heatSurface} />}
         {heatmapActive && <HeatmapIncidents points={heatPoints} />}
         {rasterFallback && activeLayers.has("GNN Constraints") && gnnData && (
-          <GnnConstraintsLayer data={gnnData} />
+          <GnnConstraintsLayer data={visibleGnnData} />
         )}
 
         {/* Barangay boundary overlay with centered labels */}
@@ -1771,16 +1767,12 @@ export default function MapArea({
           stations
             .filter((s) => s.station_latitude && s.station_longitude)
             .map((s) => (
-              <Marker
+              <StationMapMarker
                 key={s.station_id}
-                position={[s.station_latitude, s.station_longitude]}
+                station={s}
                 icon={stationIcon()}
-              >
-                <Tooltip direction="top" className="leaflet-dark-tooltip">
-                  {s.station_name}
-                  {s.station_barangay ? ` · ${s.station_barangay}` : ""}
-                </Tooltip>
-              </Marker>
+                onViewStation={onViewStation}
+              />
             ))}
 
         {/* Incident markers — live (active / en route / contained) */}
@@ -1788,31 +1780,19 @@ export default function MapArea({
           activeIncidents.map((inc) => (
             <Marker
               key={`${inc.fire_id}-${inc.fire_id === ripplingIncidentId}`}
+              hoverOnly={true}
               position={[inc.latitude, inc.longitude]}
               icon={fireIcon(
                 toIconSeverity(inc),
                 inc.fire_id === ripplingIncidentId
               )}
               eventHandlers={{
-                click: () => onIncidentClick?.(inc.id),
+                click: (event) => { event.target.closeTooltip(); onIncidentClick?.(inc.id); },
               }}
             >
-              <Tooltip
-                permanent={
-                  inc.status === "active" &&
-                  inc.sev?.toLowerCase() === "critical"
-                }
-                direction="top"
-                className="leaflet-dark-tooltip"
-              >
-                <div className="tooltip-id">
-                  {inc.id} · {inc.status.toUpperCase()}
-                </div>
-                <div className="tooltip-name">🔥 {inc.loc}</div>
-                <div className="tooltip-sub">
-                  {inc.sev} · {inc.alarm} · {inc.units} unit
-                  {inc.units !== 1 ? "s" : ""}
-                </div>
+              <Tooltip direction="top" className="command-map-tooltip" opacity={1}>
+                <IncidentMapTooltip id={inc.id} status={inc.status} location={inc.loc}
+                  severity={inc.sev} alarm={inc.alarm} units={inc.units} />
               </Tooltip>
             </Marker>
           ))}
@@ -1884,18 +1864,16 @@ export default function MapArea({
         {!constraintsView && newIncidents.map((inc) => (
           <Marker
             key={inc.id}
+            hoverOnly={true}
             position={inc.coords}
             icon={fireIcon(inc.severity || "critical", false, true)}
             eventHandlers={{
-              click: () => onIncidentClick?.(inc.id),
+              click: (event) => { event.target.closeTooltip(); onIncidentClick?.(inc.id); },
             }}
           >
-            <Tooltip direction="top" className="leaflet-dark-tooltip">
-              <div className="tooltip-id">{inc.id} · NEW</div>
-              <div className="tooltip-name">🔥 {inc.locationName}</div>
-              <div className="tooltip-sub">
-                {inc.severity} · {inc.alarm}
-              </div>
+            <Tooltip direction="top" className="command-map-tooltip" opacity={1}>
+              <IncidentMapTooltip id={inc.id} status="New" location={inc.locationName}
+                severity={inc.severity} alarm={inc.alarm} />
             </Tooltip>
           </Marker>
         ))}
@@ -1944,6 +1922,7 @@ export default function MapArea({
           <Marker
             position={[ghost.latitude, ghost.longitude]}
             icon={obstructionGhostIcon(placingType)}
+            mapAligned={true}
             interactive={false}
             zIndexOffset={500}
           />
@@ -1971,9 +1950,9 @@ export default function MapArea({
                   dashArray: info.blocks ? null : "4 3",
                 }}
               >
-                <Tooltip direction="top" className="leaflet-dark-tooltip">
-                  <div className="tooltip-id">{info.label}</div>
-                  <div className="tooltip-sub">{info.effect}</div>
+                <Tooltip direction="top" className="command-map-tooltip" opacity={1}>
+                  <div className="command-tooltip-heading"><ObstructionGlyph type={obs.type} size={13} />{info.label}</div>
+                  <div className="command-tooltip-divider">{info.effect}</div>
                 </Tooltip>
               </Polyline>
             );
@@ -1988,6 +1967,7 @@ export default function MapArea({
                 key={obs.id}
                 position={[obs.latitude, obs.longitude]}
                 icon={obstructionIcon(obs.type)}
+                mapAligned={true}
               >
                 <Popup className="obstruction-popup">
                   <div
@@ -2021,13 +2001,13 @@ export default function MapArea({
                       className="obstruction-remove-btn"
                       onClick={() => handleObstructionDelete(obs.id)}
                     >
-                      Remove
+                      Remove obstruction
                     </button>
                   </div>
                 </Popup>
-                <Tooltip direction="top" className="leaflet-dark-tooltip">
-                  <div className="tooltip-id">{info.label}</div>
-                  <div className="tooltip-sub">{info.effect}</div>
+                <Tooltip direction="top" className="command-map-tooltip" opacity={1}>
+                  <div className="command-tooltip-heading"><ObstructionGlyph type={obs.type} size={13} />{info.label}</div>
+                  <div className="command-tooltip-divider">{info.effect}</div>
                 </Tooltip>
               </Marker>
             );
@@ -2063,6 +2043,20 @@ export default function MapArea({
           />
         )}
       </MapContainer>
+
+      {constraintEditing && <ConstraintLayersPanel
+        rows={constraintLayers} selectedKey={selectedLayer?.key} hidden={hiddenConstraints}
+        onSelect={row => setSelectedConstraint({ key: row.key, focus: { lat: row.center[1], lng: row.center[0], zoom: 17, nonce: Date.now() } })}
+        onVisibility={key => setHiddenConstraints(previous => { const next = new Set(previous); if (next.has(key)) next.delete(key); else next.add(key); return next; })}
+        onExit={toggleConstraintMode} drawingType={drawingType} pointCount={drawPoints.length}
+        onStartDraw={type => { setDrawingType(type); setDrawPoints([]); setEditingConstraint(null); }}
+        onUndo={() => setDrawPoints(previous => previous.slice(0, -1))} onFinish={() => setShowSaveDialog(true)}
+        onCancel={cancelConstraintDraft} onEdit={handleEditConstraint} onDelete={handleDeleteConstraint}
+        loading={!gnnData && !gnnError} error={constraintError || (gnnError ? 'Road constraints could not load.' : '')}
+        onRetry={() => { setGnnAttempt(value => value + 1); setBarangayAttempt(value => value + 1); }}
+        notice={constraintNotice} locationError={barangayError}
+      />}
+      {exitConstraintMode && <ConfirmModal title="Discard this drawing?" message="Your unsaved drawing will be discarded when you leave editing mode. Saved constraints remain unchanged." confirmLabel="Discard and exit" onConfirm={finishConstraintMode} onClose={() => setExitConstraintMode(false)} />}
 
       {/* Constraint save dialog */}
       {showSaveDialog && (
@@ -2112,7 +2106,7 @@ export default function MapArea({
               ...(c.name ? [{ label: "Name", value: c.name }] : []),
               ...(c.highway ? [{ label: "Road class", value: c.highway }] : []),
             ]}
-            message="The routing model stops treating this area as constrained on its next route. This can't be undone."
+            message="Remove this drawing? Baseline constraints for the road will remain. The deletion is retained in annotation history."
             confirmLabel="Delete"
             onConfirm={() => confirmDeleteConstraint(c.id)}
             onClose={() => setPendingDelete(null)}
@@ -2128,22 +2122,9 @@ export default function MapArea({
             data={gnnData}
             loadError={gnnError}
             onRetry={() => { setGnnError(null); setGnnAttempt((v) => v + 1); }}
-            drawingType={drawingType}
-            pointCount={drawPoints.length}
-            onFinishDraw={() => setShowSaveDialog(true)}
-            onStartDraw={(type) => {
-              setDrawingType(type);
-              setDrawPoints([]);
-              setEditingConstraint(null);
-            }}
-            onCancelDraw={() => {
-              setDrawingType(null);
-              setDrawPoints([]);
-              setEditingConstraint(null);
-            }}
-            customConstraints={customConstraints}
-            onDelete={handleDeleteConstraint}
-            onEdit={handleEditConstraint}
+            editing={constraintEditing}
+            blocked={showSaveDialog}
+            onToggleEdit={toggleConstraintMode}
           />
         ) : viewMode === "obstructions" ? (
           <ObstructionPanel

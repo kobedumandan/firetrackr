@@ -1,3 +1,4 @@
+import { attachProjectedPopup } from './projectedPopup'
 import { frameThrottle } from './commandMapData'
 import { attachIncidentHover } from './incidentHover'
 import { createRoadHover } from './roadHover'
@@ -5,6 +6,7 @@ import { createRoadHover } from './roadHover'
 // Leaflet remains the dashboard's interaction model. MapLibre projects its
 // visible operational layers with the same camera as the tilted raster tiles.
 export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
+  const popups = attachProjectedPopup(leaflet, popup => map.project(popup.getLatLng()), () => active && !unloaded)
   const markers = new Map()
   const clickTargets = new Map()
   const roadHover = createRoadHover()
@@ -23,9 +25,10 @@ export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
   }
   function clickLayer(layer, event) {
     const latlng = layer.getLatLng?.() || L.latLng(event.lngLat.lat, event.lngLat.lng)
+    if (layer.options?.hoverOnly) { leaflet.closePopup(); layer.closeTooltip?.() }
     layer.fire('click', { latlng, originalEvent: event.originalEvent })
-    if (!layer.getPopup?.() && layer.getTooltip?.()) {
-      L.popup({ autoPan: false }).setLatLng(latlng).setContent(layer.getTooltip().getContent()).openOn(leaflet)
+    if (!layer.options?.hoverOnly && !layer.getPopup?.() && layer.getTooltip?.()) {
+      L.popup({ autoPan: false }, layer).setLatLng(latlng).setContent(layer.getTooltip().getContent()).openOn(leaflet)
     }
   }
   const refresh = frameThrottle(() => {
@@ -52,7 +55,7 @@ export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
           const anchor = options.icon?.options.iconAnchor || [iconSize[0] / 2, iconSize[1] / 2]
           const marker = new maplibre.Marker({ element, anchor: 'center',
             offset: [iconSize[0] / 2 - anchor[0], iconSize[1] / 2 - anchor[1]],
-            pitchAlignment: 'viewport', rotationAlignment: 'viewport' })
+            pitchAlignment: options.mapAligned ? 'map' : 'viewport', rotationAlignment: options.mapAligned ? 'map' : 'viewport' })
           marker.setLngLat([point.lng, point.lat]).addTo(map)
           const click = event => {
             if (options.interactive === false) return
@@ -65,12 +68,13 @@ export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
           const hover = attachIncidentHover(element, layer, () => active && !unloaded && !leaflet.getContainer().classList.contains('pick-cursor'))
           const move = () => { const point = layer.getLatLng(); marker.setLngLat([point.lng, point.lat]) }
           layer.on('move', move)
+          layer.on('iconchange', refresh)
           const popup = layer.getPopup?.()
           const autoPan = popup?.options.autoPan
           if (popup) popup.options.autoPan = false
           entry = { signature, marker, hover, remove() {
             hover?.dispose()
-            layer.off('move', move); element.removeEventListener('click', click); marker.remove()
+            layer.off('move', move); layer.off('iconchange', refresh); element.removeEventListener('click', click); marker.remove()
             if (popup) popup.options.autoPan = autoPan
           } }
           markers.set(layer, entry)
@@ -140,19 +144,24 @@ export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
       hideRoadHover()
       return
     }
+    const overlay = map.queryRenderedFeatures(event.point, { layers: ['command-points', 'command-lines', 'command-fills'] })
+      .find(feature => feature.properties.interactive && clickTargets.get(Number(feature.properties.layerId))?.getTooltip?.())
     const road = map.queryRenderedFeatures(event.point, { layers: ['command-roads'] })
       .find(feature => !feature.properties.normal)
     if (road) {
       map.getCanvas().classList.add('command-road-hover')
       roadHover.show(road.properties, event)
-    } else hideRoadHover()
+    } else {
+      hideRoadHover()
+      if (overlay) map.getCanvas().classList.add('command-road-hover')
+    }
   }
   const onOut = () => { hideRoadHover(); if (active) leaflet.fire('mouseout') }
   const onUnload = () => { unloaded = true; hideRoadHover() }
   const hideHover = () => { hideRoadHover(); markers.forEach(entry => entry.hover?.hide()) }
   leaflet.on('moveend', fromLeaflet).on('layeradd layerremove', refresh).on('unload', onUnload)
   // MapLibre 6 on() returns a Subscription rather than the map itself.
-  const listeners = [['movestart', hideHover], ['moveend', saveCamera], ['move', readCamera], ['click', onClick], ['mousemove', onMove], ['mouseout', onOut]]
+  const listeners = [['movestart', hideHover], ['moveend', saveCamera], ['move', readCamera], ['render', popups.update], ['click', onClick], ['mousemove', onMove], ['mouseout', onOut]]
   listeners.forEach(([name, handler]) => map.on(name, handler))
   return {
     refresh,
@@ -165,6 +174,7 @@ export function attachRasterBridge(leaflet, map, maplibre, L, onCamera) {
     dispose() {
       hideRoadHover()
       roadHover.dispose()
+      popups.dispose()
       saveCamera(); active = false; refresh.cancel(); readCamera.cancel()
       leaflet.off('moveend', fromLeaflet).off('layeradd layerremove', refresh).off('unload', onUnload)
       listeners.forEach(([name, handler]) => map.off(name, handler))
