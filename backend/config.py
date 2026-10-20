@@ -115,4 +115,5 @@ BLACKLIST_REAPER_GRACE_MINUTES    = 5
 # the request (blocking it — the pre-optimisation behaviour, useful for A/B
 # comparison). Default false = deferred to a background task.
 _REROUTE_INLINE = os.getenv("LOCATION_REROUTE_INLINE", "false").lower() == "true"
+OPERATIONAL_GPS_AUTOMATION = os.getenv("OPERATIONAL_GPS_AUTOMATION", "false").lower() == "true"
 CONNECTOR_MERGE_TOLERANCE_M = 20

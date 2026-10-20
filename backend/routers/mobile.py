@@ -169,6 +169,10 @@ def mobile_me_status(
                 "dispatch_id":     active_dispatch.dispatch_id,
                 "dispatch_status": active_dispatch.dispatch_status,
                 "dispatch_at":     active_dispatch.dispatch_at.isoformat() if active_dispatch.dispatch_at else None,
+                "acknowledged_at": active_dispatch.acknowledged_at.isoformat() if active_dispatch.acknowledged_at else None,
+                "departed_at": active_dispatch.departed_at.isoformat() if active_dispatch.departed_at else None,
+                "arrived_at": active_dispatch.dispatch_arrived_at.isoformat() if active_dispatch.dispatch_arrived_at else None,
+                "milestone_timestamp_basis": "server_received_action",
                 "route_wkt":       selected_route.route_path_geojson if selected_route else None,
                 "is_driver":       _is_driver(db, active_dispatch, p.per_id),
                 "is_team_leader":  _normalize_role(membership.member_role) == "team leader",
@@ -249,6 +253,14 @@ def location_update(
         raise HTTPException(status_code=422, detail="recorded_at must be an ISO 8601 timestamp.")
 
     # Always preserve history
+    from services.dispatch_locations import collect
+    collect(db, dispatch, per_id, body.latitude, body.longitude, recorded_at, body.accuracy_m, body.sample_id)
+    from services.operational_times import collect_telemetry
+    milestone_changed = collect_telemetry(db, dispatch, current_user, body.latitude, body.longitude,
+                                         recorded_at, body.accuracy_m, body.sample_id)
+    if milestone_changed:
+        background_tasks.add_task(manager.broadcast, {"type": "operational_times_updated", "data": {"fire_id": dispatch.fire_id}})
+
     db.add(LocationLog(
         device_id=None,
         log_latitude=body.latitude,

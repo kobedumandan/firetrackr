@@ -222,6 +222,12 @@ class TruckLog(Base):
     truck_log_lat      = Column(Float, nullable=False)
     truck_log_long     = Column(Float, nullable=False)
     truck_log_recorded = Column(DateTime(timezone=True), default=_now)
+    dispatch_truck_id  = Column(Integer, ForeignKey("dispatch_trucks.dispatch_truck_id", ondelete="SET NULL"), index=True)
+    accuracy_m        = Column(Float)
+    received_at       = Column(DateTime(timezone=True))
+    source            = Column(String(30))
+    sample_key        = Column(String(160), unique=True)
+    per_id            = Column(Integer, ForeignKey("personnel.per_id", ondelete="SET NULL"))
 
     truck = relationship("Truck", back_populates="truck_logs")
 
@@ -279,6 +285,12 @@ class FireIncident(Base):
     fire_units_assigned    = Column(Integer, default=0)
     fire_remarks           = Column(Text, nullable=True)
     fire_incident_datetime = Column(DateTime(timezone=True), default=_now)
+    report_received_at     = Column(DateTime(timezone=True), index=True)
+    created_at             = Column(DateTime(timezone=True), default=_now)
+    record_kind            = Column(String(20))  # operational | drill | test | unknown
+    suppression_started_at = Column(DateTime(timezone=True))
+    fire_out_at            = Column(DateTime(timezone=True))
+    response_kind          = Column(String(20))  # fire | medical | rescue | other; NULL = unknown
     brgy_id                = Column(Integer, ForeignKey("barangay_boundaries.brgy_id"), nullable=True)
 
     confirmed_by  = relationship("Users",              back_populates="confirmed_incidents")
@@ -360,6 +372,11 @@ class DispatchRecord(Base):
     dispatch_arrived_at   = Column(DateTime(timezone=True), nullable=True)
     dispatch_completed_at = Column(DateTime(timezone=True), nullable=True)
     dispatch_truck_count  = Column(Integer, default=0)
+    acknowledged_at       = Column(DateTime(timezone=True))
+    acknowledged_by       = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"))
+    departed_at           = Column(DateTime(timezone=True))
+    departed_by           = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"))
+    context_snapshot      = Column(JSONB)
     is_deviated                 = Column(Boolean, nullable=False, default=False)
     deviation_connector_geojson = Column(JSONB, nullable=True)
     deviation_detected_at       = Column(DateTime(timezone=True), nullable=True)
@@ -391,10 +408,28 @@ class DispatchTruck(Base):
     # When NULL, no one's GPS drives the truck position — we never infer occupancy.
     manned_by_per_id  = Column(Integer, ForeignKey("personnel.per_id"), nullable=True)
     manned_since      = Column(DateTime(timezone=True), nullable=True)
+    departed_at       = Column(DateTime(timezone=True))
+    arrived_at        = Column(DateTime(timezone=True))
 
     dispatch_record = relationship("DispatchRecord", back_populates="dispatch_trucks")
     truck           = relationship("Truck",          back_populates="dispatch_trucks")
     manned_by       = relationship("Personnel",      foreign_keys=[manned_by_per_id])
+
+
+class DispatchLocation(Base):
+    """JWT-attributed samples; retention follows explicit dispatch deletion."""
+    __tablename__ = "dispatch_locations"
+    sample_id = Column(Integer, primary_key=True, autoincrement=True)
+    dispatch_id = Column(Integer, ForeignKey("dispatch_records.dispatch_id", ondelete="CASCADE"), nullable=False)
+    per_id = Column(Integer, ForeignKey("personnel.per_id", ondelete="SET NULL"))
+    truck_id = Column(Integer, ForeignKey("truck.truck_id", ondelete="SET NULL"))
+    recorded_at = Column(DateTime(timezone=True), nullable=False)
+    received_at = Column(DateTime(timezone=True), nullable=False)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    accuracy_m = Column(Float)
+    source = Column(String(30), nullable=False)
+    sample_key = Column(String(160), unique=True, nullable=False)
 
 
 # ---------------------------------------------------------------------------
@@ -445,6 +480,15 @@ class IncidentEvent(Base):
     user_id     = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
     event_actor = Column(String(150), nullable=True)   # display name, kept if the account goes
     created_at  = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+    # Operational audit: created_at remains server receipt, occurred_at is event time.
+    occurred_at = Column(DateTime(timezone=True))
+    source = Column(String(30))
+    verified = Column(Boolean)
+    dispatch_id = Column(Integer, ForeignKey("dispatch_records.dispatch_id", ondelete="SET NULL"), index=True)
+    dispatch_truck_id = Column(Integer, ForeignKey("dispatch_trucks.dispatch_truck_id", ondelete="SET NULL"), index=True)
+    idempotency_key = Column(String(160), unique=True)
+    event_metadata = Column(JSONB)
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ from models import FireIncident, HeatmapData, Users
 from security import require_admin
 from services.heatmap import severity_weight
 from serializers import _incident_dict
+from services.historical_incidents import attach_history, history
 
 
 router = APIRouter(tags=["geodata"])
@@ -58,6 +59,7 @@ def get_heatmap(
         .filter(FireIncident.fire_status == "closed")
         .all()
     )
+    attach_history(db, rows)
     return [
         {
             "lat": incident.fire_latitude,
@@ -65,6 +67,9 @@ def get_heatmap(
             "weight": severity_weight(incident.fire_severity),
             "fire_id": incident.fire_id,
             "occurred_at": incident.fire_incident_datetime,
+            "location_specification": history(incident).get("pin_specification"),
+            "occurrence_precision": history(incident).get("occurrence_precision"),
+            "alarm_basis": history(incident).get("alarm_basis"),
             "incident": {key: value for key, value in _incident_dict(incident).items()
                          if key in {"id", "loc", "addr", "sev", "status", "alarm", "structure", "casualties"}},
         }

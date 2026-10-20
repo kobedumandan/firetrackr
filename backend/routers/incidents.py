@@ -148,9 +148,15 @@ async def create_incident(
         fire_location_source=body.fire_location_source,
         fire_remarks=body.fire_remarks,
         confirmed_user_id=_auth.user_id,
+        response_kind=body.response_kind,
+        record_kind=body.record_kind,
         brgy_id=_barangay_id_for_point(db, body.fire_latitude, body.fire_longitude),
     )
     db.add(incident)
+    if body.report_received_at is not None:
+        from services.operational_times import record_milestone
+        db.flush()
+        record_milestone(db, incident, "receipt", body.report_received_at, _auth, source="operator_intake")
     db.commit()
     db.refresh(incident)
     # Logged already closed (a past incident) — it skips the edit-close path,
@@ -261,6 +267,10 @@ async def delete_incident(
         {"route_id": None}, synchronize_session=False
     )
     if dispatch_ids:
+        from models import TruckLog
+        unit_ids = [u.dispatch_truck_id for u in db.query(DispatchTruck).filter(DispatchTruck.dispatch_id.in_(dispatch_ids))]
+        if unit_ids:
+            db.query(TruckLog).filter(TruckLog.dispatch_truck_id.in_(unit_ids)).delete(synchronize_session=False)
         db.query(DispatchTruck).filter(
             DispatchTruck.dispatch_id.in_(dispatch_ids)
         ).delete(synchronize_session=False)
@@ -313,7 +323,7 @@ def get_incident_events(
         raise HTTPException(status_code=404, detail="Incident not found.")
     rows = (
         db.query(IncidentEvent)
-        .filter(IncidentEvent.fire_id == fire_id)
+        .filter(IncidentEvent.fire_id == fire_id, IncidentEvent.event_type.in_(("status", "alarm", "severity")))
         .order_by(IncidentEvent.created_at, IncidentEvent.event_id)
         .all()
     )
