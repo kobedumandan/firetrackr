@@ -14,6 +14,8 @@ from services.constraints import (
     _CONSTRAINT_PROP_KEYS, _CUSTOM_STYLE_KEY, _label_for, _load_constraint_style,
 )
 from services.routing import _load_active_obstructions
+from services.constraint_segments import load_segment_index, segment_uid
+from services.model_source import active_paths, constraint_paths
 
 
 router = APIRouter(tags=["routing"])
@@ -21,6 +23,7 @@ router = APIRouter(tags=["routing"])
 
 @router.get("/api/routing/status")
 def routing_status():
+    constraints_path, _ = active_paths()
     region = {
         "region": Config.REGION,
         "region_label": Config.REGION_CFG["label"],
@@ -28,8 +31,9 @@ def routing_status():
         "road_source": Config.ROAD_SOURCE,
         "inference_mode": Config.GNN_INFERENCE_MODE,
         "has_constraints": bool(
-            Config.PREDICTED_CONSTRAINTS_PATH and Config.PREDICTED_CONSTRAINTS_PATH.exists()
+            constraints_path and constraints_path.exists()
         ),
+        "model_version": state.active_model_source["version"] if state.active_model_source else None,
     }
     if state.routing_engine is None:
         return {"status": "offline", "reason": "routing_engine is None", **region}
@@ -80,10 +84,13 @@ def gnn_constraints(
     and meta.legend is built server-side so the map legend is independent of
     the style config (it also covers the GAT-only prediction buckets).
     """
-    if state.gnn_constraints_cache is not None:
-        return state.gnn_constraints_cache
+    cached = state.gnn_constraints_cache
+    if cached is not None and cached[0] == state.routing_generation:
+        return cached[1]
+    generation = state.routing_generation
+    source = state.active_model_source
 
-    style = _load_constraint_style()
+    style = _load_constraint_style(source)
     multiplier_by_type = {
         k: v.get("routing_multiplier", 1.0)
         for k, v in style.items()
@@ -92,7 +99,7 @@ def gnn_constraints(
 
     # Regions without a trained constraint model (anything but Panabo) have no
     # predictions to serve; the map's GNN-constraints layer just stays empty.
-    constraints_path = Config.PREDICTED_CONSTRAINTS_PATH
+    constraints_path, _ = constraint_paths(source)
     if not constraints_path or not constraints_path.exists():
         raise HTTPException(
             status_code=404,
@@ -101,6 +108,12 @@ def gnn_constraints(
 
     with open(constraints_path, encoding="utf-8") as f:
         raw = json.load(f)
+
+    custom_rows = db.query(GnnConstraint).filter(GnnConstraint.is_active.is_(True)).all()
+    index = load_segment_index(constraints_path) if any(c.segment_uids is None for c in custom_rows) else None
+    covered = set()
+    for c in custom_rows:
+        covered.update(c.segment_uids if c.segment_uids is not None else index.snap(json.loads(c.coordinates)))
 
     features: list = []
     type_counts: dict[str, int] = {}
@@ -114,6 +127,9 @@ def gnn_constraints(
         geom = feat.get("geometry") or {}
         if geom.get("type") != "LineString" or not geom.get("coordinates"):
             continue
+        uid = segment_uid(feat)
+        if uid in covered:
+            continue
 
         dtype = props.get("display_constraint_type") or "normal"
         type_counts[dtype] = type_counts.get(dtype, 0) + 1
@@ -126,6 +142,7 @@ def gnn_constraints(
 
         rtype = props.get("routing_constraint_type") or dtype
         out = {k: props.get(k) for k in _CONSTRAINT_PROP_KEYS}
+        out["segment_uid"] = uid
         out["routing_multiplier"] = multiplier_by_type.get(rtype, 1.0)
         out["display_label"] = _label_for(dtype, style)
         features.append({
@@ -135,11 +152,6 @@ def gnn_constraints(
         })
 
     # ── Merge user-drawn custom constraints, styled from the GAT palette ───────
-    custom_rows = (
-        db.query(GnnConstraint)
-        .filter(GnnConstraint.is_active == True)
-        .all()
-    )
     for c in custom_rows:
         style_key = _CUSTOM_STYLE_KEY.get(c.constraint_type, "narrow_road")
         s = style.get(style_key, {})
@@ -158,9 +170,11 @@ def gnn_constraints(
                 "map_opacity": s.get("opacity", 0.95),
                 "routing_multiplier": s.get("routing_multiplier", 1.45),
                 "model_predicted_constrained": 1,
-                "hover_confidence_text": "User-drawn constraint",
+                "hover_confidence_text": "Selected road edge" if any(uid.startswith('edge-v1-') for uid in (c.segment_uids or [])) else "Saved road constraint",
                 "custom": True,
                 "constraint_id": c.constraint_id,
+                "segment_uids": c.segment_uids if c.segment_uids is not None else index.snap(json.loads(c.coordinates)),
+                "annotation_source": "user_drawn",
             },
         })
 
@@ -184,6 +198,7 @@ def gnn_constraints(
         },
         "style_config": style,
         "meta": {
+            "model_version": source["version"] if source else None,
             "model": model_name,
             "threshold": threshold,
             "total": len(features),
@@ -192,7 +207,8 @@ def gnn_constraints(
             "legend": legend,
         },
     }
-    state.gnn_constraints_cache = result
+    if generation == state.routing_generation:
+        state.gnn_constraints_cache = (generation, result)
     return result
 
 

@@ -18,11 +18,13 @@ logger = logging.getLogger(__name__)
 # Populated by main.lifespan on startup.
 routing_engine = None                  # GeoAIRoutingEngine | None
 routing_pool_executor = None           # ProcessPoolExecutor | None
+active_model_source = None             # Loaded immutable source; None = configured baseline.
+routing_generation = 0                 # Prevent in-flight readers caching an older model after a swap.
 
 
 # Cached derived data, invalidated by the endpoints that change their inputs.
-gnn_constraints_cache: "dict | None" = None
-constraint_style_cache: "dict | None" = None
+gnn_constraints_cache: "tuple | None" = None  # (generation, response)
+constraint_style_cache: "tuple | None" = None  # (generation, source, style)
 coverage_cache: "dict | None" = None
 
 

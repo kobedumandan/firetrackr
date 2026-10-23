@@ -1,7 +1,7 @@
 import { Field, SectionHead } from './incidentForm'
 import { manilaInput } from '../utils/operationalTimes'
 
-export default function ReportReceiptFields({ receivedAt, kind, onReceipt, onKind }) {
+export default function ReportReceiptFields({ receivedAt, kind, onReceipt, onKind, recordKind, onRecordKind }) {
   return <section className="eim-section">
     <SectionHead title="Report receipt" desc="Confirm when the emergency report was received. Leave blank if unknown; this is separate from when the incident happened." />
     <div className="eim-row">
@@ -14,6 +14,7 @@ export default function ReportReceiptFields({ receivedAt, kind, onReceipt, onKin
           <option value="">Not yet verified</option><option value="fire">Fire</option><option value="medical">Medical</option><option value="rescue">Rescue</option><option value="other">Other</option>
         </select>
       </Field>
+      {onRecordKind && <Field label="Record kind"><select value={recordKind || 'unknown'} onChange={e => onRecordKind(e.target.value)}>{['operational', 'drill', 'test', 'unknown'].map(k => <option key={k}>{k}</option>)}</select></Field>}
     </div>
   </section>
 }

@@ -26,10 +26,21 @@ export default function KpiCard({
   trend,
   accent = "blue",
   loading = false,
+  onClick,
+  actionLabel,
 }) {
   // A figure that resolved to nothing should recede rather than read as a real
   // measurement — same size and position, just much lower contrast.
   const isEmpty = value == null || value === KPI_EMPTY || value === "";
+  const action = onClick ? (
+    <button
+      type="button"
+      className="kpi-card-action"
+      onClick={onClick}
+      aria-label={actionLabel || label}
+      title={actionLabel || label}
+    />
+  ) : null;
 
   if (loading) {
     return (
@@ -40,6 +51,7 @@ export default function KpiCard({
         </div>
         <span className="kpi-sk" style={{ width: 74, height: 26, marginTop: 2 }} />
         <span className="kpi-sk" style={{ width: 112, height: 9 }} />
+        {action}
       </div>
     );
   }
@@ -57,6 +69,7 @@ export default function KpiCard({
           {trend.dir === "up" ? "▲" : "▼"} {trend.text}
         </div>
       )}
+      {action}
     </div>
   );
 }

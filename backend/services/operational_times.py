@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from math import asin, cos, radians, sin, sqrt, isfinite
 from statistics import mean
 from zoneinfo import ZoneInfo
+from config import OPERATIONAL_GPS_AUTOMATION
 
 from fastapi import HTTPException
 from sqlalchemy import func
@@ -21,7 +22,7 @@ EXCLUDED = {"cancelled", "canceled", "recalled"}
 
 
 def iso(value):
-    return value.isoformat() if value is not None else None
+    return value.astimezone(UTC).isoformat() if value is not None else None
 
 
 def seconds(start, end):
@@ -51,7 +52,7 @@ def audit(db, inc, kind, at, user=None, unit=None, dispatch=None, source="manual
     return event
 
 
-def snapshot_routes(db, dispatch):
+def snapshot_routes(db, dispatch, reason="selection_or_rebuild"):
     """Audit route choice at write time; route algorithms and live rows are unchanged."""
     with db.no_autoflush:
         db.query(FireIncident).filter_by(fire_id=dispatch.fire_id).with_for_update().one()
@@ -59,7 +60,9 @@ def snapshot_routes(db, dispatch):
     routes = db.query(Route).filter(Route.dispatch_id == dispatch.dispatch_id).order_by(Route.route_rank).all()
     if not routes or dispatch.route_id is None:
         return
-    payload = {"selected_route_id": dispatch.route_id, "routes": [
+    from ai.config import Config
+    payload = {"selected_route_id": dispatch.route_id,
+               "region": Config.REGION, "inference_mode": Config.GNN_INFERENCE_MODE, "routes": [
         {"route_id": r.route_id, "rank": r.route_rank, "wkt": r.route_path_geojson,
          "distance_meters": r.route_distance_meters, "eta_seconds": r.route_est_minutes * 60 if r.route_est_minutes is not None else None,
          "origin": [float(r.route_origin_lat), float(r.route_origin_lng)] if r.route_origin_lat is not None and r.route_origin_lng is not None else None,
@@ -67,9 +70,10 @@ def snapshot_routes(db, dispatch):
         for r in routes
     ]}
     previous = db.query(IncidentEvent).filter_by(dispatch_id=dispatch.dispatch_id, event_type="op_routes").order_by(IncidentEvent.event_id.desc()).first()
-    if previous and previous.event_metadata == payload:
+    if previous and {k: v for k, v in previous.event_metadata.items() if k != "selection_reason"} == payload:
         return
-    audit(db, dispatch.fire_incident, "op_routes", datetime.now(UTC), dispatch=dispatch, source="routing", metadata=payload)
+    audit(db, dispatch.fire_incident, "op_routes", datetime.now(UTC), dispatch=dispatch,
+          source="routing", metadata={**payload, "selection_reason": reason})
 
 
 def record_milestone(db, inc, kind, at, user, unit=None, key=None, response_kind=None, source="manual", metadata=None):
@@ -121,10 +125,19 @@ def record_milestone(db, inc, kind, at, user, unit=None, key=None, response_kind
             raise HTTPException(422, "Departure must precede arrival.")
         if kind == "arrival" and unit.departed_at and at < unit.departed_at:
             raise HTTPException(422, "Arrival must follow departure.")
+        if kind == "arrival" and inc.suppression_started_at:
+            arrivals = [unit_arrival(u) for d in dispatches for u in d.dispatch_trucks
+                        if u is not unit and unit_arrival(u)]
+            arrivals += [d.dispatch_arrived_at for d in dispatches if d.dispatch_arrived_at
+                         and d.dispatch_arrived_at >= d.dispatch_at]
+            if min([at, *arrivals]) > inc.suppression_started_at:
+                raise HTTPException(422, "The first arrival must precede recorded suppression.")
     if kind in ("suppression_start", "fire_out"):
         if inc.response_kind != "fire":
             raise HTTPException(422, "Verify that this is a fire response before recording suppression.")
         arrivals = [unit_arrival(u) for d in dispatches for u in d.dispatch_trucks if unit_arrival(u)]
+        arrivals += [d.dispatch_arrived_at for d in dispatches if d.dispatch_arrived_at
+                     and d.dispatch_arrived_at >= d.dispatch_at]
         if inc.report_received_at and at < inc.report_received_at:
             raise HTTPException(422, "Suppression cannot precede report receipt.")
         if arrivals and at < min(arrivals):
@@ -307,7 +320,19 @@ def detail(db, inc):
             selected = next((r for r in (baseline or {}).get("routes", []) if r["route_id"] == baseline["selected_route_id"]), None)
             values = unit_times(unit, inc)
             eta = selected.get("eta_seconds") if selected else None
-            difference = values["travel"] - eta if values["travel"] is not None and eta is not None else None
+            # A saved prediction alone does not establish the actual departure
+            # origin. Only a reliable departure fix can make it comparable.
+            origin = selected.get("origin") if selected else None
+            departure_fix = db.query(TruckLog).filter(
+                TruckLog.dispatch_truck_id == unit.dispatch_truck_id,
+                TruckLog.truck_log_recorded >= unit.departed_at - timedelta(seconds=30),
+                TruckLog.truck_log_recorded <= unit.departed_at + timedelta(seconds=30),
+                TruckLog.accuracy_m <= 35,
+            ).order_by(TruckLog.truck_log_recorded).first() if unit.departed_at else None
+            comparable = bool(origin and departure_fix and distance_m(
+                origin, [departure_fix.truck_log_lat, departure_fix.truck_log_long]
+            ) + departure_fix.accuracy_m <= 150)
+            difference = values["travel"] - eta if comparable and values["travel"] is not None and eta is not None else None
             station = dispatch.team.station if dispatch.team else None
             # Historical samples must carry explicit dispatch-unit association.
             logs = []
@@ -342,6 +367,8 @@ def detail(db, inc):
                 "routes": baseline["routes"] if baseline else current_routes,
                 "selected_route_id": baseline["selected_route_id"] if baseline else dispatch.route_id,
                 "eta_seconds": eta, "difference_seconds": difference,
+                "eta_comparable": comparable,
+                "eta_comparison_note": None if comparable else "A reliable departure fix matching the planned origin is unavailable.",
                 "error_percent": difference / eta * 100 if difference is not None and eta is not None and eta > 0 else None,
                 "gps_segments": segments, "gps_sample_count": len(logs)})
     return result
@@ -381,9 +408,12 @@ def collect_telemetry(db, dispatch, user, latitude, longitude, recorded_at, accu
     if db.query(TruckLog).filter_by(sample_key=key).first():
         return False
     db.add(TruckLog(truck_id=unit.truck_id, dispatch_truck_id=unit.dispatch_truck_id,
+        per_id=per_id,
         truck_log_lat=latitude, truck_log_long=longitude, truck_log_recorded=at,
         accuracy_m=accuracy, received_at=datetime.now(UTC), source="manned_mobile", sample_key=key))
     db.flush()
+    if not OPERATIONAL_GPS_AUTOMATION:
+        return False
     logs = db.query(TruckLog).filter(TruckLog.dispatch_truck_id == unit.dispatch_truck_id,
         TruckLog.truck_log_recorded >= unit.manned_since, TruckLog.accuracy_m <= 35
     ).order_by(TruckLog.truck_log_recorded.desc()).limit(500).all()[::-1]

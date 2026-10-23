@@ -2,7 +2,7 @@ import sys
 import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, inspect, pool, text
 from dotenv import load_dotenv
 from alembic import context
 
@@ -87,6 +87,24 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # The old feature branch reused main's 0025/0026 revision IDs for
+        # operational timing. Never interpret that schema as main's registry
+        # history or attempt to add its operational columns a second time.
+        inspector = inspect(connection)
+        if inspector.has_table("alembic_version"):
+            revisions = set(connection.execute(text("SELECT version_num FROM alembic_version")).scalars())
+            if revisions & {"0025", "0026"} and inspector.has_table("fire_incidents"):
+                columns = {column["name"] for column in inspector.get_columns("fire_incidents")}
+                if "report_received_at" in columns:
+                    raise RuntimeError(
+                        "Legacy feature migration history detected: 0025/0026 already "
+                        "contain operational timing, unlike main. Preserve a database "
+                        "backup and reconcile the schema before upgrading or stamping. "
+                        "See alembic/legacy_versions/README.md."
+                    )
+        # Inspection starts a transaction on SQLAlchemy 2. End that read-only
+        # transaction so Alembic owns and commits its migration transaction.
+        connection.rollback()
         context.configure(
             connection=connection, target_metadata=target_metadata
         )

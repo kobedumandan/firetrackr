@@ -7,7 +7,6 @@ import { fetchMetricsSummary, fetchBarangays } from "../api";
 import KpiCard, { KPI_EMPTY } from "../components/KpiCard";
 import { useTheme } from "../hooks/useTheme";
 import { MAP_CENTER, tileLayersFor } from "../data/mapConfig";
-
 function readCssVar(name, fallback) {
   if (typeof window === "undefined") return fallback;
   const v = getComputedStyle(document.documentElement)
@@ -288,8 +287,9 @@ function BarangayBar({ name, value, max, color }) {
   );
 }
 
-export default function MetricsPage() {
+export default function MetricsPage({ onOpenAnalysis }) {
   const [period, setPeriod] = useState("all");
+  const [revision, setRevision] = useState(0);
   const [result, setResult] = useState(null);
   const summary = result?.period === period ? result.data : null;
   const error = result?.period === period ? result.error : null;
@@ -320,7 +320,13 @@ export default function MetricsPage() {
       })
       .catch((err) => { if (alive) setResult({ period, error: err.message }); });
     return () => { alive = false; };
-  }, [period]);
+  }, [period, revision]);
+
+  useEffect(() => {
+    const refresh = () => setRevision(value => value + 1);
+    window.addEventListener('operational-times-updated', refresh);
+    return () => window.removeEventListener('operational-times-updated', refresh);
+  }, []);
 
   useEffect(() => {
     fetchBarangays()
@@ -332,7 +338,7 @@ export default function MetricsPage() {
   const total = summary?.total ?? 0;
   const contained = summary?.contained ?? 0;
   const deltas = summary?.deltas ?? {};
-  const avgResponse = summary?.avg_response_minutes;
+  const avgResponse = summary?.recorded_response_minutes;
 
   const donutData = Object.entries(summary?.alarm_levels || {}).map(([label, value], index) => ({
     label, value, color: ALARM_COLORS[index % ALARM_COLORS.length],
@@ -362,28 +368,9 @@ export default function MetricsPage() {
 
   return (
     <div className="m-page">
-      <div className="m-header">
-        <div className="m-title-row">
-          <div>
-            <div className="m-title">Metrics</div>
-            <UnfoldIcon />
-            {/* <div className="m-subtitle">Operational performance overview</div> */}
-          </div>
-          {/* <div className="m-period-group">
-            {PERIODS.map((p) => (
-              <button
-                key={p.key}
-                className={`m-period-btn${period === p.key ? " active" : ""}`}
-                onClick={() => setPeriod(p.key)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div> */}
-        </div>
-      </div>
-
+      <header className="m-header"><div className="m-title-row"><div><span className="m-title">Metrics</span><UnfoldIcon /></div></div></header>
       <div className="m-body">
+        <header className="m-view-heading"><h1>Overview</h1><p>Incident activity, response times and coverage at a glance.</p></header>
         <div className="m-section-row">
           <div className="m-section-label">Overall Stats</div>
           <div className="m-period-group">
@@ -410,10 +397,12 @@ export default function MetricsPage() {
           <KpiCard
             icon={<ClockIcon />}
             label="Average Response Time"
+            onClick={onOpenAnalysis}
+            actionLabel="Average Response Time: open Analysis, Response Performance"
             value={avgResponse != null ? avgResponse : KPI_EMPTY}
             loading={loading}
             sub={avgResponse != null ? "min, call to arrival" : "no arrivals recorded"}
-            trend={trendOf(deltas.response)}
+            trend={trendOf(summary?.recorded_response_change)}
             accent="fire"
           />
           <KpiCard
@@ -435,6 +424,7 @@ export default function MetricsPage() {
           />
         </div>
 
+        {onOpenAnalysis && <button className="m-analysis-link" onClick={onOpenAnalysis}>Explore response performance in Analysis <span aria-hidden="true">&rarr;</span></button>}
         <div className="m-grid">
           <div className="m-card m-card-donut">
             <div className="m-card-head">

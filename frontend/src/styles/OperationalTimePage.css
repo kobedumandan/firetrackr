@@ -1,82 +1,168 @@
-.ota-page { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--page-default-base); color: var(--text-primary); }
-.ota-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px; border-bottom: 1px solid var(--border-dim); }
-.ota-header h1 { font-size: 14.8px; font-weight: 600; margin: 0 0 5px; }
-.ota-header p, .ota-section-head p { font-size: 11px; color: var(--text-muted); margin: 4px 0 0; }
-.ota-body { padding: 20px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
-.ota-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.ota-kpis .trend-up { color: #eb6e5d; } .ota-kpis .trend-down { color: #66bb88; }
-.ota-card { padding: 16px 18px; background: var(--bg-panel); border: 1px solid var(--border-dim); border-radius: 10px; }
-.ota-section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; font-size: 11px; }
-.ota-section-head h2 { font-size: 13px; margin: 0; font-weight: 600; }
-.ota-page button:not(.m-period-btn), .ota-dialog button:not(.eim-close) { font: inherit; font-size: 11px; color: var(--text-primary); background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+/* Operational timing follows the Metrics analysis surface and typography. */
+.ota-page, .ota-dialog {
+  --ota-muted: color-mix(in srgb, var(--text-primary) 64%, var(--bg-panel));
+  --ota-soft: color-mix(in srgb, var(--text-primary) 8%, var(--bg-panel));
+  color: var(--text-primary); font: 12px/1.5 var(--font-condensed); color-scheme: dark;
+}
+[data-theme="light"] :is(.ota-page, .ota-dialog) { color-scheme: light; }
+.ota-page { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--page-default-base); }
+.ota-body { flex: 1; min-height: 0; padding: 22px 20px 28px; overflow: auto; display: flex; flex-direction: column; gap: 18px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.ota-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 2px; }
+.ota-timezone { flex-shrink: 0; font: 10px var(--font-mono); color: var(--ota-muted); }
+.ota-page h2 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -.15px; }
+.ota-page p { margin: 5px 0 0; color: var(--ota-muted); line-height: 1.65; }
+.ota-page button:not(.m-period-btn), .ota-dialog button:not(.apm-close) { display: inline-flex; align-items: center; justify-content: center; gap: 7px; font: 500 11px/1.4 var(--font-condensed); color: var(--text-primary); background: var(--bg-panel); border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
 .ota-page button:disabled, .ota-dialog button:disabled { opacity: .4; cursor: default; }
-.ota-page button:hover:not(:disabled), .ota-dialog button:hover:not(:disabled) { background: var(--bg-hover); }
-.ota-page select, .ota-dialog select, .ota-dialog input { font: inherit; font-size: 11px; color: var(--text-primary); background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; padding: 7px; max-width: 100%; }
-.ota-note { font-size: 10px; color: var(--text-muted); line-height: 1.6; margin: 6px 0 0; }
-.ota-error { padding: 12px; border: 1px solid #9c4033; border-radius: 7px; color: #ed8f7c; font-size: 12px; }
-.ota-empty { padding: 30px 10px; text-align: center; font-size: 12px; color: var(--text-muted); }
-.ota-breakdown { display: flex; margin: 25px 0 16px; gap: 1px; }
-.ota-breakdown > div { min-width: 0; text-align: center; font-size: 11px; }
-.ota-breakdown span { display: block; white-space: nowrap; margin-bottom: 8px; }
-.ota-breakdown small { display: block; color: var(--text-muted); }
-.ota-breakdown i { display: block; height: 20px; }
-.ota-breakdown > div:first-child i { border-radius: 5px 0 0 5px; }
-.ota-breakdown > div:last-child i { border-radius: 0 5px 5px 0; }
-.ota-legend { display: flex; justify-content: center; gap: 22px; flex-wrap: wrap; font-size: 10px; color: var(--text-secondary); }
-.ota-legend span { display: flex; align-items: center; gap: 6px; }
-.ota-legend i { width: 9px; height: 9px; border-radius: 50%; }
-.ota-chart-scroll { overflow-x: auto; margin-top: 12px; }
-.ota-chart-scroll svg { width: 100%; min-width: 520px; max-height: 280px; }
-.ota-chart-scroll text { fill: var(--text-muted); font: 11px var(--font-condensed); }
-.ota-chart-scroll circle:focus { outline: 2px solid var(--accent-fire); }
-.ota-table-scroll { overflow-x: auto; margin-top: 14px; }
-.ota-page table { width: 100%; border-collapse: collapse; text-align: left; font-size: 10px; white-space: nowrap; }
-.ota-page th { color: var(--text-muted); font-size: 9px; font-weight: 500; background: var(--bg-hover); padding: 9px; }
-.ota-page td { padding: 9px; border-bottom: 1px solid var(--border-dim); }
-.ota-page tbody tr { cursor: pointer; } .ota-page tbody tr:hover { background: var(--bg-hover); }
-.ota-page td small, .ota-sources small { display: block; color: var(--text-muted); font-size: 9px; margin-top: 3px; }
-.ota-page .ota-record-link { color: var(--accent-fire); border: none; padding: 0; }
-.ota-table-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-top: 12px; }
-.ota-page-summary { font-size: 10px; color: var(--text-muted); }
-.ota-pagination { display: flex; gap: 4px; align-items: center; justify-content: flex-end; margin-left: auto; font-size: 11px; color: var(--text-muted); }
-.ota-page .ota-pagination button { min-width: 30px; height: 30px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; }
-.ota-page .ota-pagination button[title] { font-size: 20px; }
-.ota-page-ellipsis { padding: 0 2px; }
+.ota-page button:hover:not(:disabled), .ota-dialog button:not(.apm-close):hover:not(:disabled) { background: var(--bg-hover); border-color: var(--ota-muted); }
+.ota-page button:active:not(:disabled) { transform: translateY(1px); }
+:is(.ota-page, .ota-dialog) :is(button, input, select, summary):focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 3px; }
+.ota-page button svg { width: 15px; height: 15px; flex-shrink: 0; }
+.ota-page select, .ota-dialog select, .ota-dialog input { font: 11px var(--font-condensed); color: var(--text-primary); background: var(--page-default-base); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; max-width: 100%; min-width: 0; height: 36px; box-sizing: border-box; }
+
+.ota-toolbar { padding: 14px 16px 16px; background: var(--bg-panel); border: 1px solid var(--border-dim); border-radius: 11px; }
+.ota-toolbar-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 13px; color: var(--ota-muted); font-size: 10px; }
+.ota-toolbar-heading > span:first-child { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; color: var(--text-primary); }
+.ota-toolbar-heading svg { width: 15px; height: 15px; }
+.ota-filter-row { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 16px; }
+.ota-field-label, .ota-source-field { display: flex; flex-direction: column; gap: 6px; color: var(--ota-muted); font-size: 10px; font-weight: 500; }
+.ota-field-label { margin-bottom: 6px; }
+.ota-period-field .m-period-group { min-height: 36px; box-sizing: border-box; padding: 3px; gap: 3px; border-color: var(--border); border-radius: 7px; }
+.ota-period-field .m-period-btn { padding: 4px 13px; border-radius: 4px; font-size: 11px; color: var(--ota-muted); }
+.ota-period-field .m-period-btn.active { color: var(--text-primary); background: var(--bg-hover); }
+.ota-source-field { flex: 1; min-width: 230px; max-width: 360px; }
+.ota-source-field select { width: 100%; }
+.ota-page button.ota-refresh { height: 36px; background: var(--bg-hover); margin-left: auto; }
+.ota-banner { display: flex; align-items: flex-start; gap: 10px; padding: 13px 15px; border: 1px solid var(--border-dim); border-radius: 9px; background: var(--bg-panel); font-size: 11px; }
+.ota-banner > svg { width: 17px; height: 17px; flex-shrink: 0; margin-top: 1px; }
+.ota-banner strong { font-weight: 600; }
+.ota-banner p { margin: 0; font-size: 11px; }
+.ota-banner strong + p { margin-top: 4px; }
+.ota-demo { border-color: color-mix(in srgb, var(--accent-amber) 35%, var(--border-dim)); background: color-mix(in srgb, var(--accent-amber) 5%, var(--bg-panel)); }
+.ota-demo > svg { color: var(--accent-amber); }
+.ota-data-note > svg { color: var(--ota-muted); }
+.ota-error { border-color: rgba(var(--accent-red-rgb), .3); background: rgba(var(--accent-red-rgb), .05); }
+.ota-error > svg { color: var(--accent-red); }
+.ota-error > button { margin-left: auto; flex-shrink: 0; }
+.ota-note { color: var(--ota-muted); font-size: 10px; line-height: 1.65; margin: 6px 0 0; }
+
+.ota-card { padding: 18px; background: var(--bg-panel); border: 1px solid var(--border-dim); border-radius: 11px; min-width: 0; }
+.ota-section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.ota-section-head p { font-size: 11px; }
+.ota-tag { display: inline-flex; align-items: center; padding: 3px 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--ota-muted); font-size: 9px; white-space: nowrap; }
+.ota-demo-tag { color: color-mix(in srgb, var(--accent-amber) 60%, var(--text-primary)); border-color: color-mix(in srgb, var(--accent-amber) 35%, var(--border)); }
+.ota-summary { display: grid; grid-template-columns: 1.2fr 1fr; gap: 28px; border-left: 3px solid var(--accent-fire); padding: 22px 24px; }
+.ota-summary-main .ota-section-head { justify-content: flex-start; align-items: center; }
+.ota-summary-value { display: block; margin-top: 20px; font-size: 39px; font-weight: 600; letter-spacing: -1.5px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ota-summary-value.is-empty { font-size: 30px; color: var(--ota-muted); letter-spacing: -.7px; }
+.ota-summary-caption { display: block; margin-top: 10px; font-size: 11px; color: var(--ota-muted); }
+.ota-coverage { align-self: center; border-left: 1px solid var(--border-dim); padding-left: 28px; }
+.ota-eyebrow { font-size: 10px; color: var(--ota-muted); }
+.ota-coverage dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 12px 0 16px; }
+.ota-coverage dt { color: var(--ota-muted); font-size: 10px; }
+.ota-coverage dd { margin: 7px 0 0; font-size: 23px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.ota-coverage > p { display: flex; align-items: flex-start; gap: 6px; font-size: 10px; }
+.ota-coverage > p svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 2px; }
+.ota-stage-heading { align-items: center; margin-bottom: 12px; }
+.ota-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.ota-kpis .kpi-card { padding: 14px 16px; border-radius: 11px; }
+.ota-kpis .kpi-card-label { font-size: 11px; }
+.ota-kpis .kpi-card-value { margin-block: 1px 3px; font-size: 27px; letter-spacing: -.4px; }
+.ota-kpis .kpi-card-icon { height: 29px; width: 29px; border-radius: 8px; }
+.ota-kpis .kpi-card-sub { color: var(--ota-muted); font-size: 10px; }
+.ota-stage-definition, .ota-stage-count { display: block; }
+.ota-stage-count { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border-dim); font-size: 10px; }
+.ota-kpis .trend-up { color: color-mix(in srgb, var(--accent-red) 65%, var(--text-primary)); }
+.ota-kpis .trend-down { color: color-mix(in srgb, var(--accent-emerald) 55%, var(--text-primary)); }
+
+/* Segment labels are independent of widths, so even tiny or zero shares fit. */
+.ota-breakdown { display: flex; height: 22px; gap: 3px; margin: 24px 0 20px; overflow: hidden; border-radius: 6px; }
+.ota-breakdown > span { display: block; min-width: 0; }
+.ota-breakdown-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.ota-breakdown-stats > div { min-width: 0; }
+.ota-stage-name { display: flex; align-items: center; gap: 7px; font-size: 10px; color: var(--ota-muted); }
+.ota-stage-name i { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; }
+.ota-breakdown-stats strong { display: block; margin: 9px 0 4px; font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.ota-breakdown-stats > div > span:last-child { font-size: 10px; color: var(--ota-muted); }
+.ota-page .ota-method-note { display: flex; align-items: flex-start; gap: 6px; margin-top: 20px; padding-top: 13px; border-top: 1px solid var(--border-dim); font-size: 10px; }
+.ota-method-note svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 2px; }
+.ota-trend-filter { display: flex; align-items: center; gap: 8px; color: var(--ota-muted); font-size: 10px; }
+.ota-trend-filter select { min-width: 150px; }
+.ota-chart-scroll { overflow: auto; margin-top: 18px; scrollbar-width: thin; }
+.ota-chart-scroll svg { display: block; width: 100%; min-width: 520px; max-height: 310px; }
+.ota-chart-scroll text { fill: var(--ota-muted); font: 10px var(--font-mono); }
+.ota-chart-scroll circle:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 3px; }
+.ota-chart-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.ota-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--ota-muted); font-size: 10px; }
+.ota-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ota-legend i { background: var(--ota-series-color); width: 7px; height: 7px; border-radius: 50%; }
+.ota-chart-data { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-dim); color: var(--ota-muted); font-size: 10px; }
+.ota-chart-data summary { cursor: pointer; width: fit-content; }
+.ota-chart-data table { min-width: 600px; }
+
+.ota-table-scroll { overflow: auto; min-width: 0; margin-top: 18px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.ota-records > .ota-table-scroll { margin-inline: -18px; }
+.ota-page table { width: 100%; border-collapse: collapse; text-align: left; font-size: 11px; white-space: nowrap; }
+.ota-records table { min-width: 900px; }
+.ota-page th { color: var(--ota-muted); font-size: 9px; font-weight: 500; background: var(--ota-soft); padding: 12px 14px; }
+.ota-page td { padding: 13px 14px; border-bottom: 1px solid var(--border-dim); font-variant-numeric: tabular-nums; }
+.ota-records th:first-child, .ota-records td:first-child { padding-left: 18px; }
+.ota-records tbody tr { cursor: pointer; }
+.ota-records tbody tr:hover { background: var(--ota-soft); }
+.ota-page td small, .ota-sources small { display: block; color: var(--ota-muted); font-size: 9px; margin-top: 4px; }
+.ota-page button.ota-record-link { color: var(--accent-fire); border: none; padding: 0; background: transparent; }
+.ota-page button.ota-record-link:hover { background: transparent; color: var(--text-primary); }
+.ota-record-link svg { width: 12px; height: 12px; }
+.ota-cta-cell { font-weight: 600; }
+.ota-missing-cell { color: var(--ota-muted); font-weight: 400; }
+.ota-report-time { font-size: 10px; }
+.ota-type-badge { display: inline-block; padding: 3px 6px; border-radius: 4px; background: var(--ota-soft); color: var(--ota-muted); font-size: 9px; text-transform: capitalize; }
+.ota-title-with-count { display: flex; align-items: center; gap: 8px; }
+.ota-count { padding: 1px 6px; border-radius: 4px; background: var(--ota-soft); color: var(--ota-muted); font: 10px var(--font-mono); }
+.ota-table-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-top: 14px; }
+.ota-page-summary { font-size: 10px; color: var(--ota-muted); }
+.ota-pagination { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; justify-content: flex-end; margin-left: auto; font-size: 11px; }
+.ota-page .ota-pagination button { min-width: 30px; height: 30px; padding: 0 6px; }
+.ota-page .ota-pagination button[title] { font-size: 19px; }
+.ota-page .ota-pagination button[aria-current="page"] { border-color: var(--accent-fire); color: var(--accent-fire); background: var(--accent-fire-dim); }
+.ota-pagination .ota-page-number { display: inline-flex; align-items: center; gap: 5px; }
+.ota-page-ellipsis { color: var(--ota-muted); padding-inline: 3px; }
+.ota-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 30px 18px; text-align: center; }
+.ota-empty > svg { width: 30px; height: 30px; margin-bottom: 4px; color: var(--ota-muted); }
+.ota-empty h3 { margin: 0; font-size: 13px; font-weight: 500; }
+.ota-empty p { max-width: 60ch; margin: 0; font-size: 11px; }
+.ota-chart-empty { min-height: 210px; }
+.ota-value-skeleton { width: 180px; height: 40px; margin-top: 20px; }
+.ota-breakdown-skeleton { width: 100%; height: 90px; margin-block: 24px 12px; }
+.ota-chart-skeleton { width: 100%; height: 220px; margin-block: 24px 12px; }
+.ota-cell-skeleton { width: 85%; height: 12px; margin-block: 3px; }
+.ota-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Incident detail and route inspection retain the same data and actions. */
 .ota-dialog { max-height: 94dvh; overflow: auto; }
-.ota-modal-meta { display: flex; flex-wrap: wrap; gap: 10px 24px; padding: 14px 20px; border-bottom: 1px solid var(--border-dim); font-size: 11px; color: var(--text-secondary); }
-.ota-modal-meta label { display: flex; align-items: center; gap: 8px; }
+.ota-dialog .ota-note { color: var(--ota-muted); }
+.ota-modal-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 15px 20px; border-bottom: 1px solid var(--border-dim); font-size: 11px; color: var(--ota-muted); }
+.ota-modal-meta label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ota-modal-layout { display: grid; grid-template-columns: 3fr 2fr; min-height: 490px; }
-.ota-map-wrap { padding: 16px; min-width: 0; display: flex; flex-direction: column; }
-.ota-map { min-height: 420px; flex: 1; border-radius: 8px; z-index: 0; }
-.ota-details { padding: 16px; min-width: 0; border-left: 1px solid var(--border-dim); font-size: 11px; }
-.ota-stages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-.ota-stages button { text-align: left; }
-.ota-stages strong { display: block; margin-top: 6px; }
-.ota-dialog .ota-stages .active { border-color: var(--accent-fire); color: var(--accent-fire); }
-.ota-pagination button[aria-current="page"] { border-color: var(--accent-fire); color: var(--accent-fire); }
-.ota-pagination .ota-page-number { display: inline-flex; align-items: center; gap: 4px; flex: none; }
-.ota-dialog dl { margin: 16px 0; }
-.ota-dialog dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border-dim); }
-.ota-dialog dt { color: var(--text-muted); } .ota-dialog dd { text-align: right; margin: 0; }
-.ota-comparison { margin-top: 15px; } .ota-comparison h3 { font-size: 12px; }
-.ota-sources { color: var(--text-muted); font-size: 10px; }
-.ota-confirm { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
+.ota-map-wrap { padding: 18px; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.ota-map { min-height: 420px; flex: 1; border-radius: 9px; border: 1px solid var(--border-dim); z-index: 0; }
+.ota-details { padding: 18px; min-width: 0; border-left: 1px solid var(--border-dim); font-size: 11px; }
+.ota-stages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ota-dialog .ota-stages button { display: flex; align-items: flex-start; flex-direction: column; padding: 12px; gap: 7px; text-align: left; }
+.ota-stages strong { display: block; font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.ota-dialog .ota-stages .active { border-color: var(--accent-fire); background: var(--accent-fire-dim); }
+.ota-dialog .ota-stages .active > span { color: var(--accent-fire); }
+.ota-dialog dl { margin: 18px 0; }
+.ota-dialog dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border-dim); }
+.ota-dialog dt { color: var(--ota-muted); }
+.ota-dialog dd { text-align: right; margin: 0; font-variant-numeric: tabular-nums; }
+.ota-comparison { margin-top: 18px; padding: 14px; border: 1px solid var(--border-dim); border-radius: 9px; background: var(--bg-panel); }
+.ota-comparison h3 { margin: 0; font-size: 12px; font-weight: 600; }
+.ota-sources { color: var(--ota-muted); font-size: 10px; }
+.ota-confirm { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-dim); }
 .ota-confirm summary { cursor: pointer; color: var(--accent-fire); }
 .ota-confirm form { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
-.nav-btn[data-label="Operational Time Analysis"] .nav-btn-label { white-space: normal; text-align: left; line-height: 1.4; }
+
 @media (max-width: 1100px) { .ota-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 800px) { .ota-modal-layout { grid-template-columns: 1fr; } .ota-map { min-height: 320px; } .ota-details { border-left: 0; } .ota-header, .ota-section-head { flex-wrap: wrap; } .ota-body { padding: 12px; } }
-@media (max-width: 600px) {
-  .ota-header { padding: 12px; }
-  .ota-header > div { min-width: 0; max-width: 100%; }
-  .ota-header .m-period-group, .ota-pagination { flex-wrap: wrap; }
-  .ota-kpis { grid-template-columns: 1fr; }
-  .ota-kpis .kpi-card, .ota-card { padding: 12px; }
-  .ota-kpis .kpi-card-head { flex-wrap: wrap; }
-  .ota-legend { gap: 8px; }
-  .ota-page-summary { flex-basis: 100%; }
-  .ota-breakdown span { font-size: 9px; white-space: normal; overflow-wrap: anywhere; }
-  .ota-modal-meta, .ota-map-wrap, .ota-details { padding: 12px; }
-  .ota-modal-meta label { flex-wrap: wrap; min-width: 0; max-width: 100%; }
-  .ota-modal-meta select { min-width: 0; width: 100%; }
-}
+@media (max-width: 800px) { .ota-modal-layout { grid-template-columns: 1fr; } .ota-map { min-height: 320px; } .ota-details { border-left: 0; border-top: 1px solid var(--border-dim); } .ota-section-head { flex-wrap: wrap; } .ota-body { padding: 18px 14px; } .ota-summary { grid-template-columns: 1fr; gap: 20px; padding: 18px; } .ota-coverage { border-left: none; border-top: 1px solid var(--border-dim); padding: 18px 0 0; } .ota-timezone { display: none; } .ota-breakdown-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; } }
+@media (max-width: 600px) { .ota-filter-row { gap: 12px; } .ota-period-field { width: 100%; } .ota-period-field .m-period-group { width: fit-content; max-width: 100%; } .ota-period-field .m-period-btn { padding-inline: 11px; } .ota-source-field { min-width: 0; max-width: none; width: 100%; flex: 1 1 100%; } .ota-page button.ota-refresh { margin-left: 0; } .ota-kpis { grid-template-columns: 1fr; } .ota-records { padding-inline: 14px; } .ota-records > .ota-table-scroll { margin-inline: -14px; } .ota-page-summary { flex-basis: 100%; } .ota-modal-meta, .ota-map-wrap, .ota-details { padding: 12px; } .ota-modal-meta label { min-width: 0; width: 100%; } .ota-modal-meta select { width: 100%; } .ota-summary-main .ota-section-head { gap: 10px; } }
+@media (prefers-reduced-motion: reduce) { .ota-page button, .ota-dialog button { transition: none; } .ota-page button:active:not(:disabled) { transform: none; } .ota-page .kpi-sk { animation: none; } }

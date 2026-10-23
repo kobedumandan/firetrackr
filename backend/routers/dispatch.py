@@ -40,6 +40,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["dispatch"])
 
 
+@router.patch("/api/dispatch/{dispatch_id}/acknowledge")
+def acknowledge_dispatch(dispatch_id: int, background_tasks: BackgroundTasks,
+                         db: Session = Depends(get_db), user: Users = Depends(get_current_user)):
+    from services.dispatch_milestones import confirm
+    data = confirm(db, dispatch_id, user, "acknowledge")
+    db.commit()
+    background_tasks.add_task(manager.broadcast, {"type": "dispatch_acknowledged", "data": data})
+    return data
+
+
+@router.patch("/api/dispatch/{dispatch_id}/depart")
+def depart_dispatch(dispatch_id: int, background_tasks: BackgroundTasks,
+                    db: Session = Depends(get_db), user: Users = Depends(get_current_user)):
+    from services.dispatch_milestones import confirm
+    data = confirm(db, dispatch_id, user, "depart")
+    db.commit()
+    background_tasks.add_task(manager.broadcast, {"type": "dispatch_departed", "data": data})
+    return data
+
+
 @router.post("/api/dispatch", status_code=201)
 async def create_dispatch(
     body: DispatchCreate,
@@ -253,7 +273,7 @@ def select_dispatch_route(
     route.route_is_selected = True
     dispatch.route_id = body.route_id
     from services.operational_times import snapshot_routes
-    snapshot_routes(db, dispatch)
+    snapshot_routes(db, dispatch, reason="manual_selection")
     db.commit()
     db.refresh(route)
 
@@ -750,7 +770,7 @@ async def full_reroute(
 
     selected = next((ro for ro, r in saved if r["is_selected"]), saved[0][0])
     dispatch.route_id                    = selected.route_id
-    snapshot_routes(db, dispatch)
+    snapshot_routes(db, dispatch, reason="full_reroute")
     dispatch.is_deviated                 = False
     dispatch.deviation_connector_geojson = None
     dispatch.deviation_detected_at       = None

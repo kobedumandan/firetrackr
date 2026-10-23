@@ -11,6 +11,7 @@ DB reads (obstructions, incident coords) and all DB writes stay in the parent
 API process; these workers do graph math only.
 """
 import logging
+import os
 import time
 
 from routing_setup import build_routing_engine
@@ -18,14 +19,24 @@ from routing_setup import build_routing_engine
 logger = logging.getLogger(__name__)
 
 _engine = None  # per-process, populated by init_worker()
+_model_source = None
 
 NODES_NEAR_RADIUS_KM = 2.0
 
 
-def init_worker() -> None:
+def init_worker(custom_constraints=None, model_source=None) -> None:
     """ProcessPoolExecutor initializer — build this process's routing engine."""
-    global _engine
-    _engine = build_routing_engine(register_gym=False)
+    global _engine, _model_source
+    _model_source = model_source
+    _engine = build_routing_engine(register_gym=False, custom_constraints=custom_constraints, model_source=model_source)
+    if _engine is None:
+        raise RuntimeError("Routing worker could not load the selected model")
+
+
+def model_status(hold_seconds=0.3):
+    time.sleep(hold_seconds)
+    return {"pid": os.getpid(), "ready": _engine is not None,
+            "version": _model_source["version"] if _model_source else None}
 
 
 def warmup(hold_seconds: float = 0.3) -> bool:

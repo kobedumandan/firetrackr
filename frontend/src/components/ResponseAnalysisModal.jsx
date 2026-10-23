@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
 import AppModal from './AppModal'
 import { Field } from './incidentForm'
 import { confirmOperationalMilestone, fetchOperationalDetail } from '../api'
@@ -104,6 +105,7 @@ export default function ResponseAnalysisModal({ fireId, theme, onClose }) {
         {stage === 'travel' && !demo && <section className="ota-comparison"><h3>Travel Time vs. Selected Route ETA</h3><dl>{[['Selected route', unit?.baseline_available && selectedRoute ? `Route ${selectedRoute.rank}` : 'Original selection unavailable'], ['Estimated travel', duration(unit?.eta_seconds)], ['Actual travel', duration(unit?.durations.travel)], ['Difference', unit?.difference_seconds == null ? 'No data' : `${unit.difference_seconds >= 0 ? '+' : '−'}${duration(unit.difference_seconds)}`], ['Deviation', unit?.error_percent == null ? 'No data' : `${unit.error_percent >= 0 ? '+' : ''}${unit.error_percent.toFixed(1)}%`]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
           {unit?.difference_seconds != null && <p>Actual travel {unit.difference_seconds === 0 ? 'matched the selected route’s predicted duration.' : `took ${duration(unit.difference_seconds)} ${unit.difference_seconds > 0 ? 'longer' : 'less'} than the selected route’s predicted duration.`}</p>}
           <p className="ota-note">Unit report-to-arrival: {duration(unit?.durations.cta)}. ETA is a prediction; actual travel uses departure and arrival timestamps.</p>
+          {unit?.eta_comparison_note && <p className="ota-note">{unit.eta_comparison_note}</p>}
         </section>}
         {!demo && <MilestoneForm key={`${data.fire_id}:${unit?.id}:${data.response_kind}`} data={data} unit={unit} onSaved={setData} />}
       </div>

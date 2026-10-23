@@ -2,8 +2,8 @@
 
 ## Basis and maintenance
 
-This document describes source inspected on 2026-10-12, based on commit `deb09e1`
-before the documentation addition. It records code capabilities, not proof of a
+This document began with source inspected on 2026-10-12 at commit `deb09e1`,
+with implementation updates through 2026-10-20. It records code capabilities, not proof of a
 live deployment, trained-model quality or successful field trials. Recheck source
 when updating it. Shared development rules are in [AGENTS.md](AGENTS.md), with
 commands in [CLAUDE.md](CLAUDE.md).
@@ -16,6 +16,41 @@ the [coverage audit](documentation/response-coverage-algorithm-audit.md) and
 Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
+
+### Command station pins (2026-10-20)
+
+- Clicking a station pin opens its details and a View station action in both
+  themes. The action opens Stations with that station selected after loading.
+  The popup uses the shared Leaflet overlay path for standard and enhanced maps.
+
+### Analysis CSV review (2026-10-20)
+
+- Response Performance and Coverage Planning exports open a CSV review modal
+  before download, reusing the incident register's spreadsheet preview. The
+  preview shows up to 100 rows; download preserves the complete CSV captured
+  when Export was clicked, including its filters and Coverage Planning time band.
+
+### Local Analysis review data (2026-10-20)
+
+The database review launcher and its review guides are local validation tooling;
+they are intentionally not included in application commits. The following notes
+describe that optional local setup, not a prerequisite for running the application.
+
+- `backend/analysis_review.py prepare` clones the loopback database configured in
+  this checkout into the fixed `firetrackr_analysis_review` database, excluding
+  phone push tokens, then adds 24 explicitly synthetic test incidents and 40
+  dispatches in one transaction. Repeats preserve the batch. It never replaces an
+  existing database or writes fixtures into the original database.
+- `analysis_review.py run` starts the same original app against that copy with
+  SMS/GPS automation disabled; `.env` remains unchanged and normal `run.py` still
+  selects the original database. See the local `documentation/analysis-test-data.md`
+  for commands, exact expected values, limitations and return instructions.
+- Fixtures use stored milestone columns to exercise Operational Times recorded
+  mode only in the isolated database. That view does not filter `record_kind`;
+  the test population must not be interpreted as measured operational performance.
+- Coverage percentages use unsimplified cumulative reachable polygons. Map
+  simplification is separate, and display bands retain the narrower polygons so
+  larger time budgets cannot visibly lose previously covered areas.
 
 ### BFP historical import and metrics (2026-10-20)
 
@@ -176,7 +211,12 @@ Sources: [api.js](frontend/src/api.js), [App.jsx](frontend/src/App.jsx),
 ## Database structure and relationships
 
 [models.py](backend/models.py) defines the schema; [Alembic versions](backend/alembic/versions/)
-define migration history. The current linear chain ends at `0024` (incident dispatch type).
+define migration history. The combined web chain ends at `0028` (response performance).
+Original `0025` adds constraint segment identities and `0026` adds the model registry;
+both were applied to the original checkout's configured local database on 2026-10-19.
+New `0027` adds operational timing. The original local database was backed up and
+upgraded from 0026 to 0028 on 2026-10-20. The response-only worktree uses a different numeric chain;
+do not reuse its review database with this combined branch.
 PostGIS must already be enabled; migration files do not create the extension.
 
 | Tables | Relationships and role |
@@ -287,10 +327,116 @@ for dispatch computations. Returned ETA sums **base** edge travel times rather t
 optimization penalties or observed turnout. The displayed confidence derives from
 node scores; it is not a verified probability of timely arrival.
 
-Custom `gnn_constraints` CRUD updates cached map features and broadcasts changes.
-Those drawn polylines are not applied to the engine's route costs. The
-[Lightning retraining plan](plans-todo/gnn-retraining-lightning.md) explicitly calls
-for closing that gap; no retrain/job/promote API exists.
+Custom `gnn_constraints` CRUD persists stable snapped segment identities (8 m buffer,
+60% length coverage), retains deleted rows with `is_active=false`, invalidates map
+caches, and broadcasts changes. In exported inference mode, active annotations
+override corresponding road-segment costs through the shared engine builder.
+Replacements build the main engine and warmed routing pool before swapping them;
+other web processes poll committed changes every 10 seconds. Failures retain the
+previous routing state and retry on the next poll. Legacy NULL segment identities
+are resolved in memory until edited. Map predictions covered by active drawings
+are deduplicated; `segment_uid` and `annotation_source` reach the client. Current
+exports lack canonical IDs, so direction-independent geometry hashes provide
+temporary identities; geometry or canonical-ID changes need reconciliation.
+Apply migration `0025` before starting this backend.
+
+The [Lightning retraining plan](plans-todo/gnn-retraining-lightning.md) is partially
+implemented. Offline [training utilities](training/README.md) freeze the original
+602 spatial blocks and audit pre-scored model outputs with paired block bootstrap.
+The notebook is available in `backend/data/final_najud_gnn_gattt.ipynb`. The original
+master layer is absent, but `training/recover_labels.py` recovers historical manual
+labels from the shipped hybrid export: all 3,639 geometries and notebook Cell 8.1
+labels match, yielding 1,208 constrained roads and 2,431 background zeros. It omits
+model prediction/display fields and writes source-hash provenance. The champion's
+fitted feature pipeline is reconstructed in an isolated CPU environment, with
+73-column matrix parity against notebook Cell 13 and checkpoint output parity on
+all 3,639 saved segments (max probability error `3.61e-7`; zero class changes).
+The verified offline bundle in `backend/ai/models/versions/v1/` includes its pipeline,
+checksums and validation report. `training/bundle.py` scores raw feature exports
+without refitting; a replayed self-audit gives F1 difference and interval `[0, 0]`.
+This is reconstruction validation, not new model-accuracy evidence. Snapshot
+building now combines baseline manual flags and active drawings, retains deleted
+annotation history, and emits hashed Parquet labels plus raw feature inputs and a
+provenance manifest. Training refuses unchanged labels. The CPU GAT port uses
+validation-only threshold selection and audits both fitted pipelines on identical
+current-label test blocks, exporting a conservative candidate. `LocalRunner` has
+durable subprocess status/logs, timeout handling, a per-directory local job lock,
+credential exclusion and fresh-directory fetch. Admin registry APIs initialize
+verified v1, submit local retrains, list/status/report and reject candidates.
+Migration `0026` adds `model_versions` and partial unique indexes for a single
+training job and champion. Transaction advisory locks serialize registry mutations;
+a 10-second background poll verifies and fetches terminal job artifacts. Job IDs
+commit before launch; candidates retain their assigned version name. Immediate
+promotion/rollback now verify artifact and audit provenance, full training settings,
+frozen split, road geometry and nonnegative routing multipliers. Main/pool engines
+build before the champion transaction commits; each pool PID confirms its model.
+Failed preparation/commit discards replacements. The event loop installs ready
+objects and clears map/style/coverage caches. Other workers poll the committed
+champion; startup loads that version, falling back only for an absent/empty
+registry. The admin Settings Model tab now shows champion/job state, label guards,
+comparison/uncertainty, changed-class map preview, rejection, explicit
+promotion/rollback confirmation and paginated history. Summary/preview endpoints
+read annotations/artifacts without training or writes. The shared App WebSocket
+refreshes model state and feeds the Model updates notification preference. Browser
+constraint/coverage caches invalidate on promotion, and stale requests are ignored.
+Scheduling and Lightning remain pending.
+
+A synthetic integration run trained 94 epochs and verified failure/timeout and
+concurrency handling without touching a DB or active champion. Full CPU optimizer
+training matches original notebook CPU weights exactly, but historical CUDA metric
+parity is outside the plan's tolerance (F1 0.7143 versus 0.7381 at threshold 0.45;
+allowed difference 0.02). A subsequent user-supplied Tesla T4 report matches historical F1 exactly
+(0.7381443298969073). Its remaining schema-1 failure is bitwise weights, differing
+by at most 1.42e-7. Schema 2 uses absolute 1e-6 numerical agreement for weights,
+probabilities and regression, with identical class/map decisions. The subsequent
+user-provided Colab T4 schema-2 confirmation passes all required checks and matches
+historical F1 exactly. Its source hashes match local files; report/provenance are
+saved in `backend/data/retraining/cuda_parity_confirmation_v2/`. CUDA was not run
+locally and historical package versions remain unknown. Synthetic-validation reports remain promotion-ineligible. The report API derives
+current readiness separately from immutable offline audit fields. Admin promotion
+and archived rollback require the expected current champion; stale candidate
+audits are refused. No database migration or live model promotion has run. Raw GIS features still require the original fixed
+road/feature baseline.
+
+`training/parity.py` independently reproduces the notebook's original preparation
+and training on a chosen CPU/CUDA device, retaining logs, weights, source hashes,
+runtime versions and audit evidence. The full CPU investigation matches all 13
+exact checks; its CPU historical metric comparison remains outside tolerance. The local GPU is AMD and
+cannot run CUDA. Original notebook metadata identifies a T4, while library versions
+were not recorded; CPU/CUDA causality is not proven. An allowlisted 20-file package
+builder and CUDA Colab diagnostic notebook were verified by user-provided Colab
+output. The agent did not execute CUDA locally or upload files to Colab. The optimizer now follows the input data's
+device; production local training still explicitly uses CPU.
+
+The map GAT panel now enters an explicit constraint-editing mode, with a left-side
+layer list, search, barangay/source filters and geographic sorting. Incident View,
+map actions and Incidents navigation hide during editing; Done restores them.
+Visibility is local to the editing view. The editor selects authoritative QGIS
+road chains between connected junctions/dead ends rather than drawing polylines.
+At zoom 16+, clicking a road toggles a neon-orange narrow-road or neon-yellow
+traffic selection (also used for saved custom edges); polygons and
+off-road clicks cannot create constraints. Narrow and traffic batches must be
+confirmed and saved (or cancelled) before switching type. The server validates
+edge IDs, persists exact geometry atomically, and deduplicates retries. Recently
+saved edges sorts by creation time and reveals/focuses a clicked row on the map.
+Baseline/model layers remain inspectable, and legacy saved constraints remain
+available. Failed saves preserve selections; routing refresh status is visible.
+Edge identities use the `edge-v1-` prefix. Routing overlays retain the selected
+geometry. Training snapshots only label an original training feature when its
+entire geometry is covered by active selections of the same type; partial-edge
+annotations remain in history and are counted in the snapshot manifest.
+
+Local activation on 2026-10-23: the configured legacy database received the
+approved additive response-performance schema, nullable constraint segment IDs,
+and an empty model registry. A fresh custom-format backup and before/after hashes
+of all original columns in 28 tables verified no existing row/value changes.
+The backend restarted successfully; routing and 16 read-only API checks passed.
+SQL proposals, backup and activation manifest are in the workspace-level
+`outputs/response_performance_review/` (outside the Git checkout). No source-dump
+incidents/dispatches were imported. The database retains legacy revision `0026`;
+it must not be blindly stamped or upgraded as though that were main's `0026`.
+Response Performance currently has zero measured dispatches, so averages remain
+empty until actual milestones are recorded.
 
 ### Location and route correction
 
@@ -489,7 +635,7 @@ for a requested verified audit.
 | Item | Current evidence |
 | --- | --- |
 | Supabase database migration | [Plan](plans-todo/supabase-migration.md); SQLAlchemy URL can target PostgreSQL hosting, but deployed host/settings cannot be established from source. Proposed pool sizing/timeouts/test safeguards are absent. |
-| Lightning retraining/challenger promotion | [Plan](plans-todo/gnn-retraining-lightning.md); no job service, API, artifact promotion or UI integration. Training notebooks/preprocessing pipeline are outside tracked source. |
+| Lightning retraining/challenger promotion | Local registry/retrain/review/promotion/rollback APIs and offline training are implemented; the admin Settings Model UI is wired; Lightning and scheduling remain planned. See [plan](plans-todo/gnn-retraining-lightning.md). |
 | Applying drawn constraints to routing | Custom map CRUD is implemented; engine-cost integration is outstanding. |
 | Shared real-time state across API workers | Warning in [run.py](backend/run.py); no shared pub/sub/session store implemented. |
 | Dispatch acknowledgement/status transitions | Operational departure/arrival measurements are separate from dispatch status. Recording a measurement does not silently change the dispatch workflow. |
@@ -499,10 +645,21 @@ for a requested verified audit.
 
 ## Operational Time Analysis
 
-The administrator sidebar now opens a separate **Operational Time Analysis** page
-between Metrics and Planning. It uses the existing React state-based navigation,
+The administrator sidebar's **Analysis** page includes an **Operational Times** tab
+beside Response Performance and Coverage Planning. It uses the existing React state-based navigation,
 KpiCard, form fields, modal shell, theme tokens and Leaflet maps. Metrics calculations,
 Planning coverage and the routing/ETA algorithms retain their existing behavior.
+Metrics keeps this branch's receipt-based response key and exposes a separate verified
+receipt-based metric to the dashboard, including per-unit arrivals.
+
+Operational Time Analysis follows the Metrics visual treatment: a compact period/
+source toolbar, independent call-to-arrival summary, stage cards with shared SVG
+icons and observation counts, and a responsive breakdown with labels outside the
+proportional segments. Trends retain missing-data gaps and offer an expandable
+values/sample-count table. Recorded and synthesized demo timings remain explicitly
+labeled, including the trend chart. Loading/error/empty states, readable theme
+colors, table pagination and route-detail focus behavior are preserved. The detail
+modal imports its own Leaflet stylesheet rather than relying on another page.
 
 Implementation entry points:
 
@@ -525,14 +682,19 @@ Confirmation requires `kind`, a timezone-aware `occurred_at`, and an
 actor identity, occurrence time and server receipt time are audited separately.
 First recorded milestones are not overwritten by retries or later GPS packets.
 
-Migration `0025` adds nullable incident receipt/suppression timestamps and response
+Migration `0027` adds nullable incident receipt/suppression timestamps and response
 classification, per-dispatch-truck departure/arrival, event audit metadata and
 dispatch-associated truck telemetry. It adds no tables and backfills no history.
 Main's authoritative `0024_add_incident_dispatch_type.py` adds the optional incident
-dispatch category. An earlier feature revision temporarily reused `0024` while that
-source was unavailable. Migration `0026` safely adds the category only when an
-existing feature database reached `0025` without it; fresh and main-derived databases
-already contain it. The supplied October 19 backup was inspected, not restored.
+dispatch category. The response-only worktree includes a compatibility repair for
+an earlier feature database; that repair is unnecessary in this original-web chain.
+The supplied October 19 backup was inspected, not restored.
+
+Merge reconciliation (2026-10-23): the old feature `0025`/`0026` files are archived
+unchanged in `backend/alembic/legacy_versions/`, outside the active main migration
+graph. Databases using those IDs for operational timing need a backed-up,
+validated schema reconciliation before stamping or upgrading. Alembic rejects
+that legacy state explicitly; the source merge does not convert the database.
 
 Measurement rules:
 
@@ -562,7 +724,9 @@ historical selection means comparison unavailable, even if a current route exist
 ETA difference is actual minus predicted; percentage is computed only for ETA > 0.
 
 Mobile `POST /api/location/update` accepts optional `accuracy_m` and `sample_id`.
-Existing payloads remain accepted. Automatic vehicle milestones require exactly one
+Existing payloads remain accepted. Automatic vehicle milestones are disabled by
+default (`OPERATIONAL_GPS_AUTOMATION=false`). If explicitly enabled after phone
+validation, detection requires exactly one
 explicitly manned assignment, accuracy at most 35 m, a station fix within 100 m,
 then two fixes confidently beyond 150 m at least 5 seconds apart. Arrival requires
 two fixes confidently within 100 m of the incident after departure. Gaps over
@@ -582,15 +746,172 @@ if a failed worker never emits a MapLibre load/error event. Tilt/rotation still
 require a working enhanced renderer; standard tiles remain available.
 
 Deployment: back up the target database, stop the backend, review `alembic current`,
-then run `venv\Scripts\python.exe -m alembic upgrade head` from `backend/` before
-restarting it. Build the frontend with `npm.cmd run build`. Downgrade below `0025`
+then run `venv\Scripts\python.exe -m alembic upgrade head` through `0028` from `backend/` before
+restarting it. Build the frontend with `npm.cmd run build`. Downgrade below `0027`
 removes the new operational fields/history metadata, so preserve a backup first.
 
-Local validation includes the migration chain through `0026`, downgrade/upgrade,
+Earlier response-only validation includes its migration chain, downgrade/upgrade,
 multi-unit and missing-data calculations, ordering/idempotence, route snapshot
 survival, GPS gating/offline order, role/ownership checks, existing dispatch/mobile
 contracts, UI empty/error/modal/period behavior and the existing map test suite.
 Tests and local verification helpers remain unstaged according to repository policy.
+
+## Response Performance integration (2026-10-20)
+
+Metrics contains the incident overview only. The sidebar's Analysis page groups
+Response Performance, Operational Times and Coverage Planning under browser-style
+tabs beneath the Analysis title row, with a heading inside each view. The former
+standalone Operational Time Analysis and Planning sidebar entries are removed.
+Metrics links into Analysis > Response Performance; incident details still open
+the existing register.
+The Average Response Time card also opens Analysis > Response Performance by
+click or keyboard activation, including while its value is loading or unavailable.
+The selected Analysis tab is retained when navigating away and back. Only the
+active tool is mounted, and initial coverage fitting avoids a
+zoom-transition callback after its map is unmounted. Response Performance uses the
+existing theme and KPI components, a compact checkbox team picker, measurement
+coverage meters, readable chart labels, quality badges and responsive filters.
+Missing/excluded reasons, interval definitions and chart data remain available
+through disclosures. Tabs support arrow/Home/End keys; the team picker supports
+Escape and returns focus to its trigger. Loading, error and empty states are
+explicit, and unclassified historical records can be opened from the empty state.
+Response Performance uses administrator-only handlers under
+`/api/metrics/response-performance`: the summary, `/dispatches`,
+`/dispatches/{dispatch_id}` and `/export.csv`. Shared service observations supply
+cards, monthly series, paginated rows and the full filtered CSV without silent
+truncation. CSV cells escape spreadsheet formulas.
+
+Explicit timezone-aware start/end parameters define half-open windows; month
+buckets use Asia/Manila. Defaults cover the current and preceding eleven calendar
+months and operational records. End dates in the UI are explicitly exclusive.
+The overall receipt-to-first-arrival cohort is independent of team selection;
+selected-team analysis uses dispatch-time cohorts, one row per dispatch. Equal
+preceding windows supply changes. Summaries expose means, medians, nearest-rank
+p90, sample counts, missing/pending/invalid/excluded counts and reasons. The
+fewer-than-ten notice is descriptive, not a significance threshold. Durations over
+six hours remain inspectable exclusions; raw timestamps and invalid durations are
+retained in export. Unknown receipt does not invalidate dispatch-to-arrival.
+
+Incident `record_kind` is separate from fire/medical response classification.
+New live intake visibly defaults to operational and an explicit editable receipt
+time; historical intake defaults to unknown with no receipt. Older incidents are
+not backfilled or reclassified. Administrators can review kind through incident
+editing. The existing `report_received_at` column carries the plan's call-received
+semantics; there is no redundant `call_received_at` column.
+
+Migration `0028_response_performance.py` adds nullable creation/classification and
+dispatch acknowledgement/departure/actor/context fields. Assignment snapshots
+preserve team/station/shift/truck identity. Unsnapshotted legacy context is labeled
+as current metadata. Existing retained routes get an explicitly unverified
+migration-time snapshot; previously deleted routes cannot be reconstructed.
+Selected-route writers share audit snapshots, including original geometry, ETA,
+distance, origin, selection reason, region and inference mode. Detail remains
+available after completion. ETA error is unavailable without reliable departure
+GPS matching the planned origin; saved geometry alone is insufficient.
+
+Mobile `PATCH /api/dispatch/{id}/acknowledge` and `/depart` derive role and team
+membership from the authenticated user. Assigned leaders/drivers may confirm.
+Incident-first locks serialize writers; retries return the first saved timestamp
+and actor. Acknowledgement retains dispatched status; departure enters en_route
+and implicitly acknowledges when needed. A sole assigned truck can receive its
+departure, while multi-truck team departures are not copied to every vehicle.
+Legacy crew arrival without departure remains accepted. Mobile status includes
+saved milestones; actions show pending/errors and require explicit confirmations.
+Timestamps measure server receipt, so offline/delayed actions can be biased.
+
+`dispatch_locations` captures membership-checked personnel samples with recorded/
+received times, optional accuracy, deduplication and truck identity only during
+verified manning. Existing vehicle logs also retain personnel attribution and a
+unit/time index. Dispatch deletion cascades the new samples; incident deletion
+explicitly removes associated vehicle logs. Retention currently lasts until
+explicit incident/dispatch deletion; no automatic age purge is configured.
+Agree a deployment retention policy before using production GPS history.
+
+Local checks use a new disposable PostGIS cluster on a separate port, without the
+configured application database or its .env. Coverage includes migration upgrade
+and rollback, multi-team/Manila-boundary calculations, missing timestamps, retries,
+ownership rejection, route survival, context preservation, GPS deduplication,
+deletion, CSV escaping, dashboard behavior and the mobile API helper. Physical
+phone, screen-lock and delayed-network acceptance and the intended-data sufficiency
+audit remain pending. Full frontend lint has existing errors; changed feature
+modules pass focused lint without adding baseline errors. No field accuracy is
+claimed. Changes are uncommitted in separate dashboard/backend and mobile
+integration worktrees; neither original checkout was modified.
+
+Earlier response-only validation results: 25 backend/database/API tests, 98 frontend tests across 15
+suites, four mobile API-helper tests, Python compilation and the Vite production
+build pass. Populated `0026` -> `0027` upgrade and downgrade/re-upgrade preserve
+legacy null fields and label surviving route snapshots without duplication.
+The mobile modules parse with Babel. Locked mobile dependencies were subsequently
+installed with `npm ci`, and the Android Hermes JavaScript bundle exports
+successfully. No Expo native build or physical-device run has been performed.
+The SDK 52 dependency check flags pre-existing React Native/vector-icons version
+mismatches; package manifests and lockfiles were preserved. The mobile review `.env`
+targets the PC's Wi-Fi address; phone access requires binding the backend to
+`0.0.0.0` and a compatible phone runtime. Background-location acceptance requires
+a development build.
+The local frontend test config narrowly allows the shared dependency junction;
+run `npm test -- --config tests/vitest.local.config.mjs` in this worktree. Full
+frontend lint reports existing issues; comparison with the branch base retains
+the same error counts in changed files. The production bundle retains the existing
+large-chunk warning.
+
+For local visual review in the separate combined review worktree,
+`backend/seed_review_data.py` reads that worktree's private
+`.env` and refuses any target except loopback `firetrackr_review` or
+`firetrackr_web_review` at revision
+`0028` in the combined web branch. It adds 19 explicitly synthetic test incidents and 34 dispatch observations
+over three months, including missing timestamps, cancellation and a duration above
+the six-hour guard. Synthetic planned-route revisions support the detail map.
+Repeat runs preserve the fixture batch and existing user data. No notifications
+are sent. Select Record kind = test in Response Performance; these rows do not
+populate its operational cohort. The running API was checked for pagination, CSV
+row counts, retained revisions and independence of overall response from team filters.
+
+The combined review worktree is `../firetrackr-web-response-performance` on
+`feature/web-response-performance`. Its combined source is now installed in this
+original checkout alongside the existing constraint editor, model registry and model settings.
+Original applied migration files `0025`/`0026` are retained byte-for-byte; operational
+timing and response performance are new revisions `0027`/`0028` after them.
+Mobile physical acceptance is deferred at the user's request and tracked separately.
+
+Combined web validation on 2026-10-20: 121 frontend checks across 18 suites, all 25
+response backend/database/API tests, Python compilation and a production frontend
+build pass. Fresh migrations through 0028 and populated original 0026 -> 0028
+upgrade/rollback/re-upgrade preserve model registry rows, constraint identities,
+dispatch categories and explicit legacy route provenance. Full application startup
+loads routing and passes authenticated review login, summary, details, CSV, model
+summary, constraints and operational analysis checks. Full lint still reports
+existing issues; see the review document for the delivery boundary.
+
+The separate combined review worktree's private environment targets the synthetic-only
+`firetrackr_web_review` database at 0028 with the existing review admin credentials.
+Startup and browser review instructions remain in the local, uncommitted
+`documentation/web-response-performance-review.md` guide.
+
+Original-checkout installation on 2026-10-20 preserves the current
+`feature/gnn-inference-mode` branch, original private `.env` files, existing admin
+accounts and all pre-existing local source changes. The local `bfp_capstone` database
+was backed up before additive migrations 0027/0028. Existing row counts are
+unchanged, including all 214 incidents; their receipt times and record kinds remain
+null. No synthetic fixtures or fabricated measurements were inserted. Use Record
+kind = unknown and a suitable date range to inspect existing dispatch observations.
+The source/database backup and install manifest are outside the repo in
+`../.web-integration-review/original-install-20261020-204237/`; treat them as private.
+In the original checkout, all 121 frontend checks and the build pass. Python
+compilation, schema revision and authenticated GET checks for metrics, dispatch
+rows, CSV, model summary, constraints and operational analysis pass, with database
+transactions forced read-only during endpoint verification. That installation did
+not commit, push or merge the work into Git main.
+
+Commit preparation on 2026-10-20 validates each staged application checkpoint in
+a separate snapshot using only Git's indexed sources: production frontend build,
+Python parsing, backend imports and offline migration SQL generation pass. All
+132 local frontend tests and 59 selected isolated backend checks pass after fixing
+the heatmap test's missing audit-table fixture. Tests and local database helpers
+remain outside these commits. Live PostgreSQL upgrade/rollback and physical mobile
+acceptance were not repeated during commit preparation. Existing lint findings
+remain at 25 errors and 3 warnings, matching the prior committed baseline counts.
 
 ## Important decisions and facts to confirm
 
@@ -605,3 +926,20 @@ production origins/TLS/tunnel, dependency versions that currently run successful
 available local tests and their database safety, mobile-project revision, push/SMS
 credentials and device delivery, training preprocessing/provenance/evaluation data,
 and observed field dispatch/arrival measurements. Do not record secret values here.
+
+### Command map interaction updates (2026-10-20)
+
+- Projected command maps show hover cards for interactive incident, station,
+  personnel and obstruction markers. Popup content stays in Leaflet so existing
+  React actions work, while the active renderer supplies its screen anchor.
+- Obstruction markers follow map tilt; raster circle overlays align to the map.
+  Historical heatmap hit areas reveal visible incident dots at Leaflet zoom 16
+  (MapLibre zoom 15), retaining grouped details for shared coordinates.
+- Camera controls live in an independent bottom-right slot. The incident/layer
+  dock reserves space above them, including when the incident panel is collapsed.
+
+- Command-map incident details are hover-only (including newly logged incidents):
+  clicking selects the incident and closes hover content without creating a
+  fallback popup. Heatmap incident detail popups remain available. Incident and
+  obstruction cards share the constraint hover-card typography and surface style.
+  Camera and Actions panels share the same 9.8px bottom offset.

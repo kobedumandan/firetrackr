@@ -100,7 +100,7 @@ function TrucksIcon(props) {
   );
 }
 
-function PlanningIcon(props) {
+function AnalysisNavIcon(props) {
   return (
     <NavIcon {...props}>
       <path d="M480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-160q-66 0-113-47t-47-113q0-66 47-113t113-47q66 0 113 47t47 113q0 66-47 113t-113 47Zm0-160Z" />
@@ -111,8 +111,7 @@ function PlanningIcon(props) {
 const NAV_ITEMS = [
   { label: "Command", Icon: CommandIcon },
   { label: "Metrics", Icon: MetricsIcon },
-  { label: "Operational Time Analysis", Icon: MetricsIcon },
-  { label: "Planning", Icon: PlanningIcon },
+  { label: "Analysis", Icon: AnalysisNavIcon },
   { label: "Incidents", Icon: IncidentsIcon },
   { label: "Personnel", Icon: PersonnelIcon },
   { label: "Teams", Icon: TeamsIcon },
@@ -122,6 +121,7 @@ const NAV_ITEMS = [
 
 export default function TopBar({
   activeNav,
+  constraintEditing = false,
   onNavChange,
   theme,
   onThemeToggle,
@@ -172,7 +172,7 @@ export default function TopBar({
       <div className="topbar-spacer" />
 
       <nav className="topbar-nav">
-        {NAV_ITEMS.map(({ label, Icon }) => (
+        {NAV_ITEMS.filter(({ label }) => !constraintEditing || label !== "Incidents").map(({ label, Icon }) => (
           <span key={label} style={{ display: "contents" }}>
             {label === "Incidents" && <div className="section-divider" />}
             <button

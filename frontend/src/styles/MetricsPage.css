@@ -18,6 +18,17 @@
   flex-shrink: 0;
 }
 
+.m-view-heading { margin-bottom: 22px; }
+.m-view-heading h1 { margin: 0 0 7px; font: 600 22px/1.25 var(--font-condensed); letter-spacing: -.4px; color: var(--text-primary); }
+.m-view-heading p { margin: 0; font-size: 12px; line-height: 1.6; color: color-mix(in srgb, var(--text-primary) 65%, var(--page-default-base)); }
+.m-analysis-link { display: inline-flex; align-items: center; gap: 9px; margin: 0 0 16px; padding: 0; border: none; background: transparent; color: var(--accent-fire); font: 500 11px var(--font-condensed); cursor: pointer; }
+.m-analysis-link:hover { color: var(--text-primary); }
+.m-analysis-link:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 4px; }
+
+@media (max-width: 540px) {
+  .m-view-heading h1 { font-size: 20px; }
+}
+
 .m-title-row {
   display: flex;
   align-items: center;

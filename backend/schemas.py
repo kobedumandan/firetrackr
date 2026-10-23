@@ -39,6 +39,15 @@ class ConstraintUpdate(BaseModel):
     maxspeed: str | None = None
 
 
+class ConstraintEdgeSelection(BaseModel):
+    constraint_type: Literal['narrow_road', 'traffic_area']
+    segment_uids: list[str] = Field(min_length=1, max_length=500)
+    name: str | None = Field(default=None, max_length=255)
+    highway: str | None = Field(default=None, max_length=100)
+    surface: str | None = Field(default=None, max_length=100)
+    maxspeed: str | None = Field(default=None, max_length=50)
+
+
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -176,6 +185,7 @@ DispatchType = Literal[
 
 
 class IncidentCreate(BaseModel):
+    record_kind: Literal['operational', 'drill', 'test', 'unknown'] = 'unknown'
     report_received_at: datetime | None = None
     response_kind: Literal['fire', 'medical', 'rescue', 'other'] | None = None
     fire_location_name:  str | None = None
@@ -203,6 +213,7 @@ class IncidentCreate(BaseModel):
 
 
 class IncidentUpdate(BaseModel):
+    record_kind: Literal['operational', 'drill', 'test', 'unknown'] | None = None
     fire_location_name:  str | None = None
     fire_address:        str | None = None
     fire_severity:       str | None = None

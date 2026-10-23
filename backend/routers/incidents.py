@@ -149,6 +149,7 @@ async def create_incident(
         fire_remarks=body.fire_remarks,
         confirmed_user_id=_auth.user_id,
         response_kind=body.response_kind,
+        record_kind=body.record_kind,
         brgy_id=_barangay_id_for_point(db, body.fire_latitude, body.fire_longitude),
     )
     db.add(incident)
@@ -266,6 +267,10 @@ async def delete_incident(
         {"route_id": None}, synchronize_session=False
     )
     if dispatch_ids:
+        from models import TruckLog
+        unit_ids = [u.dispatch_truck_id for u in db.query(DispatchTruck).filter(DispatchTruck.dispatch_id.in_(dispatch_ids))]
+        if unit_ids:
+            db.query(TruckLog).filter(TruckLog.dispatch_truck_id.in_(unit_ids)).delete(synchronize_session=False)
         db.query(DispatchTruck).filter(
             DispatchTruck.dispatch_id.in_(dispatch_ids)
         ).delete(synchronize_session=False)

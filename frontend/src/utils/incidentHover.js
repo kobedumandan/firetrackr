@@ -2,7 +2,7 @@
 // the actual marker/cursor instead of positioning it with hidden Leaflet tiles.
 let hoverId = 0
 export function attachIncidentHover(element, layer, enabled) {
-  if (!layer.options?.heatmapIncident) return null
+  if (layer.options?.interactive === false || !layer.getTooltip?.()) return null
   const id = `heatmap-incident-hover-${++hoverId}`
   let bubble
   function position(event) {
@@ -20,23 +20,25 @@ export function attachIncidentHover(element, layer, enabled) {
     if (!enabled() || (event?.domEvent || event)?.buttons) { hide(); return }
     if (!bubble) {
       const content = layer.getTooltip?.()?.getContent()
-      if (!content?.cloneNode) return
+      if (!content) return
       bubble = document.createElement('div')
-      bubble.className = 'heatmap-incident-hover'
+      bubble.className = layer.options?.heatmapIncident ? 'heatmap-incident-hover' : 'command-marker-hover'
       bubble.id = id
       bubble.setAttribute('role', 'tooltip')
       element.setAttribute('aria-describedby', id)
-      bubble.append(content.cloneNode(true))
+      if (content.cloneNode) bubble.append(content.cloneNode(true))
+      else bubble.innerHTML = content
       document.body.append(bubble)
     }
     position(event)
   }
   const escape = event => { if (event.key === 'Escape') hide() }
   const events = [['pointerenter', show], ['pointermove', show], ['pointerleave', hide],
-    ['focusin', show], ['focusout', hide], ['gmp-pointerover', show], ['gmp-pointermove', show], ['gmp-pointerout', hide]]
+    ['focusin', show], ['focusout', hide], ['click', hide], ['gmp-click', hide], ['gmp-pointerover', show], ['gmp-pointermove', show], ['gmp-pointerout', hide]]
   element.removeAttribute('title')
-  element.setAttribute('aria-label', layer.options.title || 'Historical fire incident')
+  element.setAttribute('aria-label', layer.options.title || 'Map marker')
   element.tabIndex = 0
+  element.style.cursor = 'pointer'
   events.forEach(([name, handler]) => element.addEventListener(name, handler))
   document.addEventListener('keydown', escape)
   return { hide, dispose() {

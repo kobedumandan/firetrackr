@@ -177,7 +177,16 @@ python -m alembic upgrade head
 python -m alembic current
 ```
 
-The current migration head in this checkout is `0026`. Refresh **Schemas > public
+The current migration head in this combined web checkout is `0028`. Revisions
+from the old feature branch with reused IDs are archived unchanged; see
+[legacy migration reconciliation](backend/alembic/legacy_versions/README.md)
+before upgrading a database previously on `feature/command-map-layers`.
+Main revisions
+`0025`/`0026` retain the original constraint/model registry history; `0027`/`0028`
+add operational timing and response performance. The earlier response-only
+worktree uses different migrations with overlapping revision numbers: use a fresh
+database or the verified original constraint/model chain, rather than that
+worktree's review database. Refresh **Schemas > public
 > Tables** in pgAdmin to see the resulting tables. Migrations create/update the
 schema; seed scripts insert initial data. They do not copy your groupmate's data.
 For a database that already has data, take a backup before applying migrations;

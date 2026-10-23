@@ -54,6 +54,7 @@ shapely==2.1.2
 pyproj==3.7.2
 pyogrio==0.12.1
 pandas==3.0.2
+pyarrow==19.0.1
 python-dateutil==2.9.0.post0
 six==1.17.0
 tzdata==2026.2

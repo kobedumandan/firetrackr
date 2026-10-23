@@ -156,18 +156,26 @@ def compute_coverage(
     features: List[Dict[str, Any]] = []
     polys_cum: List[Any] = []
     accumulated_polys: List[Any] = []
+    previous_display = None
     for bi, bs in enumerate(bands_s):
         if band_polys[bi] is not None:
             accumulated_polys.append(band_polys[bi])
         if not accumulated_polys:
             polys_cum.append(None)
             continue
-        poly = unary_union(accumulated_polys).simplify(SIMPLIFY_DEG)
+        # Measure the cumulative reachable area before display simplification.
+        # Simplifying each band independently can remove different slivers and
+        # make a wider time band appear to cover less of a barangay.
+        poly = unary_union(accumulated_polys)
         polys_cum.append(poly)
+        display_poly = poly.simplify(SIMPLIFY_DEG)
+        if previous_display is not None:
+            display_poly = display_poly.union(previous_display)
+        previous_display = display_poly
         features.append(
             {
                 "type": "Feature",
-                "geometry": mapping(poly),
+                "geometry": mapping(display_poly),
                 "properties": {
                     "max_seconds": bs,
                     "max_minutes": bands_min[bi],

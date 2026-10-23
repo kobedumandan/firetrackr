@@ -17,6 +17,7 @@ def _constraint_to_dict(c: GnnConstraint) -> dict:
         "constraint_type": c.constraint_type,
         "name":            c.name or "",
         "coordinates":     json.loads(c.coordinates),
+        "segment_uids":    c.segment_uids,
         "highway":         c.highway or "",
         "surface":         c.surface or "",
         "maxspeed":        c.maxspeed or "",
@@ -103,6 +104,8 @@ def _incident_dict(r: FireIncident) -> dict:
         "longitude":      r.fire_longitude,
         "reported_at":    r.fire_incident_datetime.isoformat() if r.fire_incident_datetime else None,
         "remarks":        r.fire_remarks or "",
+        "record_kind":    r.record_kind or "unknown",
+        "report_received_at": r.report_received_at.isoformat() if r.report_received_at else None,
     }
 
 

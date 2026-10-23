@@ -514,7 +514,7 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
               <UnfoldIcon />
             </div>
             <div className="tea-header-actions">
-              <button className="tea-btn-secondary" onClick={() => exportCsv(filtered)} disabled={filtered.length === 0}>
+              <button className="tea-btn-secondary table-export-btn" onClick={() => exportCsv(filtered)} disabled={filtered.length === 0}>
                 <ExportIcon />
                 Export
               </button>

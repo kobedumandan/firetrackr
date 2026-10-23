@@ -138,7 +138,9 @@ DOCX and CSV agree on the incident register.
 
 Change ORM models and add a reviewed Alembic migration together; do not edit applied
 historical migrations or replace them with `create_all()`. The checked-in chain
-is `0001` through `0023`. Review generated diffs, spatial types, indexes, foreign
+is `0001` through `0028`. Revisions `0025`/`0026` preserve the original constraint
+and model registry history; `0027`/`0028` add operational timing and response
+performance. Review generated diffs, spatial types, indexes, foreign
 keys, cascades and circular route/dispatch relationships. Enable PostGIS before
 migrating; no migration provisions it. Use a disposable database to validate
 schema/data changes. Seeds and `--clear` utilities write/delete data: review inputs
@@ -154,7 +156,9 @@ and pool workers. Changes to weights/data need corresponding worker reload and
 cache/landmark invalidation reasoning.
 
 Distinguish the shipped precomputed GAT export from generic live GNN classes and
-experimental RL/SUMO. Drawn constraints currently change map data, not route costs.
+experimental RL/SUMO. Drawn constraints affect exported route costs through the
+shared reload path. Snapshot/local training utilities are offline; promotion and
+model-management APIs are not implemented.
 Preserve directed roads, forbidden turns, nonnegative cost/heuristic assumptions,
 obstruction handling, dispatch route ownership and selected-route links. ETA sums
 base travel times; it is not the penalized optimization cost. Validate no-path,
@@ -192,9 +196,11 @@ npm run build
 npm test
 ```
 
-Vitest is configured as a package script/dependency, but no test files are tracked.
-[.gitignore](.gitignore) excludes `backend/tests/`, backend development requirements
-and frontend `*.test.js` files. There is no tracked backend test runner setup.
+Vitest is configured as a package script/dependency, and existing test files under
+`frontend/tests/` are tracked. Keep new tests and changes to those tests unstaged
+under the commit-writer policy. [.gitignore](.gitignore) excludes `backend/tests/`,
+backend development requirements and frontend source `*.test.js` files. There is
+no tracked backend test runner setup.
 Do not promise that `npm test` or a pytest command passes on a fresh clone.
 If local tests exist, inspect their configuration and ensure they target an isolated
 database before running them; keep them local per commit-writer policy.

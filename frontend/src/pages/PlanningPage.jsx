@@ -6,6 +6,7 @@ import "../styles/PlanningPage.css";
 import { MAP_CENTER, MAP_ZOOM, tileLayersFor } from "../data/mapConfig";
 import { useTheme } from "../hooks/useTheme";
 import KpiCard, { KPI_EMPTY } from "../components/KpiCard";
+import CsvReviewModal from "../components/CsvReviewModal";
 import {
   fetchCoverageIsochrones,
   fetchCoverageGaps,
@@ -54,18 +55,6 @@ function SortableTh({ label, sortKey, sort, onSort, align }) {
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────
-function UnfoldIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 -960 960 960"
-      className="plan-unfold-icon"
-      fill="currentColor"
-    >
-      <path d="M480-120 300-300l58-58 122 122 122-122 58 58-180 180ZM358-598l-58-58 180-180 180 180-58 58-122-122-122 122Z" />
-    </svg>
-  );
-}
 function ExportIcon() {
   return (
     <svg
@@ -271,7 +260,7 @@ function FitBounds({ geojson }) {
   useEffect(() => {
     if (!geojson?.features?.length) return;
     const bounds = L.geoJSON(geojson).getBounds();
-    if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24] });
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24], animate: false });
   }, [geojson, map]);
   return null;
 }
@@ -304,6 +293,7 @@ export default function PlanningPage() {
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState(null);
   const [showBarangays, setShowBarangays] = useState(false);
+  const [csvReview, setCsvReview] = useState(null);
   // Best-covered first, so the list reads covered → partial → gap top to bottom.
   const [sort, setSort] = useState({ key: "covered_pct", dir: "desc" });
   // Picks the basemap out of TILE_OPTIONS; re-renders the layer on a flip.
@@ -475,7 +465,7 @@ export default function PlanningPage() {
     ].join(",");
     const lines = visibleRows.map((g) =>
       [
-        `"${g.barangay}"`,
+        `"${g.barangay.replaceAll('"', '""')}"`,
         g.covered_pct,
         statusOf(g.status).label,
         g.population ?? "",
@@ -483,28 +473,17 @@ export default function PlanningPage() {
       ].join(",")
     );
     const csv = [header, ...lines].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `coverage_gaps_${minutes}min.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    setCsvReview({ csv, fileName: `coverage_gaps_${minutes}min.csv` });
   }
 
   const stationCount = meta.sources ?? (Array.isArray(stations) ? stations.length : null);
 
   return (
     <div className="plan-page">
-      <div className="plan-header">
-        <div className="plan-title-row">
-          <div>
-            <div className="plan-title">Planning</div>
-            <UnfoldIcon />
-          </div>
-
+      {csvReview && <CsvReviewModal csv={csvReview.csv} fileName={csvReview.fileName} title="Coverage Planning CSV" onClose={() => setCsvReview(null)} />}
+      <div className="plan-body">
+        <header className="m-view-heading plan-view-heading">
+          <div><h1>Coverage Planning</h1><p>Explore station reachability and identify barangays with coverage gaps.</p></div>
           <div className="plan-header-actions">
             <button
               className="plan-btn"
@@ -522,10 +501,7 @@ export default function PlanningPage() {
               Export CSV
             </button>
           </div>
-        </div>
-      </div>
-
-      <div className="plan-body">
+        </header>
         {error && <div className="plan-error">{error}</div>}
 
         <div className="plan-section-row">
@@ -626,6 +602,7 @@ export default function PlanningPage() {
                   center={MAP_CENTER}
                   zoom={MAP_ZOOM}
                   className="plan-map"
+                  zoomAnimation={false}
                   attributionControl={false}
                   scrollWheelZoom
                 >

@@ -15,6 +15,7 @@ Kept free of FastAPI/DB imports so pool subprocesses stay lightweight.
 """
 import json
 import logging
+from pathlib import Path
 
 from ai import (
     GeoAIRoutingEngine, load_qgis_graph, load_roads_gpkg, load_place_graph,
@@ -24,8 +25,8 @@ from ai import (
 logger = logging.getLogger(__name__)
 
 
-def _load_constraint_style() -> dict:
-    path = Config.CONSTRAINT_STYLE_PATH
+def _load_constraint_style(path=None) -> dict:
+    path = Path(path) if path else Config.CONSTRAINT_STYLE_PATH
     if path and path.exists():
         with open(path, encoding="utf-8") as f:
             return json.load(f)
@@ -69,7 +70,7 @@ def _load_graph():
     )
 
 
-def build_routing_engine(register_gym: bool = True) -> "GeoAIRoutingEngine | None":
+def build_routing_engine(register_gym: bool = True, custom_constraints=None, model_source=None) -> "GeoAIRoutingEngine | None":
     """Load the road graph and configure exported or local GNN costs.
 
     Returns a ready-to-use engine, or None if the graph data could not be
@@ -98,20 +99,29 @@ def build_routing_engine(register_gym: bool = True) -> "GeoAIRoutingEngine | Non
         # model and hand-tuned multipliers. A region without them routes on the
         # raw travel_time_s edge weights, which ALT handles unchanged (the
         # landmark heuristic is admissible either way).
-        constraints_path = Config.PREDICTED_CONSTRAINTS_PATH
+        constraints_path = Path(model_source["constraints_path"]) if model_source else Config.PREDICTED_CONSTRAINTS_PATH
+        style_path = Path(model_source["style_path"]) if model_source and model_source.get("style_path") else Config.CONSTRAINT_STYLE_PATH
+        if model_source and (not constraints_path.is_file() or (style_path and not style_path.is_file())):
+            raise FileNotFoundError("Registered model export or style is missing; replacement refused")
         edge_weights_path = Config.EDGE_WEIGHTS_PATH
         if Config.GNN_INFERENCE_MODE == "local":
             logger.info("Local GNN inference enabled; exported constraint costs are skipped")
         elif constraints_path and constraints_path.exists():
             with open(constraints_path, encoding="utf-8") as f:
                 predicted = json.load(f)
-            style = _load_constraint_style()
+            style = _load_constraint_style(style_path)
             multiplier_by_type = {
                 k: v.get("routing_multiplier", 1.0)
                 for k, v in style.items()
                 if isinstance(v, dict)
             }
-            engine.apply_predicted_constraints(predicted.get("features", []), multiplier_by_type)
+            features = predicted.get("features", [])
+            if custom_constraints:
+                from services.constraint_segments import segment_uid
+
+                covered = {f["properties"]["segment_uid"] for f in custom_constraints}
+                features = [f for f in features if segment_uid(f) not in covered] + custom_constraints
+            engine.apply_predicted_constraints(features, multiplier_by_type)
         elif edge_weights_path and edge_weights_path.exists():
             logger.warning("No constraint predictions found; using exported edge weights")
             with open(edge_weights_path) as f:

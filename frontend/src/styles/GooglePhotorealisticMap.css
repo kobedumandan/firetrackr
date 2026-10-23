@@ -6,6 +6,7 @@
 .command-map-tools { display: flex; flex-direction: column; align-items: stretch; gap: 8px; width: 100%; }
 .command-map-tools .constraint-editor { max-width: none; }
 .command-map-tools .obstruction-panel { width: 100%; }
+.command-map-camera-slot { position: absolute; right: 9.8px; bottom: 9.8px; width: 290px; max-width: calc(100% - 20px); z-index: var(--z-sidebar); }
 .command-map-camera-slot:empty { display: none; }
 .google-map-canvas, .google-map-canvas > gmp-map-3d { background: #000; }
 .google-map-canvas > gmp-map-3d { display: block; }
@@ -24,27 +25,38 @@
 }
 :root[data-motion="off"] .google-map-spinner { animation: none; }
 .map-area--projected > .leaflet-container { visibility: hidden; pointer-events: none; z-index: 2; }
-/* Keep existing interactive reporter/obstruction popups usable in 3D. They
-   live in a fixed card because Leaflet's projection doesn't follow a tilt. */
+/* Leaflet owns popup content; each renderer supplies its screen anchor. */
 .map-area--projected .leaflet-map-pane { transform: none !important; width: 100%; height: 100%; }
 .map-area--projected .leaflet-popup-pane { position: absolute; inset: 0; }
 .map-area--projected .leaflet-popup {
-  visibility: visible; pointer-events: auto; transform: none !important;
-  left: 16px !important; bottom: 40px !important; max-width: calc(100vw - 64px);
+  visibility: visible; pointer-events: auto;
+  transform: translate(-50%, -100%) !important;
+  bottom: auto !important; margin: 0; max-width: calc(100vw - 64px);
 }
-.map-area--projected .leaflet-popup-tip-container { display: none; }
 .google-map-dot { display: block; border-radius: 50%; border: 2px solid white; }
 .maplibregl-canvas.command-road-hover,
 .google-map-canvas > gmp-map-3d.command-road-hover { cursor: pointer; }
-.command-road-tooltip {
+.command-marker-hover, .command-road-tooltip {
   position: fixed; z-index: var(--z-tooltip, 6000); pointer-events: none;
+}
+.command-marker-hover, .command-road-tooltip, .leaflet-tooltip.command-map-tooltip {
   max-width: min(270px, calc(100vw - 16px)); box-sizing: border-box;
   padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 10px;
   background: var(--bg-panel); color: var(--text-primary);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   font-family: var(--font-span); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere;
 }
-.command-road-tooltip-label { font-weight: 600; }
+.leaflet-tooltip.command-map-tooltip::before { display: none; }
+.command-road-tooltip-label, .command-tooltip-heading { font-size: 11px; font-weight: 600; color: var(--text-primary); }
+.command-tooltip-heading { display: flex; align-items: center; gap: 7px; }
+.command-tooltip-heading svg { flex-shrink: 0; color: var(--text-secondary); }
+.command-tooltip-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
+.command-tooltip-id { color: var(--text-secondary); font-family: var(--font-mono); font-size: 9px; }
+.command-tooltip-status { padding: 2px 6px; border-radius: 4px; background: var(--bg-hover); color: var(--text-secondary); font-size: 9px; text-transform: capitalize; }
+.command-tooltip-location { margin-top: 3px; color: var(--text-secondary); }
+.command-tooltip-meta { display: flex; flex-wrap: wrap; gap: 5px 12px; }
+.command-tooltip-meta, .command-tooltip-divider { margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 10px; }
+.leaflet-tooltip.command-map-tooltip { white-space: normal; }
 .command-road-tooltip-location { margin-top: 3px; color: var(--text-secondary); }
 .command-road-tooltip-meta {
   margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--border-subtle);

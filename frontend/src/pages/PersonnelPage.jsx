@@ -488,7 +488,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
               <UnfoldIcon />
             </div>
             <div className="per-header-actions">
-              <button className="per-btn-secondary">
+              <button className="per-btn-secondary table-export-btn">
                 <ExportIcon />
                 Export
               </button>

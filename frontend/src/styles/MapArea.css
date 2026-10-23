@@ -537,66 +537,22 @@
 /* Obstruction popup */
 .obstruction-popup .leaflet-popup-content-wrapper {
   background: var(--bg-panel);
-  border: 1px solid var(--border-bright);
-  border-radius: 6px;
-  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   color: var(--text-primary);
+  padding: 0;
 }
-
-.obstruction-popup .leaflet-popup-tip {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-bright);
-}
-
-.obstruction-popup .leaflet-popup-close-button {
-  color: var(--text-muted);
-}
-
-.obstruction-popup-inner {
-  padding: 2px 0;
-  min-width: 130px;
-}
-
-.obstruction-popup-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  margin-bottom: 4px;
-}
-
-.obstruction-popup-coords {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.obstruction-popup-desc {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-
-.obstruction-remove-btn {
-  width: 100%;
-  padding: 4px 0;
-  border: 1px solid rgba(var(--accent-red-rgb),0.3);
-  border-radius: 4px;
-  background: rgba(var(--accent-red-rgb),0.1);
-  color: var(--accent-red);
-  font-family: var(--font-condensed);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.obstruction-remove-btn:hover {
-  background: rgba(var(--accent-red-rgb),0.25);
-}
+.obstruction-popup .leaflet-popup-content { margin: 12px; font-family: var(--font-span); font-size: 11px; line-height: 1.45; }
+.obstruction-popup .leaflet-popup-tip-container { display: none; }
+.obstruction-popup .leaflet-popup-close-button { color: var(--text-secondary); border-radius: 4px; }
+.obstruction-popup-inner { min-width: 210px; }
+.obstruction-popup-header { display: flex; align-items: center; gap: 7px; padding-right: 16px; font-size: 11px; margin-bottom: 3px; }
+.obstruction-popup-coords { margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--border-subtle); font-size: 10px; color: var(--text-secondary); }
+.obstruction-popup-desc { margin-top: 6px; font-size: 11px; color: var(--text-secondary); }
+.obstruction-remove-btn { width: 100%; margin-top: 10px; padding: 7px 10px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-panel); color: var(--accent-red); font-family: var(--font-span); font-size: 10px; font-weight: 500; cursor: pointer; transition: background .15s, border-color .15s; }
+.obstruction-remove-btn:hover { background: var(--bg-hover); border-color: var(--accent-red); }
+.obstruction-remove-btn:focus-visible { outline: 2px solid var(--accent-red); outline-offset: 2px; }
 
 /* ── Reporter location popup ─────────────────────────────────────────────────── */
 .leaflet-popup-content-wrapper {
@@ -609,6 +565,14 @@
   padding: 2px 0;
   min-width: 150px;
 }
+
+.station-popup .leaflet-popup-content { margin: 14px; font-family: var(--font-ui); }
+.station-popup .leaflet-popup-tip { background: var(--bg-panel); }
+.station-popup-inner { display: flex; flex-direction: column; gap: 5px; color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
+.station-popup-name { padding-right: 12px; color: var(--text-primary); font-size: 13px; }
+.station-popup-meta { margin-bottom: 3px; text-transform: capitalize; }
+.station-popup-view { margin-top: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-hover); color: var(--text-primary); font: inherit; cursor: pointer; }
+.station-popup-view:hover { background: var(--surface-raise-strong); }
 
 .reporter-popup-header {
   display: flex;
@@ -706,9 +670,9 @@
 .constraint-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-secondary); font-size: 9px; }
 .constraint-section-note { color: var(--text-muted); font-size: 8px; }
 .constraint-editor-types { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
-.constraint-draw-btn { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); color: var(--text-primary); font: inherit; font-size: 10px; text-align: left; cursor: pointer; transition: background .15s, border-color .15s; }
-.constraint-draw-btn:hover { background: var(--bg-hover); border-color: color-mix(in srgb, var(--constraint-color) 50%, var(--border)); }
-.constraint-draw-btn[aria-pressed="true"] { border-color: var(--constraint-color); background: color-mix(in srgb, var(--constraint-color) 10%, var(--bg-panel)); }
+.constraint-draw-btn { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px; border: 1px solid var(--accent-fire); border-radius: 7px; background: var(--accent-fire); color: white; font: inherit; font-size: 10px; text-align: left; cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+.constraint-draw-btn:hover:not(:disabled) { background: var(--accent-fire-hover); border-color: var(--accent-fire-hover); box-shadow: 0 0 20px rgba(var(--accent-fire-rgb), 0.4); }
+.constraint-draw-btn:disabled { opacity: .45; cursor: not-allowed; }
 .constraint-type-icon { display: grid; place-items: center; width: 23px; height: 26px; flex: none; border-radius: 5px; color: var(--constraint-color); background: color-mix(in srgb, var(--constraint-color) 10%, transparent); }
 .constraint-help { margin: 0; font-size: 9px; line-height: 1.5; color: var(--text-secondary); }
 .constraint-drawing-hint { display: flex; flex-direction: column; gap: 7px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel); font-size: 10px; }
@@ -954,19 +918,16 @@
   color: var(--obs);
 }
 
-.obstruction-popup-header strong { color: var(--obs); }
+.obstruction-popup-header strong { color: var(--text-primary); font-weight: 600; }
 
 .obstruction-popup-effect {
-  font-size: 9.4px;
+  font-size: 11px;
   line-height: 1.4;
   color: var(--text-secondary);
   margin: 4px 0 2px;
 }
 
-.obstruction-popup-effect--blocking {
-  color: var(--obs);
-  font-weight: 500;
-}
+.obstruction-popup-effect--blocking { color: var(--text-secondary); }
 
 /* Ghost preview: the same marker at low opacity, so it reads as "this is where
    it would land" rather than as an obstruction that already exists. */

@@ -12,9 +12,12 @@ from models import DispatchRecord, FireIncident, IncidentReport, Users
 from security import require_admin
 from services.reporting_periods import reporting_window
 from services.historical_incidents import attach_history, history
+from services.response_performance import overall
+from routers.response_performance import router as performance_router
 
 
 router = APIRouter(tags=["metrics"])
+router.include_router(performance_router)
 
 
 # ── Metrics summary (real aggregates for the Metrics dashboard) ───────────────
@@ -38,8 +41,9 @@ def metrics_summary(
 ):
     """One count per incident, source causes and explicitly labeled demo alarms.
 
-    Response duration requires an actual report receipt and dispatch arrival;
-    synthesized historical metadata is never counted as measured response time.
+    Both response metrics require an actual report receipt. The separate
+    recorded metric also accepts per-unit arrivals.
+    Synthesized historical metadata never supplies measured response timestamps.
     """
     now = datetime.now(timezone.utc)
     earliest = db.query(func.min(FireIncident.fire_incident_datetime)).scalar() if period == "all" else None
@@ -64,7 +68,7 @@ def metrics_summary(
     prev_critical = _count(*_critical, since=prev_start, until=start)
 
     def _avg_response(since, until):
-        # First arrival per incident, so a second team arriving later doesn't
+        # First dispatch arrival per incident, so a second team arriving later doesn't
         # drag the average up. Durations outside (0, 6h] are clock skew or a
         # forgotten "arrived" tap, not a response, and are excluded.
         first_arrival = (
@@ -92,6 +96,11 @@ def metrics_summary(
 
     avg_response = _avg_response(start, now)
     prev_avg_response = _avg_response(prev_start, start)
+    # Preserve the branch's receipt-based response key. New dashboard consumers
+    # explicitly select the verified-receipt metric, including unit arrivals.
+    recorded = overall(db, start, now, kind="all")
+    prior_recorded = overall(db, prev_start, start, kind="all") if prev_start < start else {"mean_seconds": None}
+    recorded_minutes = recorded["mean_seconds"] / 60 if recorded["mean_seconds"] is not None else None
 
     # Severity breakdown for the current window.
     severity = {"Critical": 0, "Moderate": 0, "Minor": 0}
@@ -195,4 +204,9 @@ def metrics_summary(
             ),
         },
         "avg_response_minutes": avg_response,
+        "avg_response_basis": "legacy_incident_time_proxy",
+        "recorded_response_minutes": round(recorded_minutes, 1) if recorded_minutes is not None else None,
+        "recorded_response_quality": recorded,
+        "recorded_response_change": _pct_delta(recorded["mean_seconds"], prior_recorded["mean_seconds"])
+            if recorded["mean_seconds"] is not None and prior_recorded["mean_seconds"] is not None else None,
     }

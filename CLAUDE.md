@@ -21,9 +21,14 @@ Contracts live in [schemas.py](backend/schemas.py) and
 [models.py](backend/models.py) and [migrations](backend/alembic/versions/).
 Operational response measurements live in
 [operational_times.py](backend/services/operational_times.py), behind the
-[administrator API](backend/routers/operational_times.py); the standalone page is
+[administrator API](backend/routers/operational_times.py); its view is
 [OperationalTimePage.jsx](frontend/src/pages/OperationalTimePage.jsx). Apply migrations
-through `0026` before starting this revision. See KNOWLEDGE.md for timestamp semantics,
+through `0028` before starting this revision. The Analysis sidebar page groups
+Response Performance, Operational Times and Coverage Planning under shared tabs;
+Metrics contains the overview only. See `frontend/src/pages/AnalysisPage.jsx`;
+Response Performance's service is `backend/services/response_performance.py`. Mobile acknowledgement
+and departure use `PATCH /api/dispatch/{id}/acknowledge` and `/depart`.
+See KNOWLEDGE.md for timestamp semantics,
 feature-branch schema reconciliation, GPS eligibility and separate-mobile-client limitations.
 Use [routing_setup.py](backend/routing_setup.py) for engine construction,
 [services/routing.py](backend/services/routing.py) for reroutes,
@@ -111,8 +116,16 @@ Configuration and default values are catalogued in [KNOWLEDGE.md](KNOWLEDGE.md).
 
 ## Database and migration work
 
-The current chain ends at `0026_reconcile_incident_dispatch_type.py`. Add a new migration for
+The current chain ends at `0028_response_performance.py`. Original constraint/model
+revisions `0025`/`0026` are retained; new `0027` adds operational timing. Do not use
+the earlier response-only review database, whose numeric revision IDs represent
+different migrations. Add a new migration for
 schema changes and review generated output; do not rewrite deployed history.
+The earlier feature branch reused IDs `0025`/`0026` for operational timing.
+Its files are preserved outside the active graph in
+[legacy_versions](backend/alembic/legacy_versions/README.md). Existing databases
+on that feature history require reviewed schema reconciliation, not a blind
+upgrade or stamp; Alembic rejects the ambiguous legacy state before migrating.
 From `backend/`, the standard Alembic generation command is:
 
 ```powershell
@@ -139,3 +152,40 @@ coordinate conversions. Keep authentication and ownership checks server-side.
 Do not expose secrets in `VITE_*`, loosen dashboard admin checks, or treat the
 WebSocket's current token validation as equivalent to HTTP revocation/role checks.
 Report validation limits instead of claiming unrun checks passed.
+
+Offline constraint retraining uses an isolated `.venv-training`, not the web
+backend's environment. See [training/README.md](training/README.md) for pinned
+dependencies, champion reconstruction, Parquet label snapshots, local GAT training
+and audit commands. Admin registry APIs initialize verified v1, submit local
+retrains, list versions, return status/reports and reject candidates. Migration
+`0026` adds durable history and unique training/champion guards. Immediate
+promotion/rollback and the admin Settings Model tab are implemented; Lightning
+and scheduling remain pending. The tab includes live job state, audit/uncertainty,
+map preview, rejection, confirmations, rollback and version history.
+The CPU port matches original notebook CPU weights exactly. User-reported T4
+CUDA schema-2 confirmation passes: historical F1 and class/map decisions match
+exactly, and numerical differences are within absolute 1e-6. This is user-provided
+Colab evidence with matching local source hashes; see
+`backend/data/retraining/cuda_parity_confirmation_v2/`. Explicit admin promotion
+uses `POST /api/models/{version}/promote` with `expected_champion`; it verifies
+artifacts and warms the main/pool engines before changing registry history.
+Archived versions use the same endpoint for rollback. Other workers poll champion
+changes every 10 seconds. Startup resolves the registered champion; an absent or
+empty registry falls back to the original configured export.
+Snapshot writes require `pyarrow` from the updated backend requirements. Migrations
+`0025` and `0026` were applied to the configured local database on 2026-10-19. See the training README for endpoint
+order and runner configuration; use an intended test DB for deployment checks.
+
+Constraints view: use GAT constraints ? Edit constraints to enter the left-side
+layer editor. Incident View, Incidents navigation and map actions hide until Done.
+The list supports search, barangay/source filters, geographic/name sorting, focus
+and local visibility. Choose Narrow road or Traffic, then click QGIS road edges
+between connected junctions (zoom 16+). Narrow edges use neon orange and traffic
+edges use neon yellow. Click a selected edge again to deselect it.
+Confirm and save the current type before choosing another type, or cancel the
+selection. Recently saved edges sorts newest first; clicking a row reveals and
+focuses its location. Freehand drawing is removed from the editor. Baseline/model
+layers remain read-only; saved constraints can be removed. Failed saves retain
+the selection. The admin APIs are GET `/api/constraints/road-edges` and POST
+`/api/constraints/edge-selection`; the server validates IDs and saves each batch
+atomically using canonical road geometry, with retry deduplication.
