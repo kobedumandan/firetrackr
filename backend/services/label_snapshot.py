@@ -100,11 +100,12 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
         points = [tuple(round(float(v), 6) for v in p[:2]) for p in coordinates]
         return {tuple(sorted((a, b))) for a, b in zip(points, points[1:]) if a != b}
 
-    selected_pairs = {kind: set() for kind in ('narrow_road', 'traffic_area')}
+    selected_pairs = {}
     for annotation in annotations:
         if annotation.get('is_active', True) and any(uid.startswith('edge-v1-') for uid in (annotation.get('segment_uids') or [])):
             coords = annotation['coordinates']
-            selected_pairs[annotation['constraint_type']].update(pairs(json.loads(coords) if isinstance(coords, str) else coords))
+            group = (annotation['constraint_type'], annotation.get('narrow_severity'))
+            selected_pairs.setdefault(group, set()).update(pairs(json.loads(coords) if isinstance(coords, str) else coords))
     baseline_pairs = {uid: pairs(feature['geometry']['coordinates']) for uid, feature in by_uid.items()}
     history, touched = [], set()
     partial_edge_rows = 0
@@ -127,14 +128,16 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
         if selected_edge_uids:
             coords = row['coordinates']
             covered = pairs(json.loads(coords) if isinstance(coords, str) else coords)
+            group_coverage = selected_pairs.get((kind, row.get('narrow_severity')), set())
             uids = [uid for uid, road_pairs in baseline_pairs.items()
-                    if road_pairs and road_pairs <= selected_pairs[kind] and road_pairs & covered]
+                    if road_pairs and road_pairs <= group_coverage and road_pairs & covered]
             if active and not uids:
                 partial_edge_rows += 1
         if active and set(uids) - by_uid.keys():
             raise ValueError("Active annotation references unknown segments; reconcile road identities first")
         history.append({"id": row.get("id", row.get("constraint_id")), "constraint_type": kind,
                         "is_active": active, "segment_uids": uids,
+                        "narrow_severity": row.get('narrow_severity'), "traffic_schedule": row.get('traffic_schedule'),
                         **({'selected_edge_uids': selected_edge_uids} if selected_edge_uids else {})})
         if not active:
             continue
@@ -144,7 +147,12 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
             props = by_uid[uid]["properties"]
             if kind == "narrow_road":
                 props["is_narrow"] = 1
-                props["narrow_severity"] = max(2, props["narrow_severity"])
+                severity = row.get('narrow_severity')
+                if severity in ('slight', 'severe'):
+                    props['is_narrow_severe'] = int(severity == 'severe')
+                    props['narrow_severity'] = 1 if severity == 'slight' else 3
+                else:
+                    props["narrow_severity"] = max(2, props["narrow_severity"])
             else:
                 props["traffic_general"] = 1
             props.update(simplify_constraint_for_gnn(props))
@@ -193,6 +201,8 @@ def read_database_snapshot(db, baseline_path, created_by):
     rows = db.query(GnnConstraint).order_by(GnnConstraint.constraint_id).all()
     annotations = [{"id": row.constraint_id, "constraint_type": row.constraint_type,
                     "coordinates": row.coordinates, "segment_uids": row.segment_uids,
+                    "narrow_severity": row.narrow_severity,
+                    "traffic_schedule": row.traffic_schedule,
                     "is_active": row.is_active} for row in rows]
     return build_snapshot(baseline_path, annotations, created_by)
 

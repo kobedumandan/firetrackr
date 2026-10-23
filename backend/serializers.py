@@ -18,6 +18,8 @@ def _constraint_to_dict(c: GnnConstraint) -> dict:
         "name":            c.name or "",
         "coordinates":     json.loads(c.coordinates),
         "segment_uids":    c.segment_uids,
+        "narrow_severity": c.narrow_severity,
+        "traffic_schedule": c.traffic_schedule,
         "highway":         c.highway or "",
         "surface":         c.surface or "",
         "maxspeed":        c.maxspeed or "",

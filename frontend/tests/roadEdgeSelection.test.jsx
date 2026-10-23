@@ -50,7 +50,7 @@ it('locks constraint types until completion and lists recent stored edges for fo
   const unmount = await mount(<ConstraintLayersPanel rows={[row]} hidden={new Set()} selectionType="narrow_road" edgeCount={1} roadsReady onSelect={select} />)
   try {
     const buttons = [...document.querySelectorAll('button')]
-    expect(buttons.find(b=>b.textContent==='Traffic area').disabled).toBe(true)
+    expect(buttons.find(b=>b.textContent==='Traffic congestion').disabled).toBe(true)
     await act(async () => buttons.find(b=>b.textContent==='Recently saved edges').click())
     await act(async () => document.querySelector('.constraint-layer-select').click())
     expect(select).toHaveBeenCalledWith(row)

@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 class RouteRequest(BaseModel):
@@ -39,6 +39,41 @@ class ConstraintUpdate(BaseModel):
     maxspeed: str | None = None
 
 
+class TrafficWindow(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    start: str = Field(pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$')
+    end: str = Field(pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$')
+
+
+class TrafficSchedule(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    all_day: bool
+    days: list[Literal[0, 1, 2, 3, 4, 5, 6]] = Field(min_length=1, max_length=7)
+    windows: list[TrafficWindow] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode='after')
+    def validate_schedule(self):
+        self.days = sorted(set(self.days))
+        if self.all_day and self.windows:
+            raise ValueError('All-day schedules must not contain time ranges.')
+        if not self.all_day and not self.windows:
+            raise ValueError('Add at least one time range or choose All day.')
+        occupied = set()
+        for window in self.windows:
+            start = int(window.start[:2]) * 60 + int(window.start[3:])
+            end = int(window.end[:2]) * 60 + int(window.end[3:])
+            if start == end:
+                raise ValueError('Start and end must differ. Use All day for a full day.')
+            duration = (end - start) % 1440
+            for day in self.days:
+                minutes = {(day * 1440 + start + offset) % 10080 for offset in range(duration)}
+                if occupied & minutes:
+                    raise ValueError('Traffic time ranges must not overlap.')
+                occupied.update(minutes)
+        self.windows.sort(key=lambda window: window.start)
+        return self
+
+
 class ConstraintEdgeSelection(BaseModel):
     constraint_type: Literal['narrow_road', 'traffic_area']
     segment_uids: list[str] = Field(min_length=1, max_length=500)
@@ -46,6 +81,17 @@ class ConstraintEdgeSelection(BaseModel):
     highway: str | None = Field(default=None, max_length=100)
     surface: str | None = Field(default=None, max_length=100)
     maxspeed: str | None = Field(default=None, max_length=50)
+    narrow_severity: Literal['slight', 'severe'] | None = None
+    traffic_schedule: TrafficSchedule | None = None
+
+    @model_validator(mode='after')
+    def validate_details(self):
+        if self.constraint_type == 'narrow_road':
+            if self.narrow_severity is None or self.traffic_schedule is not None:
+                raise ValueError('Choose Slight or Severe for a narrow road; traffic schedules do not apply.')
+        elif self.traffic_schedule is None or self.narrow_severity is not None:
+            raise ValueError('A traffic constraint requires a schedule and cannot have narrow severity.')
+        return self
 
 
 class LoginRequest(BaseModel):

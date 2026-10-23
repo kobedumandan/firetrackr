@@ -42,20 +42,25 @@ async def create_edge_selection(body: ConstraintEdgeSelection, db: Session = Dep
     # Geometry is always taken from the authoritative road catalog, never from
     # client coordinates. All selected roads commit together or none do.
     rows = []
+    schedule = body.traffic_schedule.model_dump() if body.traffic_schedule else None
     try:
         db.execute(text('SELECT pg_advisory_xact_lock(912739)'))
         for uid in uids:
             edge = edges[uid]
             existing = db.query(GnnConstraint).filter(
-                GnnConstraint.is_active.is_(True), GnnConstraint.constraint_type == body.constraint_type,
+                GnnConstraint.is_active.is_(True),
                 cast(GnnConstraint.segment_uids, JSONB) == [uid]).first()
             if existing is not None:
+                if (existing.constraint_type != body.constraint_type or existing.narrow_severity != body.narrow_severity
+                        or existing.traffic_schedule != schedule or existing.name != (body.name or edge['properties']['name'])):
+                    raise HTTPException(409, 'A selected edge already has a different saved constraint. Remove that constraint before saving its replacement.')
                 rows.append(existing)
                 continue
             row = GnnConstraint(constraint_type=body.constraint_type, name=body.name or edge['properties']['name'],
                                 coordinates=json.dumps(edge['geometry']['coordinates']), segment_uids=[uid],
                                 highway=body.highway or edge['properties']['highway'],
                                 surface=body.surface or edge['properties']['surface'], maxspeed=body.maxspeed,
+                                narrow_severity=body.narrow_severity, traffic_schedule=schedule,
                                 created_by=_auth.user_id)
             db.add(row)
             rows.append(row)
@@ -151,6 +156,9 @@ async def update_constraint(
     if body.constraint_type is not None:
         if body.constraint_type not in VALID_CONSTRAINT_TYPES:
             raise HTTPException(status_code=422, detail=f"Invalid type. Must be one of: {VALID_CONSTRAINT_TYPES}")
+        if body.constraint_type != c.constraint_type:
+            c.narrow_severity = None
+            c.traffic_schedule = None
         c.constraint_type = body.constraint_type
     if body.name is not None:
         c.name = body.name

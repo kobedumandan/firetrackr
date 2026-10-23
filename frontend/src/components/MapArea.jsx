@@ -26,6 +26,7 @@ import HeatmapPanel from "./HeatmapPanel";
 import RoadEdgeSelector from "./RoadEdgeSelector";
 import ConstraintEdgeSaveDialog from "./ConstraintEdgeSaveDialog";
 import { toggleRoadEdge } from "../utils/roadEdgeSelection";
+import { scheduleSummary } from "../utils/constraintSchedule";
 import ConstraintLayersPanel from "./ConstraintLayersPanel";
 import { buildConstraintLayers, constraintLayerId } from "../utils/constraintLayers";
 import HeatmapIncidents from "./HeatmapIncidents";
@@ -705,6 +706,8 @@ const GnnConstraintsLayer = memo(function GnnConstraintsLayer({ data }) {
             {confidence ? ` · ${confidence}` : ""}
             {props.custom ? " · custom" : ""}
           </div>
+          {props.narrow_severity && <div className="tooltip-sub">{props.narrow_severity === 'severe' ? 'Severe' : 'Slight'} narrow road</div>}
+          {props.traffic_schedule && <div className="tooltip-sub">{scheduleSummary(props.traffic_schedule)}</div>}
         </Tooltip>
       </Polyline>
     );
@@ -747,7 +750,7 @@ const CONSTRAINT_TYPES = [
   },
   {
     id: "traffic_area",
-    label: "Traffic Crowded Area",
+    label: "Traffic Congestion",
     color: TRAFFIC_AREA_COLOR,
     symbol: "◈",
   },

@@ -31,7 +31,8 @@ def _read_overlay(db, model_source=None, force=False):
 
     rows = db.query(GnnConstraint).filter(GnnConstraint.is_active.is_(True)).order_by(GnnConstraint.constraint_id).all()
     payload = {"model": model_source,
-               "annotations": [(r.constraint_id, r.constraint_type, r.coordinates, r.segment_uids) for r in rows]}
+               "annotations": [(r.constraint_id, r.constraint_type, r.coordinates, r.segment_uids,
+                                r.narrow_severity, r.traffic_schedule) for r in rows]}
     signature = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
     if not force and signature == _loaded_signature:
         return signature, None

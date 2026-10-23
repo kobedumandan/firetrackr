@@ -153,7 +153,8 @@ def gnn_constraints(
 
     # ── Merge user-drawn custom constraints, styled from the GAT palette ───────
     for c in custom_rows:
-        style_key = _CUSTOM_STYLE_KEY.get(c.constraint_type, "narrow_road")
+        from services.constraint_schedule import constraint_style_key
+        style_key = constraint_style_key(c)
         s = style.get(style_key, {})
         type_counts[style_key] = type_counts.get(style_key, 0) + 1
         type_color.setdefault(style_key, s.get("color", "#E53935"))
@@ -173,6 +174,8 @@ def gnn_constraints(
                 "hover_confidence_text": "Selected road edge" if any(uid.startswith('edge-v1-') for uid in (c.segment_uids or [])) else "Saved road constraint",
                 "custom": True,
                 "constraint_id": c.constraint_id,
+                "narrow_severity": c.narrow_severity,
+                "traffic_schedule": c.traffic_schedule,
                 "segment_uids": c.segment_uids if c.segment_uids is not None else index.snap(json.loads(c.coordinates)),
                 "annotation_source": "user_drawn",
             },

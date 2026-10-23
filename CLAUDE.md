@@ -116,7 +116,7 @@ Configuration and default values are catalogued in [KNOWLEDGE.md](KNOWLEDGE.md).
 
 ## Database and migration work
 
-The current chain ends at `0028_response_performance.py`. Original constraint/model
+The current chain ends at `0029_constraint_schedules.py`. Original constraint/model
 revisions `0025`/`0026` are retained; new `0027` adds operational timing. Do not use
 the earlier response-only review database, whose numeric revision IDs represent
 different migrations. Add a new migration for
@@ -177,7 +177,8 @@ Snapshot writes require `pyarrow` from the updated backend requirements. Migrati
 order and runner configuration; use an intended test DB for deployment checks.
 
 Constraints view: use GAT constraints ? Edit constraints to enter the left-side
-layer editor. Incident View, Incidents navigation and map actions hide until Done.
+layer editor. Incident View and map actions hide until Done. Main sidebar links and
+the section divider remain visible; page navigation exits constraint editing.
 The list supports search, barangay/source filters, geographic/name sorting, focus
 and local visibility. Choose Narrow road or Traffic, then click QGIS road edges
 between connected junctions (zoom 16+). Narrow edges use neon orange and traffic
@@ -189,3 +190,15 @@ layers remain read-only; saved constraints can be removed. Failed saves retain
 the selection. The admin APIs are GET `/api/constraints/road-edges` and POST
 `/api/constraints/edge-selection`; the server validates IDs and saves each batch
 atomically using canonical road geometry, with retry deduplication.
+
+The save dialog chooses Slight/Severe for new narrow annotations. Traffic saves
+use the existing name field as an optional label, plus Every day/selected weekdays
+and All day/up to eight non-overlapping time ranges. Overnight windows belong to
+their starting weekday. Exact windows are evaluated in Asia/Manila, start included
+and end excluded, on new route requests. Outside the schedule the admin traffic
+penalty is absent; the edge stays visible in the editor. Different constraints on
+the same saved edge return 409; remove the previous annotation before replacing.
+Revision 0029 adds nullable `narrow_severity` and `traffic_schedule`. Legacy NULL
+values retain prior behavior. On the configured legacy database, the fields were
+applied additively with a backup and original-value verification; the legacy
+Alembic stamp remains unchanged. Do not blindly stamp/upgrade that database.

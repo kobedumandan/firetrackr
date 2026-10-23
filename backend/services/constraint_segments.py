@@ -88,12 +88,12 @@ def load_segment_index(path=None):
 
 def overlay_features(rows, index, style):
     """Use exact road geometries, not imprecise drawn vertices, for routing."""
-    from services.constraints import _CUSTOM_STYLE_KEY
+    from services.constraint_schedule import constraint_style_key
 
     selected = {}
     for row in rows:
         uids = row.segment_uids if row.segment_uids is not None else index.snap(json.loads(row.coordinates))
-        key = _CUSTOM_STYLE_KEY[row.constraint_type]
+        key = constraint_style_key(row)
         multiplier = max(1.0, float(style.get(key, {}).get("routing_multiplier", 1.45)))
         for uid in uids:
             original = index.features.get(uid)
@@ -110,7 +110,10 @@ def overlay_features(rows, index, style):
             selected[uid] = {
                 "type": "Feature", "geometry": original["geometry"],
                 "properties": {**original.get("properties", {}), "segment_uid": uid,
-                               "routing_multiplier": multiplier,
+                               "routing_multiplier": 1.0 if getattr(row, 'traffic_schedule', None) else multiplier,
+                               "admin_constraint": bool(getattr(row, 'narrow_severity', None) or getattr(row, 'traffic_schedule', None)),
+                               "traffic_schedule": getattr(row, 'traffic_schedule', None),
+                               "scheduled_multiplier": multiplier,
                                "routing_constraint_type": key},
             }
     return list(selected.values())

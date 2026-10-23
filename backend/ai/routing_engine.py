@@ -225,6 +225,7 @@ class GeoAIRoutingEngine:
         # entry), built from the GAT geojson traffic schedule in
         # apply_predicted_constraints and read live in apply_congestion.
         self._edge_congestion_schedule: Dict[Tuple[int, int], List[float]] = {}
+        self._edge_traffic_schedules = {}
 
         # Cached (edge_costs, node_scores_map) from the active cost source. The
         # graph sweep that builds these only changes when edge weights change, so
@@ -372,6 +373,7 @@ class GeoAIRoutingEngine:
 
         # Rebuilt from scratch on every (re)load so stale schedules don't linger.
         self._edge_congestion_schedule = {}
+        self._edge_traffic_schedules = {}
 
         SNAP = 6  # must match qgis_loader.load_roads_gpkg SNAP_DECIMALS
 
@@ -429,6 +431,16 @@ class GeoAIRoutingEngine:
                     data["routing_multiplier"] = mult
                     data["weight"] = float("inf") if blocked else base * mult
                     applied += 1
+
+                    if props.get('admin_constraint'):
+                        # Explicit admin constraints replace legacy congestion on
+                        # these exact graph edges, including overnight schedules.
+                        self._edge_congestion_schedule.pop((a, b), None)
+                        self._edge_traffic_schedules.pop((a, b), None)
+                        if props.get('traffic_schedule'):
+                            self._edge_traffic_schedules[(a, b)] = (
+                                props['traffic_schedule'], props['scheduled_multiplier'])
+                        continue
 
                     if has_cong:
                         cur = self._edge_congestion_schedule.get((a, b))
@@ -621,10 +633,12 @@ class GeoAIRoutingEngine:
 
         Returns the mutated edge_costs dict (same object, modified in place).
         """
-        if not self._edge_congestion_schedule:
+        if not self._edge_congestion_schedule and not self._edge_traffic_schedules:
             return edge_costs
 
-        now = now or datetime.now()
+        from services.constraint_schedule import MANILA, schedule_active
+        now = now or datetime.now(MANILA)
+        now = now.replace(tzinfo=MANILA) if now.tzinfo is None else now.astimezone(MANILA)
         bucket = _bucket_index_for_hour(now.hour)
 
         affected = 0
@@ -643,6 +657,10 @@ class GeoAIRoutingEngine:
                 "Congestion [%s]: %d edge-costs inflated (CONGESTION_WEIGHT=%.1f)",
                 _TRAFFIC_BUCKETS[bucket], affected, CONGESTION_WEIGHT,
             )
+        for edge, (schedule, multiplier) in self._edge_traffic_schedules.items():
+            current = edge_costs.get(edge)
+            if current is not None and current != float('inf') and schedule_active(schedule, now):
+                edge_costs[edge] = current * max(1.0, float(multiplier))
         return edge_costs
 
     def _run_gnn(self, data) -> torch.Tensor:

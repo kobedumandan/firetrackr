@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { filterConstraintLayers } from '../utils/constraintLayers'
+import { scheduleSummary } from '../utils/constraintSchedule'
 import '../styles/ConstraintLayersPanel.css'
 
 export default function ConstraintLayersPanel({ rows, selectedKey, hidden, onSelect, onVisibility, onExit,
@@ -20,7 +21,7 @@ export default function ConstraintLayersPanel({ rows, selectedKey, hidden, onSel
     {notice && <p className="constraint-layers-notice" role="status">{notice}</p>}
     <div className="constraint-layers-add"><span>Select road edges</span><div>
       <button type="button" disabled={!!selectionType || !roadsReady || locked} aria-pressed={selectionType === 'narrow_road'} onClick={() => onStartSelection('narrow_road')}>Narrow road</button>
-      <button type="button" disabled={!!selectionType || !roadsReady || locked} aria-pressed={selectionType === 'traffic_area'} onClick={() => onStartSelection('traffic_area')}>Traffic area</button>
+      <button type="button" disabled={!!selectionType || !roadsReady || locked} aria-pressed={selectionType === 'traffic_area'} onClick={() => onStartSelection('traffic_area')}>Traffic congestion</button>
     </div></div>
     {!roadsReady && !error && <p className="constraint-layers-notice" role="status">Loading selectable roads...</p>}
     {selectionType && <div className="constraint-layers-draft"><span>{edgeCount} edges selected</span><p>Click roads to select or deselect. Selected edges are {selectionType === 'traffic_area' ? 'neon yellow' : 'neon orange'}. Save or cancel before choosing another type.</p><div>
@@ -47,8 +48,10 @@ export default function ConstraintLayersPanel({ rows, selectedKey, hidden, onSel
       {filtered.length > limit && <button type="button" onClick={() => setLimit(value => value + 100)}>Show 100 more</button>}
     </div>
     {selected && <section className="constraint-layer-inspector" aria-label="Selected constraint"><strong>{selected.name}</strong><p>{selected.location} · {selected.source}</p>
+      {selected.drawing?.narrow_severity && <p>{selected.drawing.narrow_severity === 'severe' ? 'Severe' : 'Slight'} narrow road</p>}
+      {selected.drawing?.constraint_type === 'traffic_area' && <p>{scheduleSummary(selected.drawing.traffic_schedule)}</p>}
       {selected.drawing ? <div><button type="button" disabled={!!selectionType || !roadsReady || locked} onClick={() => onDelete(selected.drawing.id)}>Remove constraint</button></div>
-        : <p>Select Narrow road or Traffic area, then click the road edges to add a constraint. Baseline and model layers are read-only.</p>}
+        : <p>Select Narrow road or Traffic congestion, then click the road edges to add a constraint. Baseline and model layers are read-only.</p>}
       <small>Hiding a layer affects this editing view only. Saved routing constraints stay active.</small>
     </section>}
   </aside>

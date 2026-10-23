@@ -211,7 +211,7 @@ Sources: [api.js](frontend/src/api.js), [App.jsx](frontend/src/App.jsx),
 ## Database structure and relationships
 
 [models.py](backend/models.py) defines the schema; [Alembic versions](backend/alembic/versions/)
-define migration history. The combined web chain ends at `0028` (response performance).
+define migration history. The combined web chain ends at `0029` (constraint severity/schedules).
 Original `0025` adds constraint segment identities and `0026` adds the model registry;
 both were applied to the original checkout's configured local database on 2026-10-19.
 New `0027` adds operational timing. The original local database was backed up and
@@ -409,8 +409,10 @@ output. The agent did not execute CUDA locally or upload files to Colab. The opt
 device; production local training still explicitly uses CPU.
 
 The map GAT panel now enters an explicit constraint-editing mode, with a left-side
-layer list, search, barangay/source filters and geographic sorting. Incident View,
-map actions and Incidents navigation hide during editing; Done restores them.
+layer list, search, barangay/source filters and geographic sorting. Incident View
+and map actions hide during editing; Done restores them. Main sidebar links,
+including Incidents, and the section divider remain visible. Page navigation exits
+constraint editing.
 Visibility is local to the editing view. The editor selects authoritative QGIS
 road chains between connected junctions/dead ends rather than drawing polylines.
 At zoom 16+, clicking a road toggles a neon-orange narrow-road or neon-yellow
@@ -425,6 +427,20 @@ Edge identities use the `edge-v1-` prefix. Routing overlays retain the selected
 geometry. Training snapshots only label an original training feature when its
 entire geometry is covered by active selections of the same type; partial-edge
 annotations remain in history and are counted in the snapshot manifest.
+
+New saves choose Slight/Severe narrow severity in the confirmation dialog. Traffic
+uses an optional label (`gnn_constraints.name`) and a recurring schedule with
+selected weekdays, All day, or up to eight exact time windows. The new nullable
+`narrow_severity` and `traffic_schedule` fields preserve legacy row semantics.
+Schedules use Asia/Manila and half-open [start, end) windows; overnight periods
+continue into the day after the selected starting day. The routing engine applies
+the scheduled traffic multiplier per request, without broad time-bucket rounding
+or an always-on admin traffic penalty. Existing blockades still override costs.
+The saved edge remains visible outside its active hours. Re-selecting an identical
+saved constraint is idempotent; conflicting saved details are rejected atomically
+until the old annotation is removed. New narrow labels feed their severity into
+training; a larger training feature requires complete coverage of one severity.
+Schedules are operational metadata, not learned hourly traffic predictions.
 
 Local activation on 2026-10-23: the configured legacy database received the
 approved additive response-performance schema, nullable constraint segment IDs,

@@ -279,14 +279,13 @@ export default function App() {
   }, [])
 
   const navigateToPage = useCallback(nav => {
-    if (constraintEditing && nav === 'Incidents') return
     setConstraintEditing(false)
     setActiveNav(nav)
     setReviewIncident(null)
     setShowSettings(false)
     setFocusedPersonnel(null)
     setMapFocus(null)
-  }, [constraintEditing])
+  }, [])
   useCommandShortcut(navigateToPage, route.view === 'dashboard')
 
   // Auto-select the first incident when the list loads or changes
@@ -856,7 +855,6 @@ export default function App() {
         theme={theme}
         onThemeToggle={toggleTheme}
         onOpenSettings={() => { setConstraintEditing(false); setShowSettings(s => !s) }}
-        constraintEditing={constraintEditing && activeNav === 'Command' && !showSettings}
         showingSettings={showSettings}
         user={route.user}
         onLogout={handleLogout}

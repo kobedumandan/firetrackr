@@ -543,12 +543,15 @@ class RoadObstruction(Base):
 
 class GnnConstraint(Base):
     __tablename__ = "gnn_constraints"
+    __table_args__ = (CheckConstraint("narrow_severity IN ('slight', 'severe')", name='ck_constraint_narrow_severity'),)
 
     constraint_id = Column(Integer, primary_key=True, autoincrement=True)
     constraint_type = Column(String(50), nullable=False)   # "narrow_road" | "traffic_area"
     name          = Column(String(255), nullable=True)
     coordinates   = Column(Text, nullable=False)           # JSON array of [lon, lat] pairs
     segment_uids  = Column(JSON, nullable=True)             # NULL = legacy/unresolved
+    narrow_severity = Column(String(10), nullable=True)      # NULL preserves legacy regular narrow
+    traffic_schedule = Column(JSON, nullable=True)          # NULL preserves legacy traffic behavior
     highway       = Column(String(100), nullable=True)
     surface       = Column(String(100), nullable=True)
     maxspeed      = Column(String(50), nullable=True)
