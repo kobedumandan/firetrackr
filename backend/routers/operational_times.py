@@ -17,8 +17,9 @@ router = APIRouter(prefix="/api/operational-times", tags=["operational-times"])
 @router.get("")
 def summary(period: Literal['1d', '1w', '1m', '6m', '1y', '2023-2024', 'all'] = '1y', page: int = Query(1, ge=1),
             source: Literal['recorded', 'demo'] = 'recorded',
+            kind: Literal['operational', 'drill', 'test', 'unknown', 'all'] = 'all',
             db: Session = Depends(get_db), _user: Users = Depends(require_admin)):
-    return analytics(db, period, page, source=source)
+    return analytics(db, period, page, source=source, kind=kind)
 
 
 @router.get("/{fire_id}")

@@ -13,12 +13,13 @@ from models import DispatchRecord, FireIncident, IncidentEvent, Route, TruckLog
 from services.incident_events import actor_name
 from services.historical_incidents import attach_history, history, demo_times
 from services.reporting_periods import reporting_window
+from services.timing_metrics import EXCLUDED, measure, first_arrival
 
 UTC = timezone.utc
 MANILA = ZoneInfo("Asia/Manila")
 PERIOD_DAYS = {"1d": 1, "1w": 7, "1m": 30, "6m": 182, "1y": 365}
 STAGES = ("processing", "preparation", "travel", "suppression", "cta")
-EXCLUDED = {"cancelled", "canceled", "recalled"}
+METRICS = (*STAGES, 'operation')
 
 
 def iso(value):
@@ -94,8 +95,11 @@ def record_milestone(db, inc, kind, at, user, unit=None, key=None, response_kind
         if not response_kind:
             raise HTTPException(422, "Select a response classification.")
         return audit(db, inc, "op_classification", at, user, source=source, key=key, metadata={"submission": signature})
+    if inc.operation_completed_at is not None and kind != 'operation_complete':
+        raise HTTPException(409, 'This operation is complete; preserve its verified timeline.')
     field = {"receipt": "report_received_at", "departure": "departed_at", "arrival": "arrived_at",
-             "suppression_start": "suppression_started_at", "fire_out": "fire_out_at"}.get(kind)
+             "suppression_start": "suppression_started_at", "fire_out": "fire_out_at",
+             'operation_complete': 'operation_completed_at'}.get(kind)
     if not field:
         raise HTTPException(422, "Unknown operational event.")
     target = unit if kind in ("departure", "arrival") else inc
@@ -109,6 +113,16 @@ def record_milestone(db, inc, kind, at, user, unit=None, key=None, response_kind
             raise HTTPException(409, "This milestone is already recorded. Its original timestamp is preserved.")
         return None
     dispatches = [d for d in inc.dispatches if d.dispatch_status not in EXCLUDED and d.dispatch_at]
+    if kind == 'operation_complete':
+        if inc.fire_status in EXCLUDED or not dispatches:
+            raise HTTPException(422, 'An eligible response is required to complete an operation.')
+        if any(d.cleared_at is None for d in dispatches):
+            raise HTTPException(422, 'Record clearance for every responding dispatch first.')
+        lower = [d.cleared_at for d in dispatches] + [v for v in (inc.report_received_at, inc.fire_out_at) if v]
+        if at < max(lower):
+            raise HTTPException(422, 'Operation completion cannot precede receipt, fire out or any dispatch clearance.')
+        if inc.response_kind == 'fire' and inc.fire_out_at is None:
+            raise HTTPException(422, 'Record fire out before completing a fire operation.')
     if kind == "receipt":
         later = [d.dispatch_at for d in dispatches] + [v for v in (inc.suppression_started_at, inc.fire_out_at) if v]
         if later and at > min(later):
@@ -174,41 +188,68 @@ def unit_arrival(unit):
     return None
 
 
-def unit_times(unit, inc):
+def unit_metrics(unit, inc):
     dispatch = unit.dispatch_record
-    eligible = dispatch.dispatch_status not in EXCLUDED and inc.fire_status not in EXCLUDED
+    excluded = dispatch.dispatch_status in EXCLUDED or inc.fire_status in EXCLUDED
+    arrived = unit_arrival(unit)
+    pairs = {"processing": (inc.report_received_at, dispatch.dispatch_at),
+             "preparation": (dispatch.dispatch_at, unit.departed_at),
+             "travel": (unit.departed_at, arrived), "cta": (inc.report_received_at, arrived)}
+    values = {key: measure(*pair, excluded=excluded) for key, pair in pairs.items()}
+    if not excluded and unit.departed_at and arrived and unit.departed_at > arrived:
+        for key in ("preparation", "travel", "cta"):
+            values[key] = {"seconds": None, "quality": "invalid", "reason": "invalid_chronology"}
+    return values
+
+
+def unit_times(unit, inc):
+    return {key: value["seconds"] for key, value in unit_metrics(unit, inc).items()}
+
+
+def incident_metrics(inc):
+    """Incident endpoints; suppression and overall operations can exceed six hours."""
+    dispatches = [d for d in inc.dispatches if d.dispatch_status not in EXCLUDED and d.dispatch_at]
+    excluded = inc.fire_status in EXCLUDED or (bool(inc.dispatches) and not dispatches)
+    first_dispatch = min((d.dispatch_at for d in dispatches), default=None)
     return {
-        "processing": seconds(inc.report_received_at, dispatch.dispatch_at) if eligible else None,
-        "preparation": seconds(dispatch.dispatch_at, unit.departed_at) if eligible else None,
-        "travel": seconds(unit.departed_at, unit_arrival(unit)) if eligible else None,
-        "cta": seconds(inc.report_received_at, unit_arrival(unit)) if eligible else None,
+        "processing": measure(inc.report_received_at, first_dispatch, excluded=excluded),
+        "cta": first_arrival(inc),
+        "suppression": measure(inc.suppression_started_at if inc.response_kind == "fire" else None,
+                               inc.fire_out_at if inc.response_kind == "fire" else None,
+                               excluded=excluded, max_seconds=None),
+        "operation": measure(inc.report_received_at, inc.operation_completed_at,
+                             excluded=excluded, max_seconds=None),
     }
 
 
 def incident_times(inc):
     dispatches = [d for d in inc.dispatches if d.dispatch_status not in EXCLUDED and d.dispatch_at]
     units = [u for d in dispatches for u in d.dispatch_trucks]
-    arrivals = [u for u in units if unit_arrival(u) and seconds(u.dispatch_record.dispatch_at, unit_arrival(u)) is not None]
+    arrivals = [u for u in units if unit_arrival(u) and seconds(u.dispatch_record.dispatch_at, unit_arrival(u)) is not None
+                and (u.departed_at is None or unit_arrival(u) >= u.departed_at)]
     first = min(arrivals, key=lambda u: (unit_arrival(u), u.dispatch_truck_id), default=None)
     times = unit_times(first, inc) if first else {s: None for s in ("processing", "preparation", "travel", "cta")}
     # For the table/breakdown, intervals belong to the first arriving unit. The
     # processing card uses first dispatch per incident; unit cards retain all units.
-    times["suppression"] = seconds(inc.suppression_started_at, inc.fire_out_at) if inc.response_kind == "fire" else None
+    metrics = incident_metrics(inc)
+    for key in ("suppression", "operation", "cta"):
+        times[key] = metrics[key]["seconds"]
     if inc.fire_status in EXCLUDED:
-        times = {s: None for s in STAGES}
-    first_dispatch = min((d.dispatch_at for d in dispatches), default=None)
+        times = {s: None for s in METRICS}
     if first is None and inc.fire_status not in EXCLUDED:
-        times["processing"] = seconds(inc.report_received_at, first_dispatch)
-    return times, units, first, seconds(inc.report_received_at, first_dispatch) if inc.fire_status not in EXCLUDED else None
+        times["processing"] = metrics["processing"]["seconds"]
+    return times, units, first, metrics["processing"]["seconds"]
 
 
 def record_dict(inc):
     durations, units, first, _ = incident_times(inc)
     demo = demo_times(inc)
     source = history(inc)
-    return {"fire_id": inc.fire_id, "reported_at": iso(inc.report_received_at),
+    return {"fire_id": inc.fire_id, 'record_kind': inc.record_kind or 'unknown', "reported_at": iso(inc.report_received_at),
             "occurred_at": iso(inc.fire_incident_datetime), "response_kind": inc.response_kind,
-            "status": inc.fire_status, "durations": demo or durations, "unit_count": len(units),
+            "status": inc.fire_status, "durations": {**durations, **(demo or {})}, "unit_count": len(units),
+            "metrics": incident_metrics(inc) if not demo else {},
+            'operation_completed_at': iso(inc.operation_completed_at),
             "timing_basis": "synthetic_demo" if demo else "recorded",
             "source_record_id": source.get("record_id"),
             "location_specification": source.get("pin_specification"),
@@ -228,7 +269,7 @@ def load_incidents(db, start, end):
 
 
 def samples(incidents, include_demo=False):
-    data = {s: [] for s in STAGES}
+    data = {s: [] for s in METRICS}
     common = []
     for inc in incidents:
         demo = demo_times(inc) if include_demo and inc.fire_status not in EXCLUDED else None
@@ -237,7 +278,7 @@ def samples(incidents, include_demo=False):
                 data[stage].append(demo[stage])
             common.append(demo)
             continue
-        if inc.report_received_at is None or inc.fire_status in EXCLUDED:
+        if inc.fire_status in EXCLUDED:
             continue
         durations, units, first, processing = incident_times(inc)
         if processing is not None:
@@ -250,12 +291,14 @@ def samples(incidents, include_demo=False):
         for stage in ("suppression", "cta"):
             if durations[stage] is not None:
                 data[stage].append(durations[stage])
+        if durations['operation'] is not None:
+            data['operation'].append(durations['operation'])
         if first and all(durations[s] is not None for s in STAGES):
             common.append(durations)
     return data, common
 
 
-def analytics(db, period, page=1, now=None, source="recorded"):
+def analytics(db, period, page=1, now=None, source="recorded", kind='all'):
     now = now or datetime.now(UTC)
     earliest = db.query(func.min(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime))).scalar() if period == "all" else None
     start, now = reporting_window(period, now, earliest)
@@ -266,14 +309,23 @@ def analytics(db, period, page=1, now=None, source="recorded"):
     is_demo = source == "demo"
     current = [i for i in current if bool(demo_times(i)) == is_demo]
     previous = [i for i in previous if bool(demo_times(i)) == is_demo]
+    if not is_demo and kind != 'all':
+        current = [i for i in current if (i.record_kind or 'unknown') == kind]
+        previous = [i for i in previous if (i.record_kind or 'unknown') == kind]
     data, common = samples(current, include_demo=is_demo)
     prior, _ = samples(previous, include_demo=is_demo)
     summary = {}
-    for stage in STAGES:
+    for stage in METRICS:
         avg = mean(data[stage]) if data[stage] else None
         prev = mean(prior[stage]) if prior[stage] else None
         summary[stage] = {"seconds": avg, "count": len(data[stage]), "previous_count": len(prior[stage]),
                           "change_percent": (avg - prev) / prev * 100 if avg is not None and prev is not None and prev > 0 else None}
+    summary['operation']['quality'] = {
+        'excluded': sum(i.fire_status in EXCLUDED for i in current),
+        'missing_receipt': sum(i.fire_status not in EXCLUDED and i.report_received_at is None for i in current),
+        'pending_completion': sum(i.fire_status not in EXCLUDED and i.report_received_at is not None and i.operation_completed_at is None for i in current),
+        'invalid_chronology': sum(i.report_received_at is not None and i.operation_completed_at is not None and i.operation_completed_at < i.report_received_at for i in current),
+    }
     # Calendar buckets in Philippine time, clipped to the same rolling window.
     local_start = start.astimezone(MANILA)
     cursor = local_start.replace(minute=0, second=0, microsecond=0) if period == "1d" else local_start.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -288,8 +340,8 @@ def analytics(db, period, page=1, now=None, source="recorded"):
         subset = [i for i in current if (i.report_received_at or (i.fire_incident_datetime if is_demo else None))
                   and cursor <= (i.report_received_at or i.fire_incident_datetime) < following]
         values, _ = samples(subset, include_demo=is_demo)
-        buckets.append({"at": iso(cursor), "values": {s: mean(values[s]) if values[s] else None for s in STAGES},
-                        "counts": {s: len(values[s]) for s in STAGES}})
+        buckets.append({"at": iso(cursor), "values": {s: mean(values[s]) if values[s] else None for s in METRICS},
+                        "counts": {s: len(values[s]) for s in METRICS}})
         cursor = following
     breakdown = {s: mean([r[s] for r in common]) if common else None for s in STAGES[:-1]}
     page_size = 5
@@ -298,7 +350,7 @@ def analytics(db, period, page=1, now=None, source="recorded"):
     return {"period": period, "start": iso(start), "end": iso(now), "timezone": "Asia/Manila",
             "summary": summary, "breakdown": {"count": len(common), "seconds": breakdown}, "trends": buckets,
             "records": [record_dict(i) for i in current[(page-1)*page_size:page*page_size]], "total": len(current), "page": page,
-            "page_size": page_size, "total_pages": total_pages, "source": source,
+            "page_size": page_size, "total_pages": total_pages, "source": source, 'record_kind': kind,
             "synthetic_count": len(current) if is_demo else 0,
             "missing_receipt_count": sum(i.report_received_at is None for i in current) if not is_demo else 0}
 
@@ -308,6 +360,9 @@ def detail(db, inc):
     result = record_dict(inc)
     events = db.query(IncidentEvent).filter_by(fire_id=inc.fire_id).order_by(IncidentEvent.created_at, IncidentEvent.event_id).all()
     result.update({"location": [inc.fire_latitude, inc.fire_longitude], "address": inc.fire_address,
+                   'dispatches': [{'dispatch_id': d.dispatch_id, 'team': d.context_snapshot.get('team_name') if d.context_snapshot else None,
+                                   'status': d.dispatch_status, 'cleared_at': iso(d.cleared_at)} for d in inc.dispatches],
+                   'operation_completed_at': iso(inc.operation_completed_at),
                    "suppression_started_at": iso(inc.suppression_started_at), "fire_out_at": iso(inc.fire_out_at),
                    "controlled_at": next((iso(e.occurred_at or e.created_at) for e in events if e.event_type == "status" and e.event_to == "contained"), None),
                    "events": [{"type": e.event_type, "at": iso(e.occurred_at or e.created_at), "received_at": iso(e.created_at),
@@ -362,8 +417,9 @@ def detail(db, inc):
                 "station": station.station_name if station else None,
                 "station_location": [station.station_latitude, station.station_longitude] if station and station.station_latitude is not None and station.station_longitude is not None else None,
                 "dispatch_at": iso(dispatch.dispatch_at), "departed_at": iso(unit.departed_at), "arrived_at": iso(arrival),
+                'cleared_at': iso(dispatch.cleared_at),
                 "arrival_source": "legacy_single_truck_dispatch" if arrival and unit.arrived_at is None else None,
-                "durations": values, "baseline_available": baseline is not None,
+                "durations": values, "metrics": unit_metrics(unit, inc), "baseline_available": baseline is not None,
                 "routes": baseline["routes"] if baseline else current_routes,
                 "selected_route_id": baseline["selected_route_id"] if baseline else dispatch.route_id,
                 "eta_seconds": eta, "difference_seconds": difference,

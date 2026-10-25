@@ -7,11 +7,13 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from database import get_db
-from models import Users, ResponseTeam
+from models import Users, ResponseTeam, FireIncident
 from security import require_admin
 from services import response_performance as performance
+from services import response_operations as operations
 
 router = APIRouter(prefix="/api/metrics/response-performance", tags=["metrics"], dependencies=[Depends(require_admin)])
 
@@ -20,7 +22,9 @@ def filters(start: datetime | None = None, end: datetime | None = None,
             record_kind: Literal['operational', 'drill', 'test', 'unknown', 'all'] = 'operational',
             team_id: list[int] = Query(default=[]), station_id: int | None = Query(None, ge=1),
             barangay_id: int | None = Query(None, ge=1), severity: Literal['Minor', 'Moderate', 'Critical'] | None = None,
-            db: Session = Depends(get_db)):
+            all_dates: bool = False, db: Session = Depends(get_db)):
+    if all_dates:
+        start = db.query(func.min(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime))).scalar()
     start, end = performance.window(start, end)
     if len(team_id) > 50 or any(t < 1 for t in team_id):
         raise HTTPException(422, "Select up to 50 valid team IDs.")
@@ -44,9 +48,50 @@ def dispatches(params: dict = Depends(filters), page: int = Query(1, ge=1), page
             "page_size": page_size, "total_pages": max(1, (len(rows)+page_size-1)//page_size)}
 
 
+def operation_filters(params: dict = Depends(filters), source: Literal['recorded', 'demo'] = 'recorded'):
+    return {**params, "source": source}
+
+
+@router.get("/operations")
+def operation_summary(params: dict = Depends(operation_filters), db: Session = Depends(get_db)):
+    return operations.analytics(db, **params)
+
+
+@router.get("/incidents")
+def incidents(params: dict = Depends(operation_filters), page: int = Query(1, ge=1),
+              page_size: int = Query(10, ge=1, le=100), db: Session = Depends(get_db)):
+    return operations.records(db, page=page, page_size=page_size, **params)
+
+
 def csv_cell(value):
     value = "" if value is None else str(value)
     return "'" + value if value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")) else value
+
+
+@router.get("/incidents.csv")
+def incident_export(params: dict = Depends(operation_filters), db: Session = Depends(get_db)):
+    rows = [operations.record(i, params["source"]) for i in operations.incidents(db, **params)]
+    columns = ["fire_id", "record_kind", "reported_at", "occurred_at", "location", "status", "timing_basis",
+               "dispatch_count", "unit_count", "operation_completed_at"]
+    columns += [f"{key}_{suffix}" for key in operations.METRICS for suffix in ("seconds", "quality", "reason")]
+
+    def generate():
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(columns)
+        yield "\ufeff" + buffer.getvalue()
+        for row in rows:
+            buffer.seek(0)
+            buffer.truncate()
+            flattened = dict(row)
+            for key in operations.METRICS:
+                flattened[f"{key}_seconds"] = row["durations"].get(key)
+                metric = row["metrics"].get(key, {})
+                flattened[f"{key}_quality"] = metric.get("quality")
+                flattened[f"{key}_reason"] = metric.get("reason")
+            writer.writerow([csv_cell(flattened.get(column)) for column in columns])
+            yield buffer.getvalue()
+    return StreamingResponse(generate(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="response-operations-incidents.csv"'})
 
 
 @router.get("/export.csv")

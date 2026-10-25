@@ -1,14 +1,15 @@
 """Barangay boundaries and the fire-density heatmap."""
 from fastapi import APIRouter, Depends
+from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import FireIncident, HeatmapData, Users
+from models import Users
 from security import require_admin
 from services.heatmap import severity_weight
 from serializers import _incident_dict
-from services.historical_incidents import attach_history, history
+from services.historical_incidents import history
 
 
 router = APIRouter(tags=["geodata"])
@@ -48,18 +49,15 @@ def get_barangays(
 
 @router.get("/api/heatmap")
 def get_heatmap(
+    start: datetime | None = None, end: datetime | None = None,
+    kind: str = 'historical', known_only: bool = False, source: str = 'all',
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
     # Derive one consistent severity weight from the incident, including old
     # seeded rows. Do not mix their synthetic density values with live weights.
-    rows = (
-        db.query(FireIncident)
-        .join(HeatmapData, HeatmapData.fire_id == FireIncident.fire_id)
-        .filter(FireIncident.fire_status == "closed")
-        .all()
-    )
-    attach_history(db, rows)
+    from services.fire_prone_areas import historical_rows
+    rows = historical_rows(db, start, end, kind, known_only, source)
     return [
         {
             "lat": incident.fire_latitude,

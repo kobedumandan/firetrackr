@@ -3,10 +3,7 @@
 p90 uses nearest rank (ceil(0.9*n)); means aggregate raw seconds, never team means.
 All windows are half-open. Team selection never changes the overall cohort.
 """
-from collections import Counter
 from datetime import datetime, timedelta, timezone
-from math import ceil
-from statistics import mean, median
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
@@ -15,6 +12,8 @@ from sqlalchemy.orm import selectinload
 
 from models import DispatchRecord, FireIncident, ResponseTeam, IncidentEvent, Station, BarangayBoundary
 from services.operational_times import EXCLUDED, detail, iso
+from services.timing_metrics import MAX_SECONDS, measure, summarize, arrival, departure, first_arrival
+from services.historical_incidents import attach_history, demo_times
 from serializers import _incident_dict
 
 MANILA = ZoneInfo("Asia/Manila")
@@ -26,7 +25,6 @@ MEASURES = {
     "turnout": "Departure minus dispatch",
     "travel": "Arrival minus departure",
 }
-MAX_SECONDS = 6 * 3600
 
 
 def window(start=None, end=None):
@@ -46,42 +44,6 @@ def window(start=None, end=None):
     except OverflowError:
         raise HTTPException(422, "The preceding comparison range is outside supported dates.")
     return start, end
-
-
-def measure(start, end, excluded=False):
-    if excluded:
-        return {"seconds": None, "quality": "excluded", "reason": "cancelled_or_recalled"}
-    if start is None:
-        return {"seconds": None, "quality": "missing", "reason": "missing_start"}
-    if end is None:
-        return {"seconds": None, "quality": "pending", "reason": "missing_end"}
-    value = (end - start).total_seconds()
-    if value < 0 or value > MAX_SECONDS:
-        return {"seconds": None, "raw_seconds": value, "quality": "invalid",
-                "reason": "invalid_chronology" if value < 0 else "above_six_hour_review_guard"}
-    return {"seconds": value, "quality": "valid", "reason": None}
-
-
-def summarize(observations):
-    counts = Counter(o["quality"] for o in observations)
-    values = [o["seconds"] for o in observations if o["quality"] == "valid"]
-    return {"candidate": len(observations), "valid": len(values),
-            **{key: counts[key] for key in ("pending", "missing", "invalid", "excluded")},
-            "mean_seconds": mean(values) if values else None,
-            "median_seconds": median(values) if values else None,
-            "p90_seconds": sorted(values)[ceil(.9 * len(values)) - 1] if values else None,
-            "p90_method": "nearest_rank", "small_sample": 0 < len(values) < 10,
-            "reasons": dict(Counter(o["reason"] for o in observations if o["reason"]))}
-
-
-def arrival(dispatch):
-    values = [dispatch.dispatch_arrived_at, *(u.arrived_at for u in dispatch.dispatch_trucks)]
-    return min((v for v in values if v is not None), default=None)
-
-
-def departure(dispatch):
-    # New team-level actions take precedence. Existing unit evidence is labeled.
-    return dispatch.departed_at or (dispatch.dispatch_trucks[0].departed_at if len(dispatch.dispatch_trucks) == 1 else None)
 
 
 def context(dispatch):
@@ -161,18 +123,13 @@ def overall(db, start, end, kind="operational", station_id=None, barangay_id=Non
     if severity:
         query = query.filter(FireIncident.fire_severity == severity)
     observations = []
-    for inc in query.all():
+    for inc in attach_history(db, query.all()):
+        if demo_times(inc):
+            continue
         # Station affects the incident cohort, never which of its crews arrives first.
         if station_id and not any(context(d).get("station_id") == station_id for d in inc.dispatches):
             continue
-        eligible = [d for d in inc.dispatches if d.dispatch_status not in EXCLUDED]
-        times = [arrival(d) for d in eligible if arrival(d) is not None and d.dispatch_at
-                 and arrival(d) >= d.dispatch_at]
-        excluded = inc.fire_status in EXCLUDED or (bool(inc.dispatches) and not eligible)
-        value = measure(inc.report_received_at, min(times, default=None), excluded=excluded)
-        if not excluded and inc.report_received_at and not times and any(arrival(d) is not None for d in eligible):
-            value = {"seconds": None, "quality": "invalid", "reason": "invalid_chronology"}
-        observations.append(value)
+        observations.append(first_arrival(inc))
     return summarize(observations)
 
 

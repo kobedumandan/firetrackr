@@ -18,6 +18,7 @@ import state
 from config import UPLOAD_ROOT
 from config import BLACKLIST_REAPER_INTERVAL_SECONDS, WATCHDOG_INTERVAL_SECONDS
 from routers import (
+    capstone_reports,
     auth, constraints, coverage, dispatch, geodata, incidents, metrics, mobile,
     obstructions, personnel, reporting, routing, shifts, stations, system, teams,
     trucks, models, operational_times,
@@ -127,4 +128,5 @@ app.include_router(metrics.router)
 app.include_router(operational_times.router)
 app.include_router(dispatch.router)
 app.include_router(mobile.router)
+app.include_router(capstone_reports.router)
 app.include_router(trucks.router)
