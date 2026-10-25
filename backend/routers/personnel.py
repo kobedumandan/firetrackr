@@ -12,6 +12,10 @@ from models import (
 )
 from schemas import PersonnelCreate, PersonnelUpdate
 from security import _hash_password, require_admin
+from serializers import _manned_truck_dict
+from services.personnel_navigation import navigation_for
+from services.personnel_arrival import arrival_for, personnel_status
+from services.tracking_policy import duty, policy as tracking_policy
 
 
 router = APIRouter(tags=["personnel"])
@@ -92,7 +96,8 @@ def get_personnel(
             "initials":    initials or "??",
             "rank":        p.per_rank        or "—",
             "designation": p.per_designation or "",
-            "status":      status,
+            "status":      status if duty(p)[0] else 'offduty',
+            'on_duty': duty(p)[0],
             "station":     p.station.station_name if p.station else "—",
             "station_id":  p.station_id,
             "team_id":     p.team_memberships[0].team_id   if p.team_memberships else None,
@@ -128,7 +133,7 @@ def get_personnel_locations(
             rec_at = rec_at.replace(tzinfo=timezone.utc)
         age_s       = (now - rec_at).total_seconds()
         age_minutes = round(age_s / 60, 1)
-        is_stale    = age_s > STALE_MINUTES * 60
+        is_stale    = age_s > STALE_MINUTES * 60 or not duty(per, now)[0]
 
         active_dispatch = (
             db.query(DispatchRecord)
@@ -142,6 +147,8 @@ def get_personnel_locations(
             .first()
         )
 
+        own_navigation = navigation_for(active_dispatch, per.per_id)
+        own_arrival = arrival_for(db, active_dispatch, per.per_id)
         result.append({
             "per_id":           per.per_id,
             "name":             f"{per.per_firstname or ''} {per.per_lastname or ''}".strip(),
@@ -151,10 +158,14 @@ def get_personnel_locations(
             "recorded_at":      rec_at.isoformat(),
             "age_minutes":      age_minutes,
             "is_stale":         is_stale,
-            "is_deviated":      active_dispatch.is_deviated if active_dispatch else False,
+            'tracking': tracking_policy(db, per, now),
+            "is_deviated":      bool(own_navigation.get('is_deviated')),
+            "personnel_status": personnel_status(active_dispatch, own_arrival),
+            "personnel_arrived_at": own_arrival.isoformat() if own_arrival else None,
             "dispatch_id":      active_dispatch.dispatch_id if active_dispatch else None,
-            "connector_geojson": active_dispatch.deviation_connector_geojson if active_dispatch and active_dispatch.is_deviated else None,
-            "deviation_detected_at": active_dispatch.deviation_detected_at.isoformat() if active_dispatch and active_dispatch.deviation_detected_at else None,
+            "manned_truck":     _manned_truck_dict(active_dispatch, per.per_id),
+            "connector_geojson": own_navigation.get('connector_geojson'),
+            "deviation_detected_at": own_navigation.get('deviation_detected_at'),
         })
 
     return result
@@ -288,6 +299,7 @@ def delete_personnel(
         raise HTTPException(status_code=404, detail="Personnel not found.")
 
     user_id = p.user_id
+    previous_teams = [m.team_id for m in p.team_memberships]
 
     # Detach optional references that would otherwise block the delete.
     db.query(Station).filter(Station.station_commander_id == per_id).update(
@@ -301,6 +313,9 @@ def delete_personnel(
     db.query(ResponseTeamMember).filter(ResponseTeamMember.per_id == per_id).delete(
         synchronize_session=False
     )
+    from services.personnel_deployment import sync_rosters
+    for team_id in previous_teams:
+        sync_rosters(db, team_id, _auth)
     db.query(CurrentLocation).filter(CurrentLocation.per_id == per_id).delete(
         synchronize_session=False
     )

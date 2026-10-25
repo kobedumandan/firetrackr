@@ -805,6 +805,7 @@ class GeoAIRoutingEngine:
         source: int,
         target: int,
         weight_overrides: Optional[Dict[Tuple[int, int], float]] = None,
+        previous_node: Optional[int] = None,
     ) -> Tuple[List[int], float]:
         """
         A* search guided by the ALT heuristic, with U-turns forbidden.
@@ -837,7 +838,7 @@ class GeoAIRoutingEngine:
             data = G[u][v]
             return data.get("weight", data.get("travel_time_s", 60.0))
 
-        start: _SearchState = (None, source)
+        start: _SearchState = (previous_node, source)
         h0 = self._alt_heuristic(source, target) if self._landmarks_valid else 0.0
         # heap entries: (f_score, g_score, tiebreak, state)
         counter = 0
@@ -1056,6 +1057,7 @@ class GeoAIRoutingEngine:
         source_node: int,
         target_node: int,
         obstructions: Optional[List[Dict[str, Any]]] = None,
+        previous_node: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
         Generate up to 3 routes, each answering a different question.
@@ -1167,7 +1169,7 @@ class GeoAIRoutingEngine:
 
         # ── Objective 1: constraint-aware (the recommended route) ─────────────
         try:
-            best_nodes, _ = self._alt_search(source_node, target_node, working_costs)
+            best_nodes, _ = self._alt_search(source_node, target_node, working_costs, previous_node)
         except ValueError as exc:
             logger.warning("ALT primary route failed: %s", exc)
             return []
@@ -1183,7 +1185,7 @@ class GeoAIRoutingEngine:
         # are then the same function and this is just the primary search again.
         if self._use_constraint_costs:
             try:
-                fast_nodes, _ = self._alt_search(source_node, target_node, time_costs)
+                fast_nodes, _ = self._alt_search(source_node, target_node, time_costs, previous_node)
             except ValueError as exc:
                 logger.debug("Fastest-route objective failed: %s", exc)
             else:
@@ -1205,7 +1207,7 @@ class GeoAIRoutingEngine:
             if len(accepted) >= 3:
                 break
             try:
-                cand_nodes, _ = self._alt_search(source_node, target_node, working_costs)
+                cand_nodes, _ = self._alt_search(source_node, target_node, working_costs, previous_node)
             except ValueError as exc:
                 logger.debug("No further alternative: %s", exc)
                 break
@@ -1260,6 +1262,76 @@ class GeoAIRoutingEngine:
             if self.graph.G.nodes[node_id].get("is_station"):
                 return node_id
         return None
+
+    def compute_routes_from_position(self, lat, lon, dest_lat, dest_lon, obstructions=None, previous_position=None):
+        """Route from the current road segment, retaining direction at its junction.
+
+        Geometry begins at the reported fix. A small GPS-to-road snap is explicit;
+        the remaining partial edge is traversed before entering ALT. No graph or
+        shared engine state is temporarily rewritten.
+        """
+        import math
+        from .graph_builder import _haversine_km
+
+        snap = self.graph.nearest_edge(lat, lon, radius_km=0.05)
+        targets = self.graph.nodes_near(dest_lat, dest_lon, radius_km=0.5)
+        if snap is None or not targets:
+            return []
+        u, v, plat, plon, _ = snap
+        graph = self.graph.G
+        a, b = graph.nodes[u], graph.nodes[v]
+        endpoints = [(u, v)]
+        if graph.has_edge(v, u):
+            endpoints.append((v, u))
+        # Recent motion disambiguates the two directions on a bidirectional road.
+        # At a junction the truck may choose a fresh outgoing edge normally.
+        at_node = min(_haversine_km(plat, plon, a['lat'], a['lon']),
+                      _haversine_km(plat, plon, b['lat'], b['lon'])) * 1000 < 1
+        if previous_position and not at_node and _haversine_km(*previous_position, lat, lon) * 1000 > 1:
+            dy, dx = lat - previous_position[0], (lon - previous_position[1]) * math.cos(math.radians(lat))
+            def alignment(edge):
+                end = graph.nodes[edge[1]]
+                ey, ex = end['lat'] - plat, (end['lon'] - plon) * math.cos(math.radians(lat))
+                return (dx * ex + dy * ey) / max(1e-15, math.hypot(ex, ey))
+            endpoints = [max(endpoints, key=alignment)]
+        costs, _ = self._compute_edge_costs()
+        if obstructions:
+            self.apply_obstructions(obstructions, costs)
+        if self._use_constraint_costs:
+            self.apply_congestion(costs)
+        choices = []
+        for start, end in endpoints:
+            end_data = graph.nodes[end]
+            partial_m = _haversine_km(plat, plon, end_data['lat'], end_data['lon']) * 1000
+            if partial_m > 1 and not math.isfinite(costs.get((start, end), 0)):
+                continue
+            routes = self.compute_routes_multi_alpha(end, targets[0][0], obstructions=obstructions,
+                                                     previous_node=start if partial_m > 1 else None)
+            edge_m = _haversine_km(graph.nodes[start]['lat'], graph.nodes[start]['lon'], end_data['lat'], end_data['lon']) * 1000
+            access_m = _haversine_km(lat, lon, plat, plon) * 1000
+            extra_seconds = graph[start][end].get('travel_time_s', 60) * partial_m / max(edge_m, 0.01) + access_m / 5
+            prepared = []
+            for route in routes:
+                coords = [(lon, lat), (plon, plat)]
+                coords += [(graph.nodes[node]['lon'], graph.nodes[node]['lat']) for node in route['route_nodes']]
+                clean = [coords[0]]
+                for point in coords[1:]:
+                    if _haversine_km(point[1], point[0], clean[-1][1], clean[-1][0]) * 1000 > .001:
+                        clean.append(point)
+                if len(clean) < 2:
+                    continue
+                prepared.append({**route, 'route_wkt': 'LINESTRING(' + ', '.join(f'{x} {y}' for x, y in clean) + ')',
+                                 'eta_seconds': round(route['eta_seconds'] + extra_seconds),
+                                 'route_distance_meters': round(float(route.get('route_distance_meters', 0) + partial_m + access_m), 1)})
+            if prepared:
+                primary = routes[0]['route_nodes']
+                score = sum(costs.get((x, y), graph[x][y].get('travel_time_s', 60)) for x, y in zip(primary, primary[1:]))
+                if partial_m > .001:
+                    score += costs.get((start, end), graph[start][end].get('travel_time_s', 60)) * partial_m / max(edge_m, .01)
+                choices.append((score, prepared))
+        if not choices:
+            return []
+        return min(choices, key=lambda choice: choice[0])[1]
 
     def compute_connector(
         self,

@@ -18,6 +18,7 @@ def _constraint_to_dict(c: GnnConstraint) -> dict:
         "name":            c.name or "",
         "coordinates":     json.loads(c.coordinates),
         "segment_uids":    c.segment_uids,
+          "baseline_segment_uid": c.baseline_segment_uid,
         "narrow_severity": c.narrow_severity,
         "traffic_schedule": c.traffic_schedule,
         "highway":         c.highway or "",
@@ -47,6 +48,15 @@ def _station_dict(r: Station) -> dict:
         "commander_rank":      cmd.per_rank if cmd else None,
         "created_at":          r.created_at.isoformat() if r.created_at else None,
     }
+
+
+def _manned_truck_dict(dispatch, per_id: int) -> dict | None:
+    """Map display metadata from the confirmed manning assignment, never GPS proximity."""
+    if not dispatch or dispatch.dispatch_status not in ('dispatched', 'en_route', 'on_scene'):
+        return None
+    unit = next((unit for unit in dispatch.dispatch_trucks
+                 if unit.manned_by_per_id == per_id and unit.truck), None)
+    return {'truck_id': unit.truck.truck_id, 'truck_platenum': unit.truck.truck_platenum} if unit else None
 
 
 def _team_dict(t: ResponseTeam) -> dict:

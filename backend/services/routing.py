@@ -128,6 +128,7 @@ def _persist_rebuilt_routes(
     origin_lat: float,
     origin_lng: float,
     origin_source: str,
+    commit: bool = True,
 ):
     """Replace this dispatch's Route rows with a freshly computed set and point
     the dispatch at the new selected route. `route_results` is the raw output of
@@ -142,11 +143,11 @@ def _persist_rebuilt_routes(
     from services.operational_times import snapshot_routes
     snapshot_routes(db, dispatch)
     dispatch.route_id = None
-    db.commit()
+    db.flush()
     db.query(Route).filter(Route.dispatch_id == dispatch.dispatch_id).delete(
         synchronize_session=False
     )
-    db.commit()
+    db.flush()
 
     saved = []
     for r in route_results:
@@ -165,32 +166,37 @@ def _persist_rebuilt_routes(
         )
         db.add(ro)
         saved.append((ro, r))
-    db.commit()
+    db.flush()
     for ro, _ in saved:
         db.refresh(ro)
 
     selected = next((ro for ro, r in saved if r["is_selected"]), saved[0][0])
     dispatch.route_id = selected.route_id
     snapshot_routes(db, dispatch, reason=f"rebuild_{origin_source}")
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return selected, saved
 
 
 def _run_routing_via_pool(
-    kind: str, a: float, b: float, c: float, d: float, obstructions: list
+    kind: str, a: float, b: float, c: float, d: float, obstructions: list, previous_position=None
 ):
     """Run a CPU-bound routing computation in the process pool so it executes
     with real parallelism, off this process's GIL. Falls back to the
     main-process engine if the pool is unavailable or errors.
 
-    `kind` is "routes" (returns route_results list) or "connector" (returns a
-    connector GeoJSON dict). a,b = source lat,lng; c,d = target lat,lng.
+    `kind` is "routes" or "position_routes" (route-result lists), or "connector"
+    (a GeoJSON line). a,b = source lat,lng; c,d = target lat,lng.
     """
     pool = state.routing_pool_executor
     if pool is not None:
-        fn = routing_pool.compute_routes if kind == "routes" else routing_pool.compute_connector
+        fn = {'routes': routing_pool.compute_routes, 'position_routes': routing_pool.compute_position_routes,
+              'connector': routing_pool.compute_connector}[kind]
         try:
-            return pool.submit(fn, a, b, c, d, obstructions).result(timeout=ROUTING_POOL_TIMEOUT)
+            args = (a, b, c, d, obstructions, previous_position) if kind == 'position_routes' else (a, b, c, d, obstructions)
+            return pool.submit(fn, *args).result(timeout=ROUTING_POOL_TIMEOUT)
         except Exception as exc:
             logger.warning("Pool routing (%s) failed (%s); falling back in-process.", kind, exc)
 
@@ -198,6 +204,8 @@ def _run_routing_via_pool(
         return None
     if kind == "connector":
         return state.routing_engine.compute_connector(a, b, c, d, obstructions=obstructions)
+    if kind == 'position_routes':
+        return state.routing_engine.compute_routes_from_position(a, b, c, d, obstructions, previous_position)
     src = state.routing_engine.graph.nodes_near(a, b, radius_km=2.0)
     tgt = state.routing_engine.graph.nodes_near(c, d, radius_km=2.0)
     if not src or not tgt:
@@ -319,8 +327,10 @@ def _recompute_deviation_routing_bg(
         dispatch = db.get(DispatchRecord, dispatch_id)
         if dispatch is None or dispatch.dispatch_status not in ("dispatched", "en_route", "on_scene"):
             return
-        if not dispatch.is_deviated:
+        from services.personnel_navigation import navigation_for, build_personnel_navigation
+        if not navigation_for(dispatch, per_id).get('is_deviated', dispatch.is_deviated):
             return  # rejoined the route before this task ran — nothing to do
+        expected_route_id = dispatch.route_id
 
         obs = _load_active_obstructions(db)
 
@@ -330,11 +340,34 @@ def _recompute_deviation_routing_bg(
                 return
             # CPU-bound full route rebuild — run in the process pool (parallel,
             # off this process's GIL); DB persistence stays here.
+            from services.dispatch_routing import live_driver_origin
+            origin = live_driver_origin(db, dispatch)
+            if not origin:
+                return
+            selected_route = db.get(Route, expected_route_id)
+            preferred = selected_route.route_type if selected_route else None
+            ordinal = db.query(Route).filter(Route.dispatch_id == dispatch_id, Route.route_type == preferred,
+                Route.route_rank < selected_route.route_rank).count() if selected_route else 0
+            lat, lon, _, previous = origin
             route_results = _run_routing_via_pool(
-                "routes", lat, lon, incident.fire_latitude, incident.fire_longitude, obs
+                "position_routes", lat, lon, incident.fire_latitude, incident.fire_longitude, obs, previous
             )
+            if route_results:
+                matching = [route for route in route_results if route['route_type'] == preferred]
+                chosen = matching[ordinal] if len(matching) > ordinal else route_results[0]
+                route_results = [{**route, 'is_selected': route is chosen} for route in route_results]
+            # A dispatcher may have recalculated/selected a new route while the
+            # worker was computing. Never overwrite that newer route revision.
+            db.query(FireIncident).filter_by(fire_id=dispatch.fire_id).with_for_update().one()
+            db.refresh(dispatch, with_for_update=True)
+            if (dispatch.route_id != expected_route_id or not dispatch.is_deviated or
+                    dispatch.dispatch_status not in ('dispatched', 'en_route', 'on_scene')):
+                return
+            from models import DispatchTruck
+            if not db.query(DispatchTruck).filter_by(dispatch_id=dispatch_id, manned_by_per_id=per_id).first():
+                return
             rebuilt = _persist_rebuilt_routes(
-                db, dispatch, route_results, lat, lon, "driver_location"
+                db, dispatch, route_results, lat, lon, "driver_location", commit=False
             )
             if rebuilt is None:
                 return
@@ -345,27 +378,9 @@ def _recompute_deviation_routing_bg(
             db.commit()
             payload = _build_rerouted_payload(dispatch, selected, saved, "driver_location")
         else:
-            connector = None
-            fire = db.get(FireIncident, dispatch.fire_id)
-            if fire and fire.fire_latitude is not None and fire.fire_longitude is not None:
-                # CPU-bound connector build — run in the process pool.
-                connector = _run_routing_via_pool(
-                    "connector", lat, lon, fire.fire_latitude, fire.fire_longitude, obs
-                )
-                connector = _annotate_connector_merge(db, dispatch, connector)
-            dispatch.deviation_connector_geojson = connector
-            db.commit()
-            payload = {
-                "type": "dispatch_deviation",
-                "data": {
-                    "dispatch_id":           dispatch.dispatch_id,
-                    "per_id":                per_id,
-                    "is_deviated":           True,
-                    "connector_geojson":     connector,
-                    "deviation_detected_at": dispatch.deviation_detected_at.isoformat()
-                                             if dispatch.deviation_detected_at else None,
-                },
-            }
+            data = build_personnel_navigation(db, dispatch, per_id, lat, lon,
+                is_deviated=True, expected_route_id=expected_route_id)
+            payload = {'type': 'dispatch_deviation', 'data': data}
     except Exception as exc:
         logger.warning("Background deviation routing failed (dispatch=%s): %s", dispatch_id, exc)
         db.rollback()
@@ -383,6 +398,7 @@ def _check_deviation(
     lat: float,
     lon: float,
     compute_connector: bool = True,
+    was_deviated: bool | None = None,
 ) -> "tuple[bool, dict | None]":
     """
     Returns (is_deviated, connector_geojson | None).
@@ -393,6 +409,7 @@ def _check_deviation(
     PostGIS distance) but the expensive connector routing is skipped — the
     caller is expected to build it off the request thread.
     """
+    previous_deviation = dispatch.is_deviated if was_deviated is None else was_deviated
     if not dispatch.route_id:
         return False, None
 
@@ -411,7 +428,7 @@ def _check_deviation(
     ).fetchone()
 
     if row is None:
-        return dispatch.is_deviated, None
+        return previous_deviation, None
 
     dist = row.dist_m
 
@@ -434,6 +451,6 @@ def _check_deviation(
         return False, None
 
     # Buffer zone — keep existing state unchanged
-    if dispatch.is_deviated:
+    if previous_deviation:
         return True, dispatch.deviation_connector_geojson
     return False, None

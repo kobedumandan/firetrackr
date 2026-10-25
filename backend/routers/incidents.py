@@ -214,6 +214,8 @@ async def update_incident(
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found.")
     was_closed = inc.fire_status == "closed"
+    if inc.operation_completed_at and body.fire_status and body.fire_status not in (inc.fire_status, 'closed'):
+        raise HTTPException(409, 'This operation has a verified completion. Log a new incident for a renewed response.')
     released = None
     before = snapshot(inc)
     for field, val in body.model_dump(exclude_unset=True).items():
