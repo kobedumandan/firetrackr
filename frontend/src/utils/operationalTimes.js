@@ -1,10 +1,10 @@
 export const STAGES = [
-  { key: 'processing', label: 'Report Processing', color: '#b85b2a', icon: 'description' },
+  { key: 'processing', label: 'Report processing', color: '#b85b2a', icon: 'description' },
   { key: 'preparation', label: 'Preparation', color: '#f48d42', icon: 'notifications_active' },
   { key: 'travel', label: 'Travel', color: '#ff4d1a', icon: 'local_shipping' },
   { key: 'suppression', label: 'Suppression', color: '#a2a4a5', icon: 'local_fire_department' },
 ]
-export const ALL_METRICS = [...STAGES, { key: 'cta', label: 'Call-to-Arrival', color: '#ddd2c8' }]
+export const ALL_METRICS = [...STAGES, { key: 'cta', label: 'Call-to-arrival', color: '#ddd2c8' }, { key: 'operation', label: 'Overall operation', color: '#aab8d4' }]
 export function duration(seconds, missing = 'No data') {
   if (seconds == null || !Number.isFinite(seconds)) return missing
   const total = Math.round(Math.abs(seconds))

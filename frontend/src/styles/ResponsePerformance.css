@@ -1,5 +1,18 @@
 ﻿/* Response analysis reuses the dashboard palette and shared KPI cards. */
+.ro-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.ro-overview-card { padding: 20px; }
+.ro-overview-card .rp-quality { margin-top: 16px; }
+.rp-view .ro-stage-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ro-team-analysis { margin-block: 22px; }
+.ro-team-analysis > summary { cursor: pointer; font-size: 14px; font-weight: 600; padding-block: 12px; }
+.rp-view .ota-trends { margin-top: 18px; }
+.ro-breakdown .ota-breakdown { margin-top: 16px; }
+.ro-dispatch-links { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 1100px) { .rp-view .ro-stage-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .ro-overview { grid-template-columns: 1fr; } }
+@media (max-width: 420px) { .rp-view .ro-stage-kpis { grid-template-columns: 1fr; } }
 .rp-view {
+  --ota-muted: var(--rp-muted); --ota-soft: var(--rp-soft);
   --rp-muted: color-mix(in srgb, var(--text-primary) 64%, var(--bg-panel));
   --rp-soft: color-mix(in srgb, var(--text-primary) 8%, var(--bg-panel));
   flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 22px 20px 28px;
@@ -11,15 +24,15 @@
 .rp-view p { margin: 5px 0 0; color: var(--rp-muted); line-height: 1.65; }
 .rp-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .rp-timezone { flex-shrink: 0; font: 10px var(--font-mono); color: var(--rp-muted); }
-.rp-view button, .rp-dialog button:not(.apm-close) {
+.rp-view button:not(.kpi-card-action), .rp-dialog button:not(.apm-close) {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border);
   border-radius: 7px; padding: 8px 12px; background: var(--bg-panel); color: var(--text-primary);
   cursor: pointer; font: 500 11px/1.4 var(--font-condensed); transition: background .15s, border-color .15s, color .15s;
 }
-.rp-view button:hover:not(:disabled), .rp-dialog button:not(.apm-close):hover { background: var(--bg-hover); border-color: var(--rp-muted, var(--text-secondary)); }
-.rp-view button:active:not(:disabled) { transform: translateY(1px); }
+.rp-view button:not(.kpi-card-action):hover:not(:disabled), .rp-dialog button:not(.apm-close):hover { background: var(--bg-hover); border-color: var(--rp-muted, var(--text-secondary)); }
+.rp-view button:not(.kpi-card-action):active:not(:disabled) { transform: translateY(1px); }
 .rp-view button:disabled { opacity: .4; cursor: default; }
-.rp-view :is(button, input, select, summary):focus-visible, .rp-detail :is(button, select):focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 3px; }
+.rp-view :is(button:not(.kpi-card-action), input, select, summary):focus-visible, .rp-detail :is(button, select):focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 3px; }
 .rp-view button svg { flex-shrink: 0; width: 15px; height: 15px; }
 
 /* Team choices open without stretching the filter row. */

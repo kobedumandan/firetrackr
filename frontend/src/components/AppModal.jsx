@@ -14,11 +14,14 @@ import { ICON_CLOSE } from './incidentFormOptions'
  *   className – extra panel classes (e.g. "eim-panel" for the modern form styles)
  *   dismissible – false while saving or while a nested review step owns Esc;
  *                 blocks both Esc and backdrop clicks
+ *   titleId / describedBy – optional stable IDs for accessible dialog context
  */
 export default function AppModal({
   eyebrow, title, subtitle, onClose, children, width = 520, className = '', dismissible = true, manageFocus = false,
+  titleId: suppliedTitleId, describedBy,
 }) {
-  const titleId = useId()
+  const generatedTitleId = useId()
+  const titleId = suppliedTitleId || generatedTitleId
   const panelRef = useRef(null)
   useEffect(() => {
     if (!manageFocus) return
@@ -59,6 +62,7 @@ export default function AppModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        aria-describedby={describedBy}
       >
         <div className="eim-header">
           <div className="eim-header-main">

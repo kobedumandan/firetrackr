@@ -18,8 +18,8 @@ async function operationalRequest(path, options) {
   if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Operational analysis unavailable (${res.status})`)
   return data
 }
-export function fetchOperationalTimes(period, page = 1, source = 'recorded') {
-  return operationalCache.get(`${localStorage.getItem('bfp_token')}:${period}:${page}:${source}`, () => operationalRequest(`?period=${period}&page=${page}&source=${source}`))
+export function fetchOperationalTimes(period, page = 1, source = 'recorded', kind = 'all') {
+  return operationalCache.get(`${localStorage.getItem('bfp_token')}:${period}:${page}:${source}:${kind}`, () => operationalRequest(`?period=${period}&page=${page}&source=${source}${kind === 'all' ? '' : `&kind=${kind}`}`))
 }
 export function fetchOperationalDetail(fireId) { return operationalRequest(`/${fireId}`) }
 async function performanceRequest(path, query, signal) {
@@ -29,6 +29,15 @@ async function performanceRequest(path, query, signal) {
 }
 export async function fetchResponsePerformance(query, signal) {
   return (await performanceRequest('', query, signal)).json()
+}
+export async function fetchResponseOperations(query, signal) {
+  return (await performanceRequest('/operations', query, signal)).json()
+}
+export async function fetchResponseIncidents(query, signal) {
+  return (await performanceRequest('/incidents', query, signal)).json()
+}
+export async function exportResponseIncidents(query) {
+  return (await performanceRequest('/incidents.csv', query)).text()
 }
 export async function fetchResponseDispatches(query, signal) {
   return (await performanceRequest('/dispatches', query, signal)).json()
@@ -48,6 +57,25 @@ export async function confirmOperationalMilestone(fireId, body) {
   const data = await operationalRequest(`/${fireId}/milestones`, { method: 'POST', body: JSON.stringify(body) })
   invalidateOperationalTimes()
   return data
+}
+
+export async function confirmDispatchClearance(dispatchId, body) {
+  const res = await apiFetch(`/api/dispatch/${dispatchId}/clearance`, { method: 'PATCH', body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(await _detail(res, 'Could not save dispatch clearance'))
+  invalidateOperationalTimes()
+  return res.json()
+}
+
+export async function fetchOperationalReport(report, query = '', signal) {
+  const res = await apiFetch(`/api/reports/${report}?${query}`, { signal })
+  if (!res.ok) throw new Error(await _detail(res, 'Could not load this report'))
+  return res.json()
+}
+
+export async function exportOperationalReport(report, query = '') {
+  const res = await apiFetch(`/api/reports/${report}.csv?${query}`)
+  if (!res.ok) throw new Error(await _detail(res, 'Could not export this report'))
+  return res.text()
 }
 function cachedConstraints(path) {
   const key = `${BASE_URL}:${localStorage.getItem('bfp_token') || ''}:${path}`
@@ -391,7 +419,12 @@ export async function createDispatch(body) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail || `Failed to create dispatch (${res.status})`)
   }
-  return res.json()
+  const data = await res.json()
+  // The next dispatch dialog must not offer the just-assigned crew as standby.
+  delete _cache['teams']
+  delete _cache['personnel']
+  delete _cache['trucks']
+  return data
 }
 
 // Ranked shortlist of teams to send when escalating an incident's alarm level.
@@ -559,10 +592,7 @@ export async function createConstraint(body) {
 
 export async function updateConstraint(id, body) {
   const res = await apiFetch(`/api/constraints/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || `Failed to update constraint (${res.status})`)
-  }
+  if (!res.ok) throw new Error(await _detail(res, `Failed to update constraint (${res.status})`))
   constraintCache.clear()
   return res.json()
 }
@@ -574,6 +604,15 @@ export async function deleteConstraint(id) {
     throw new Error(err.detail || `Failed to delete constraint (${res.status})`)
   }
   constraintCache.clear()
+}
+
+export async function saveBaselineConstraintOverride(segmentUid, body) {
+  const res = await apiFetch('/api/constraints/baseline-override', {
+    method: 'POST', body: JSON.stringify({ segment_uid: segmentUid, ...body }),
+  })
+  if (!res.ok) throw new Error(await _detail(res, `Failed to update road (${res.status})`))
+  constraintCache.clear()
+  return res.json()
 }
 
 // ── Trucks ───────────────────────────────────────────────────────────────────

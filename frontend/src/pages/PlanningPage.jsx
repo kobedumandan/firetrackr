@@ -7,6 +7,7 @@ import { MAP_CENTER, MAP_ZOOM, tileLayersFor } from "../data/mapConfig";
 import { useTheme } from "../hooks/useTheme";
 import KpiCard, { KPI_EMPTY } from "../components/KpiCard";
 import CsvReviewModal from "../components/CsvReviewModal";
+import AnalysisIcon from "../components/AnalysisIcon";
 import {
   fetchCoverageIsochrones,
   fetchCoverageGaps,
@@ -46,10 +47,11 @@ function SortableTh({ label, sortKey, sort, onSort, align }) {
   return (
     <th
       className={`${active ? "sort-active" : ""}${align ? ` th-${align}` : ""}`}
-      onClick={() => onSort(sortKey)}
       aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
     >
-      {label} <span className="plan-sort-arrow">{arrow}</span>
+      <button type="button" onClick={() => onSort(sortKey)} aria-label={`Sort by ${label.toLowerCase()}`}>
+        {label} <span className="plan-sort-arrow" aria-hidden="true">{arrow}</span>
+      </button>
     </th>
   );
 }
@@ -258,6 +260,13 @@ function BarangayChoroplethLayer({ featureCollection, gapByName, selected, onSel
 function FitBounds({ geojson }) {
   const map = useMap();
   useEffect(() => {
+    const container = map.getContainer?.();
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [map]);
+  useEffect(() => {
     if (!geojson?.features?.length) return;
     const bounds = L.geoJSON(geojson).getBounds();
     if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24], animate: false });
@@ -283,7 +292,8 @@ function FlyToSelection({ featureCollection, selected }) {
 export default function PlanningPage() {
   const [iso, setIso] = useState(null);
   const [minutes, setMinutes] = useState(5);
-  const [gaps, setGaps] = useState(null);
+  const [gapResult, setGapResult] = useState(null);
+  const [gapRetry, setGapRetry] = useState(0);
   const [barangays, setBarangays] = useState(null);
   const [stations, setStations] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -299,6 +309,9 @@ export default function PlanningPage() {
   // Picks the basemap out of TILE_OPTIONS; re-renders the layer on a flip.
   const theme = useTheme();
   const rowRefs = useRef({});
+  const gapKey = `${minutes}:${refreshing}:${gapRetry}`;
+  const gaps = gapResult?.key === gapKey ? gapResult.rows : null;
+  const gapError = gapResult?.key === gapKey ? gapResult.error : null;
 
   const loadCoverage = useCallback((refresh = false) => {
     // Isochrones must resolve first on a refresh: that request is what forces
@@ -320,12 +333,14 @@ export default function PlanningPage() {
   }, [loadCoverage]);
 
   useEffect(() => {
-    // Blank the rows back to the skeleton while the new band is fetched.
-    setGaps(null);
+    // Keep the selected band and its rows together; ignore superseded replies.
+    if (refreshing) return;
+    let alive = true;
     fetchCoverageGaps(minutes)
-      .then((r) => setGaps(r?.gaps || []))
-      .catch(() => setGaps([]));
-  }, [minutes, refreshing]);
+      .then((r) => { if (alive) setGapResult({ key: gapKey, rows: r?.gaps || [] }); })
+      .catch((e) => { if (alive) setGapResult({ key: gapKey, error: e?.message || "Could not load barangay coverage." }); });
+    return () => { alive = false; };
+  }, [minutes, refreshing, gapRetry, gapKey]);
 
   useEffect(() => {
     fetchBarangays()
@@ -338,16 +353,16 @@ export default function PlanningPage() {
 
   async function handleRefresh() {
     if (refreshing) return;
+    setGapRetry((revision) => revision + 1);
     setRefreshing(true);
     setLoading(true);
-    setGaps(null);
     await loadCoverage(true);
     // Flipping `refreshing` back re-runs the gaps effect against fresh data.
     setRefreshing(false);
   }
 
   // `gaps` is null until the first (or a refetched) band resolves.
-  const gapsLoading = gaps === null;
+  const gapsLoading = gaps === null && !gapError;
   const meta = iso?.meta || {};
   const features = useMemo(() => iso?.isochrones?.features || [], [iso]);
   const bands = useMemo(
@@ -444,6 +459,7 @@ export default function PlanningPage() {
   // Selecting from the map scrolls the matching row into view.
   const selectBarangay = useCallback((name) => {
     setSelected((cur) => (normName(cur) === normName(name) ? null : name));
+    setShowBarangays(true);
   }, []);
 
   useEffect(() => {
@@ -479,16 +495,17 @@ export default function PlanningPage() {
   const stationCount = meta.sources ?? (Array.isArray(stations) ? stations.length : null);
 
   return (
-    <div className="plan-page">
+    <main className="plan-page" aria-busy={loading || gapsLoading}>
       {csvReview && <CsvReviewModal csv={csvReview.csv} fileName={csvReview.fileName} title="Coverage Planning CSV" onClose={() => setCsvReview(null)} />}
       <div className="plan-body">
-        <header className="m-view-heading plan-view-heading">
-          <div><h1>Coverage Planning</h1><p>Explore station reachability and identify barangays with coverage gaps.</p></div>
+        <div className="plan-workspace">
+        <header className="plan-view-heading">
+          <div><span className="plan-eyebrow">Station reachability</span><h1>Coverage Planning</h1><p>Explore station reachability and identify barangays with coverage gaps.</p></div>
           <div className="plan-header-actions">
             <button
               className="plan-btn"
               onClick={handleRefresh}
-              disabled={refreshing}
+              disabled={refreshing || loading}
               title="Recompute coverage from the current stations and road constraints"
             >
               <span className={refreshing ? "plan-spin-icon" : undefined}>
@@ -496,18 +513,17 @@ export default function PlanningPage() {
               </span>
               {refreshing ? "Recomputing…" : "Recompute"}
             </button>
-            <button className="plan-btn" onClick={exportCsv} disabled={!visibleRows?.length}>
+            <button className="plan-btn is-primary" onClick={exportCsv} disabled={!visibleRows?.length}>
               <ExportIcon />
               Export CSV
             </button>
           </div>
         </header>
-        {error && <div className="plan-error">{error}</div>}
+        {error && <div className="plan-error" role="alert"><AnalysisIcon name="info" /><div><strong>Could not load coverage</strong><p>{error}</p></div><button className="plan-btn" disabled={refreshing} onClick={handleRefresh}>Retry</button></div>}
 
+        <section className="plan-controls" aria-label="Coverage settings">
         <div className="plan-section-row">
-          <div className="plan-section-label">
-            Where a truck can actually reach, and which barangays it cannot
-          </div>
+          <div className="plan-control-copy"><span className="plan-control-icon"><AnalysisIcon name="coverage" /></span><div><h2>Response-time budget</h2><p>Compare barangay coverage at a selected road travel time.</p></div></div>
           {/* The band drives the KPIs, the gaps table and the CSV export, so it
               sits with them rather than in the page header. */}
           <div className="plan-seg" role="group" aria-label="Response-time band">
@@ -523,13 +539,15 @@ export default function PlanningPage() {
             ))}
           </div>
         </div>
+        <div className="plan-controls-footer"><span><AnalysisIcon name="info" />The selected budget applies to the summary, table and CSV. The map shows all three bands.</span><span>{stationCount == null ? "Loading stations…" : `${stationCount} station${stationCount === 1 ? '' : 's'}`} · Current road network</span></div>
+        </section>
 
         <div className="kpi-row plan-kpi-row">
           <KpiCard
             icon={<TargetKpiIcon />}
-            label={`Avg. coverage ≤${minutes} min`}
+            label="Mean barangay coverage"
             value={summary ? `${summary.avg}%` : KPI_EMPTY}
-            sub={`Across ${summary?.n ?? "—"} barangays`}
+            sub={`Within ${minutes} min · ${summary?.n ?? "—"} barangays`}
             accent="amber"
             loading={gapsLoading}
           />
@@ -545,7 +563,7 @@ export default function PlanningPage() {
             icon={<AlertKpiIcon />}
             label="Coverage gaps"
             value={summary ? summary.gapCount : KPI_EMPTY}
-            sub="< 40% reachable — priority"
+            sub="Less than 40% of the area reachable"
             accent="fire"
             loading={gapsLoading}
           />
@@ -567,7 +585,7 @@ export default function PlanningPage() {
           {/* Coverage map */}
           <div className="plan-card plan-map-card">
             <div className="plan-card-head">
-              <div className="plan-card-title">Response Coverage Map</div>
+              <div><h2 className="plan-card-title">Station reachability map</h2><p className="plan-card-description">Estimated 3, 5 and 8 minute road travel areas.</p></div>
               <div className="plan-head-right">
                 <div className="plan-map-legend">
                   {bands.map((f) => (
@@ -588,6 +606,7 @@ export default function PlanningPage() {
                   data-label="Tint barangays by coverage status"
                 >
                   <LayersIcon />
+                  <span>Barangay status</span>
                 </button>
               </div>
             </div>
@@ -595,7 +614,7 @@ export default function PlanningPage() {
               {loading ? (
                 <div className="plan-map-loading">
                   <span className="plan-spinner" />
-                  <span className="plan-map-loading-text">Computing coverage…</span>
+                  <span className="plan-map-loading-text">{refreshing ? "Recomputing coverage…" : "Loading station reachability…"}</span>
                 </div>
               ) : (
                 <MapContainer
@@ -632,26 +651,19 @@ export default function PlanningPage() {
               </span>
               <span className="plan-dot-sep" />
               <span>
-                <NodesProvIcon />
-                Reachable road nodes <b>{fmtInt(meta.reachable_nodes) ?? "—"}</b>
-              </span>
-              <span className="plan-dot-sep" />
-              <span>
                 <BandsProvIcon />
                 Bands <b>{(meta.bands_min || MINUTE_OPTIONS).join(" / ")}</b> min
               </span>
-              <span className="plan-dot-sep" />
-              <span>
-                <SpeedProvIcon />
-                Computed in <b>{meta.generated_ms != null ? `${meta.generated_ms} ms` : "—"}</b>
-              </span>
+              <span className="plan-map-hint">Select a barangay to inspect its coverage.</span>
             </div>
           </div>
 
           {/* Coverage gaps table */}
           <div className="plan-card plan-gaps-card">
             <div className="plan-card-head">
-              <div className="plan-card-title">Coverage Gaps</div>
+              <div><div className="plan-table-title"><h2 className="plan-card-title">Barangay coverage</h2><span className="plan-count">{gapsLoading ? "Loading…" : `${visibleRows?.length || 0} / ${rows?.length || 0}`}</span></div><p className="plan-card-description">Area reachable within {minutes} minutes · select a row to locate it.</p></div>
+            </div>
+            <div className="plan-table-toolbar">
               <div className="plan-filters">
                 {FILTERS.map((f) => (
                   <button
@@ -671,7 +683,6 @@ export default function PlanningPage() {
                   </button>
                 ))}
               </div>
-            </div>
 
             <div className="plan-gaps-sub">
               <label className="plan-search">
@@ -683,12 +694,15 @@ export default function PlanningPage() {
                   aria-label="Search barangay"
                 />
                 {query && (
-                  <button className="plan-search-clear" onClick={() => setQuery("")}>
+                  <button className="plan-search-clear" onClick={() => setQuery("")} aria-label="Clear barangay search">
                     ×
                   </button>
                 )}
               </label>
             </div>
+            </div>
+
+            {gapError && <div className="plan-error" role="alert"><AnalysisIcon name="info" /><div><strong>Could not load barangay coverage</strong><p>{gapError}</p></div><button className="plan-btn" onClick={() => setGapRetry(n => n + 1)}>Retry barangays</button></div>}
 
             <div className="plan-table-wrap">
               <table className="plan-table">
@@ -707,7 +721,7 @@ export default function PlanningPage() {
                       onSort={toggleSort}
                     />
                     <SortableTh
-                      label="Exposed"
+                      label="Residents outside"
                       sortKey="exposed"
                       sort={sort}
                       onSort={toggleSort}
@@ -750,19 +764,20 @@ export default function PlanningPage() {
                             className={`plan-row${isSel ? " selected" : ""}`}
                             onClick={() => selectBarangay(g.barangay)}
                           >
-                            <td className="plan-td-name">{g.barangay}</td>
+                            <td className="plan-td-name"><button className="plan-barangay-link" aria-pressed={!!isSel} onClick={(e) => { e.stopPropagation(); selectBarangay(g.barangay); }}>{g.barangay}<AnalysisIcon name="chevron" /></button></td>
                             <td className="plan-td-pct">
+                              <div className="plan-coverage-cell">
                               <div className="plan-bar">
                                 <div
                                   className="plan-bar-fill"
                                   style={{
                                     width: `${g.covered_pct}%`,
                                     background: st.color,
-                                    boxShadow: `0 0 8px rgba(${st.rgb}, 0.45)`,
                                   }}
                                 />
                               </div>
                               <span className="plan-pct-num">{g.covered_pct}%</span>
+                              </div>
                             </td>
                             <td className="plan-td-num" title="Estimated residents outside the band">
                               {g.exposed == null ? "—" : fmtInt(g.exposed)}
@@ -781,7 +796,7 @@ export default function PlanningPage() {
                           </tr>
                         );
                       })}
-                  {!gapsLoading && visibleRows && visibleRows.length === 0 && (
+                  {!gapsLoading && !gapError && visibleRows && visibleRows.length === 0 && (
                     <tr>
                       <td colSpan={4} className="plan-empty">
                         {rows?.length
@@ -793,9 +808,12 @@ export default function PlanningPage() {
                 </tbody>
               </table>
             </div>
+            <div className="plan-table-footer"><span>{gapsLoading ? "Loading measurements" : `${visibleRows?.length || 0} barangays shown`} · {minutes} minute budget</span>{selected ? <button className="plan-clear-selection" onClick={() => setSelected(null)}>Clear {selected}<span aria-hidden="true">×</span></button> : <span>Population estimates use area share</span>}</div>
           </div>
         </div>
+        <details className="plan-method"><summary><AnalysisIcon name="info" />How to read this coverage<AnalysisIcon name="chevron" /></summary><div><p>Coverage estimates road travel from the current stations. It does not include report processing, preparation or measured live traffic. This is a planning estimate rather than a guaranteed response time.</p><p>Covered means at least 80% of a barangay's area is reachable within the selected budget; partial means 40% to below 80%; a gap means below 40%. Mean coverage gives each barangay equal weight. Residents outside the band are estimated from uncovered area, assuming population is evenly distributed; missing population stays unavailable.</p><div className="plan-method-source"><span><NodesProvIcon />Reachable road nodes: {fmtInt(meta.reachable_nodes) ?? "—"}</span><span><SpeedProvIcon />Computation: {meta.generated_ms != null ? `${meta.generated_ms} ms` : "Not recorded"}</span></div></div></details>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }
