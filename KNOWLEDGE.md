@@ -17,6 +17,201 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### Independent personnel and vehicle arrival (2026-10-25)
+
+- `PATCH /api/dispatch/{id}/arrived` records the authenticated member's own
+  arrival in an attributed, idempotent `op_personnel_arrival` event. Only arrival
+  by the confirmed manning driver also records its truck's arrival timestamp
+  and status. A separately arriving leader or firefighter does not mark a
+  still-travelling truck on scene or create a vehicle response-time milestone.
+- Mobile status and live-location rows expose `personnel_status` and
+  `personnel_arrived_at` independently of the dispatch's shared status. Tracking
+  switches to 20 seconds for the arriving person; others retain their 3-second
+  dispatch cadence until their own arrival. Response Lab and native personnel
+  screens use the personal state. An arriving truck likewise does not stop a
+  member who is still following their own approach.
+- Arrival confirmations serialize under the incident/dispatch locks and retain
+  the first timestamp on retries. Existing historical arrival timestamps are
+  preserved. No database migration is required; personal arrival uses the existing
+  incident-event audit table and does not count as vehicle arrival in metrics.
+- Existing `crew_confirmation` vehicle-arrival audit events can also establish
+  personal arrival for their verified authenticated actor. This compatibility
+  reader matches personnel through the event's user ID, without copying a shared
+  dispatch arrival to other members or rewriting any historical milestones.
+
+### Personnel map pins (2026-10-25)
+
+- Personnel pins follow the active raster or photorealistic map's tilt. Clicking
+  a pin opens a card with the person's name, rank, team role, response team,
+  station, response status, assigned truck and last-location freshness.
+- A confirmed truck manning assignment replaces initials with a truck icon;
+  releasing it or completing the dispatch restores initials. The optional
+  `manned_truck` object (`truck_id`, `truck_platenum`), or `null`, is display
+  metadata on the existing personnel-location poll and WebSocket payload.
+  It reads the existing assignment, without changing dispatch, GPS or routing
+  behavior. Stationary manning changes appear on the next 10-second location poll.
+- The selected main route's traveled/remaining display follows only the confirmed
+  manning driver's valid, non-stale fix. Personnel ahead of the truck do not trim
+  it. Without an unambiguous truck fix, the full main route remains visible;
+  individual personnel branches continue to display independently.
+
+### Moving-truck route changes (2026-10-25)
+
+- Route selection works without driver GPS, including an active dispatch whose
+  driver is offline. It selects the saved path without requiring motion or an
+  online phone. When fresh driver GPS is available after departure, switching
+  recalculates from that position. Position routing snaps to the
+  current directed road segment, includes its remaining distance/time and carries
+  incoming-edge context into ALT to prevent immediate mid-road reversal. Recent
+  movement disambiguates direction on bidirectional roads. Before departure,
+  station-origin selection remains supported.
+- Explicit forced planning uses the station when driver GPS is unavailable.
+  A manning driver's first accepted fix, or a returning driver's fix after an
+  offline period, automatically replaces the plan with driver-to-incident routes,
+  even when the fix is on the planned path and no deviation is detected. The chosen
+  objective is retained when available; otherwise automatic refresh uses the
+  available recommended path. Unreachable live routes retain the previous plan.
+  Route replacement is atomic; original choices
+  remain in route audit snapshots. Superseded background deviation work is discarded.
+- Full route sets are broadcast to the dashboard and mobile clients after commit;
+  the dashboard replaces changed IDs/geometry and surfaces selection failures.
+  Response Lab holds its exact coordinates on disconnected revisions and lets the
+  assigned manning driver request `POST /api/dispatch/{id}/navigation-refresh`
+  after publishing a current fix. Other roles cannot use that truck-routing API.
+  Non-manning responders use `POST /api/dispatch/{id}/personnel-navigation` for
+  their own road approach without replacing the truck's routes. Mobile status
+  additionally exposes that responder's `personnel_route_wkt`. The existing
+  connector JSON attributes branches by personnel and selected-route revision,
+  so one member rejoining does not erase another member's separate approach.
+  The dashboard consumes branch WebSocket updates as well as location polling.
+  Response Lab holds its coordinates while reconnecting, continues GPS and retries
+  failed navigation every five seconds. The earlier driver-only simulator hold
+  has been removed for non-drivers.
+- Automatic manning-driver deviation routing uses the same exact-position road
+  routing as manual route refresh, preserving the selected objective where available.
+  Deviation retains the existing 280m trigger and 50m rejoin thresholds.
+
+### Separate personnel movement simulator (2026-10-25)
+
+- The sibling `firetrackr_personnel_simulator/` project provides Response Lab, a
+  standalone local browser client of the mobile API. It signs in personnel,
+  watches their actual assignments, interpolates the selected routes and submits
+  synthetic GPS with server-owned duty leases and 30/3/20-second cadences.
+- Automatic response acknowledges/departs permitted roles, claims truck manning
+  for drivers, and confirms arrival. It supports multiple accounts, pause/resume,
+  speed controls, manual actions, route changes and sign-out revocation. Dashboard
+  personnel are visible in normal view with that layer enabled at zoom 13+.
+- The local bridge excludes administrator APIs and avoids CORS/auth changes.
+  Simulator sessions remain in memory. Its schematic route preview needs no map
+  provider key. It writes real mobile evidence to the configured backend; use demo
+  accounts/incidents. Native phone/push behavior is outside its scope. See the
+  [simulator guide](../firetrackr_personnel_simulator/README.md).
+- Successful dashboard dispatch clears cached team availability, so a second
+  manual dispatch dialog reloads the roster instead of offering the same busy crew.
+
+### Unattended dispatch acceptance checks (2026-10-25)
+
+- `tools/simulation/run.py` runs the real API and dashboard against a fresh local
+  PostGIS database with synthetic accounts/resources, captures notifications and
+  saves results/screenshots before removing its database. It exercises browser
+  alarm escalation, three-team dispatch, mobile API actions and closure, then
+  runs the existing web/mobile tests and web build. See the
+  [runner guide](documentation/unattended-simulation.md) for prerequisites and limits.
+- Dispatch creation now rejects busy crews/trucks and terminal incidents, with
+  incident/team/truck locks and a single resource-reservation transaction. Report
+  closure releases every active dispatch on the incident, matching administrator
+  closure. Native phone UI/background behavior and external notification/map-tile
+  delivery are outside this automation's acceptance coverage.
+
+### Command incident panel interface (2026-10-25)
+
+- Incident View retains its 290px dock and one full-width response action per row.
+  A clearer summary, labeled keyboard-accessible tabs, grouped report details and
+  notes, and expandable team rosters replace the flat detail list. Team cards show
+  station, truck, dispatch status and the team leader; rosters describe current
+  membership rather than confirmed incident attendance.
+- Incident time and report receipt are separate fields; panel and timeline clocks
+  use Philippine time. Unknown severity is neutral, closed incidents show their
+  actual status and terminal incidents offer no response actions. Existing dispatch,
+  escalation, route switching, reroute confirmations and map-layer controls remain
+  wired to their existing callbacks. Short screens can scroll the dock above the
+  independent camera controls. Presentation changes require no API or schema change.
+
+### Metrics overview interface (2026-10-25)
+
+- Metrics shares the centered 1440px workspace, responsive padding and heading
+  typography used by Analysis. Period controls update the incident summaries,
+  alarm breakdown, barangay counts and reported causes. Response analysis remains
+  accessible from both the header and response-time card.
+- Monthly context is explicitly labeled: All dates uses all recorded months;
+  other periods retain the API's last-twelve-month context. The chart headline
+  counts plotted incidents and an expandable table exposes every monthly count.
+  Recorded incidents labels the existing total; response durations retain their
+  separate verified-receipt cohort. Unknown measurements and historical source
+  assumptions stay visible. Loading charts use skeletons; failures offer retry
+  without presenting zeros as observations. Boundary failures preserve the counts
+  and explain the unavailable map.
+
+### Coverage Planning interface (2026-10-25)
+
+- Coverage Planning shares the centered 1440px Analysis workspace, responsive
+  padding and heading typography. The response-time budget controls its summary,
+  sortable/searchable barangay table and CSV review; the map shows all three
+  reachability bands. Selecting a barangay enables its status overlay and zooms
+  to its boundary. Map sizing follows panel changes and tables scroll internally.
+- Coverage/population definitions remain unchanged. Thresholds and the area-weighted
+  population assumptions appear under How to read this coverage. Superseded band
+  replies are ignored; recomputation waits for fresh table measurements and failed
+  barangay requests offer retry rather than implying an empty dataset.
+
+### Combined response and operations analysis (2026-10-24)
+
+- The combined view now uses a compact overview, grouped refinements with removable
+  selections/reset, selectable response stages linked to the trend chart, and a
+  common-sample distribution beside the chart. Team comparisons expand on demand;
+  incident tables retain full CSV previews, bounded scrolling and sticky identifiers.
+  The interface adapts to its available width in both themes. These presentation
+  changes do not alter timing calculations or the API populations.
+
+- Analysis now has Response & Operations, Coverage Planning and Operational Reports
+  tabs. The first combines incident lifecycle cards/stages/trends and incident
+  records with dispatch/team comparisons, quality counts, route revisions and
+  independently paginated full filtered incident/dispatch CSV reviews.
+- Shared response timing helpers govern first arrival, chronology and the six-hour
+  review guard across the combined view and retained APIs. Suppression and overall
+  operation can exceed six hours. Incident cohorts use receipt/occurrence dates;
+  dispatch cohorts use dispatch dates. Team filters affect dispatch comparisons,
+  while incident first arrival includes all responding teams. Missing receipt
+  prevents receipt-based measures but does not erase known truck travel times.
+- The default is recorded operational evidence over the latest twelve calendar
+  months, with recent-period/custom/all-date choices. Synthesized BFP timelines
+  remain a separate source. No schema migration or stored timestamp changes are
+  needed for this consolidation.
+
+### Duty tracking and objective reports (2026-10-24)
+
+- Operational Reports now uses three report choices, grouped filters, shared KPI
+  cards, and a single deployment table with Personnel summary / Assignment log
+  views. Wide tables scroll within their panels, severity scores include relative
+  bars, and methodology stays in an expandable disclosure. Theme and mobile
+  layouts retain the existing report populations and full filtered CSV exports.
+
+- Original web/mobile source now includes duty-gated 30-second standby tracking,
+  existing 3/20-second dispatch cadence, server policy leases, attributed/deduplicated
+  phone history and explicit mobile acknowledgement/departure/clearance controls.
+- Migration 0031 adds location attribution, dispatch clearance and operation
+  completion without inventing historical values. It was tested on disposable
+  PostGIS and applied to the original local database after a verified backup,
+  preserving all existing row counts including 214 incidents.
+- Operational Times exposes independently measured overall operation time and
+  record-kind filtering. Analysis > Operational Reports adds audited roster-based
+  personnel deployment, weighted historical barangay rankings and comparable-trip
+  ETA errors with filtered CSV review/export. The weighted ranking lives in Analysis;
+  Metrics retains its overview. Old rosters remain unknown and demo timing stays separate.
+- See [implementation/review guide](documentation/capstone-objectives-implementation.md)
+  for contracts, validation and limitations. Physical native-phone acceptance,
+  retention policy and guaranteed next-shift background wake-up remain outstanding.
+
 ### Command station pins (2026-10-20)
 
 - Clicking a station pin opens its details and a View station action in both
@@ -327,6 +522,16 @@ for dispatch computations. Returned ETA sums **base** edge travel times rather t
 optimization penalties or observed turnout. The displayed confidence derives from
 node scores; it is not a verified probability of timely arrival.
 
+Constraint add/edit forms use the shared `AppModal` shell with road-condition
+cards, severity choices, day chips and active-hour switches. The header and save
+actions remain visible while long schedules scroll. Both themes and narrow
+screens are supported; saving prevents dismissal and failed saves retain inputs.
+Saved roads and baseline roads share the active export's colors by condition and
+severity. The map API resolves display colors before filtering covered roads and
+returns that palette for layer rows and dialog previews; routing costs are unchanged.
+Settings → Model explains when retraining is disabled and reports partial-road
+selections that affect routing but do not cover a whole model training road.
+
 Custom `gnn_constraints` CRUD persists stable snapped segment identities (8 m buffer,
 60% length coverage), retains deleted rows with `is_active=false`, invalidates map
 caches, and broadcasts changes. In exported inference mode, active annotations
@@ -379,7 +584,27 @@ promotion/rollback confirmation and paginated history. Summary/preview endpoints
 read annotations/artifacts without training or writes. The shared App WebSocket
 refreshes model state and feeds the Model updates notification preference. Browser
 constraint/coverage caches invalidate on promotion, and stale requests are ignored.
-Scheduling and Lightning remain pending.
+Scheduling and Lightning remain pending. Modal online training is implemented as
+an optional adapter (`RETRAIN_RUNNER=modal`), using the same admin retrain/review
+and promotion flow. `training/modal_app.py` deploys a private T4 trainer with
+Python 3.12, PyTorch 2.5.1/CUDA 12.1, one active training container and a one-hour
+training limit. Local CPU training remains the default. The web environment uses
+`backend/requirements-modal.txt`; training libraries stay in the cloud image.
+No new database migration is required. See [setup](training/README.md#modal-online-training).
+Explicit source/artifact allowlists exclude backend credentials and private app
+data. Source hashes prevent stale deployments from training new snapshots.
+Modal Volume status and local call metadata support restart recovery; network
+outages and interrupted downloads preserve the reservation for retry. Candidate
+downloads verify hashes before atomic installation. Promotion remains explicit.
+Local validation covers cloud transport/worker failure cases, registry behavior
+and a full 94-epoch synthetic CPU retrain with the champion unchanged. This is
+not evidence of Modal GPU parity or improved field accuracy.
+On 2026-10-24 the private `firetrackr-training` app was deployed to the authenticated
+Modal workspace's `main` environment. Its CPU preflight was reachable and all 19
+allowlisted source hashes matched this checkout. The local backend `.env` now
+selects Modal; a restarted backend resolves `ModalRunner`. Deployment verification
+did not submit a GPU training job or promote a model. A read-only database check
+still reports champion v1, no active job and unchanged effective labels.
 
 A synthetic integration run trained 94 epochs and verified failure/timeout and
 concurrency handling without touching a DB or active champion. Full CPU optimizer
@@ -413,8 +638,22 @@ layer list, search, barangay/source filters and geographic sorting. Incident Vie
 and map actions hide during editing; Done restores them. Main sidebar links,
 including Incidents, and the section divider remain visible. Page navigation exits
 constraint editing.
-Visibility is local to the editing view. The editor selects authoritative QGIS
-road chains between connected junctions/dead ends rather than drawing polylines.
+Visibility is local to the editing view. The editor uses a panel with
+constraint-type buttons, a searchable road list and
+collapsible location/source/sort filters. Active filters can be cleared together;
+the recent list stays ordered newest first. Rows show constraint and source badges,
+visibility controls and a selected-road inspector with severity or traffic hours.
+The panel supports both themes and scrolls within smaller viewports. It selects
+authoritative QGIS road chains between connected junctions/dead ends rather than
+drawing polylines.
+Each row includes a north-up road-shape preview in its constraint color. Selecting
+a row keeps that road bright and dims other road overlays; clearing the selection
+restores their normal opacity. Map clicks in editing mode select the same panel
+row without moving the camera, including rows outside the current filters or
+first 100 results. Outside editing mode, road popups show details and an Edit
+Constraint action that opens editing with that road selected. All map renderers
+share these identities and actions. While adding constraints, hover shows a
+dashed preview of the exact edge a click would select; hovering never saves it.
 At zoom 16+, clicking a road toggles a neon-orange narrow-road or neon-yellow
 traffic selection (also used for saved custom edges); polygons and
 off-road clicks cannot create constraints. Narrow and traffic batches must be
@@ -437,10 +676,59 @@ continue into the day after the selected starting day. The routing engine applie
 the scheduled traffic multiplier per request, without broad time-bucket rounding
 or an always-on admin traffic penalty. Existing blockades still override costs.
 The saved edge remains visible outside its active hours. Re-selecting an identical
-saved constraint is idempotent; conflicting saved details are rejected atomically
-until the old annotation is removed. New narrow labels feed their severity into
+saved constraint is idempotent; conflicting saves are rejected atomically and
+direct the admin to edit the existing annotation. New narrow labels feed their severity into
 training; a larger training feature requires complete coverage of one severity.
 Schedules are operational metadata, not learned hourly traffic predictions.
+
+Saved constraints now support in-place editing. Select a saved road in the layer
+list or map, then choose Edit constraint in its inspector; the view-mode popup's
+Edit Constraint action opens the form directly for a saved annotation. The shared
+save dialog prefills the label, type, narrow severity and traffic schedule. Type
+changes clear the previous type's details. Legacy defaults survive label-only
+edits, and failures preserve form values for retry. Saving keeps the row selected
+and refreshes its details, map and routing. Baseline/model roads also expose Edit
+constraint and save an explicit correction, as described below.
+`PATCH /api/constraints/{id}` validates the merged details, preserves canonical
+edge geometry/IDs and creation provenance, and serializes with edge creation
+using its PostgreSQL advisory lock. It returns routing-refresh status; a failed
+notification cannot turn a committed update into an API failure. This uses the
+existing 0029 fields and needs no new migration. Changed severity/type feeds the
+next immutable label snapshot; road-name and schedule-only edits do not by themselves
+enable retraining. Validation includes disposable SQLite API tests with the lock
+mocked, frontend interaction tests and browser checks in both themes at desktop
+and narrow widths; live database rows were not modified for these checks.
+
+Baseline road editing (2026-10-24): select any baseline or model road, then Edit
+constraint in the inspector or popup. The form supports narrow severity, traffic
+category, optional active hours, construction and No constraint. Prediction-only
+roads start with No constraint and require explicit review; probabilities never
+become positive training labels automatically. Traffic subtypes and original
+timing are retained unless changed. Save creates one `gnn_constraints` override
+through POST `/api/constraints/baseline-override`; repeated saves update the same
+active row. The server resolves the canonical segment and geometry from the model
+export, rather than accepting client coordinates. Revision `0030` adds nullable
+`baseline_segment_uid` and a unique index for one active override per segment.
+It preserves existing annotations. Subsequent edits use the existing PATCH API.
+
+The map hides the covered original entry and keeps the edited road selected.
+Shared main/pool construction replaces the matching model segment, so lower
+severity and No constraint can reduce its cost while maintaining multipliers >= 1.
+Independent road annotations and live blockades retain their own behavior.
+Training clears the old segment flags before applying changed override labels;
+name-only or timing-only corrections preserve its original manual flags.
+Removing the override via Restore original soft-deletes it, retaining history and
+revealing the current model layer. The original model bundle is never rewritten.
+
+Revision 0030 was tested against a PostgreSQL temporary table for upgrade,
+downgrade/re-upgrade, original-row preservation and active-override uniqueness,
+then applied to the configured local database. API submit/retry/reset and snapshot
+hashes were also exercised with a PostgreSQL temporary table and separate temporary
+identity sequence. Application rows, the real identity sequence and original
+export hash were unchanged. Regression checks cover map deduplication, negative
+labels, lower severity, restoration, main/pool routes, UI retry and both themes at
+desktop/mobile widths. Modal's deployed trainer was updated to the new snapshot
+rules; no GPU training or model promotion was started by these checks.
 
 Local activation on 2026-10-23: the configured legacy database received the
 approved additive response-performance schema, nullable constraint segment IDs,

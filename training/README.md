@@ -31,7 +31,7 @@ session using the installed GPU environment and the updated local `training/pari
 It checks the diagnostic source hash before execution and saves both final weights.
 
 Admin model registry APIs are implemented with migration `0026` (applied to the configured local database on 2026-10-19).
-They track local training, review, immediate promotion and archived rollback.
+They track local or Modal training, review, immediate promotion and archived rollback.
 
 | Method | Endpoint | Behavior |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ The API uses the original v1 feature baseline plus current annotations, retainin
 tombstones. It fixes the notebook's training parameters; clients supply no paths,
 labels or hyperparameters.
 
-`RETRAIN_RUNNER=local` is the only supported runner. `RETRAIN_PYTHON` defaults to
+`RETRAIN_RUNNER=local` is the default runner. `RETRAIN_PYTHON` defaults to
 the repository's `.venv-training` interpreter; `RETRAIN_TIMEOUT_MIN` defaults to
 60. The web environment also needs `pyarrow` for snapshots. Jobs and snapshots
 live under ignored `backend/data/retraining/registry/`. All web workers must share
@@ -69,6 +69,85 @@ events broadcast after commit; the status endpoint is the durable source of trut
 Interrupted operating-system jobs that never write a terminal status require
 inspection and are not automatically relaunched. Polling never starts training
 or activates a model.
+
+### Modal online training
+
+`RETRAIN_RUNNER=modal` uses the same admin API, immutable label snapshots, audit,
+candidate import and explicit promotion flow. It needs no additional database
+migration specific to the cloud provider. The current backend schema includes
+0030 for explicit baseline constraint overrides. The web
+environment needs only the optional client; PyTorch and GIS training dependencies
+run in the cloud image. From the repository root:
+
+```powershell
+# With an activated backend environment:
+python -m pip install -r backend/requirements-modal.txt
+python -m modal setup
+python -m modal deploy -m training.modal_app --env main
+```
+
+This checkout uses a uv-managed backend environment without pip. Its equivalent
+installation command is
+`uv pip install --python backend/venv/Scripts/python.exe -r backend/requirements-modal.txt`.
+The CLI can be invoked as `.\backend\venv\Scripts\python.exe -m modal`.
+If the Windows terminal uses a legacy encoding, set
+`$env:PYTHONIOENCODING = 'utf-8'` before running the CLI.
+
+After deployment, configure `backend/.env` and restart the backend:
+
+```dotenv
+RETRAIN_RUNNER=modal
+RETRAIN_TIMEOUT_MIN=60
+RETRAIN_MODAL_APP=firetrackr-training
+RETRAIN_MODAL_VOLUME=firetrackr-training-jobs
+RETRAIN_MODAL_ENVIRONMENT=main
+```
+
+The authenticated OS user must have a Modal profile (normally `~/.modal.toml`),
+or the backend process can receive `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`
+through its deployment environment. Credentials are never uploaded. Custom app
+and volume names must also be set in the shell running the deploy command;
+the deployment module intentionally does not load the backend `.env`.
+
+The deployment defaults to a T4 with Python 3.12, PyTorch 2.5.1/CUDA 12.1 and
+the pinned training dependencies. Both models are scored on the selected device;
+checkpoints are saved on CPU for portable inference. To deploy CPU training,
+set `$env:FIRETRACKR_MODAL_DEVICE = 'cpu'` before deployment. This is a deployment
+choice rather than an API-controlled hyperparameter. Full notebook settings and
+promotion gates remain fixed. The new device entry point has local CPU validation;
+the existing Colab parity report does not certify a particular Modal deployment.
+
+`training/modal_app.py` defines a private `train` function and a small CPU
+`runner_info` preflight. Deployment alone does not train. There are no public HTTP
+endpoints or schedules. Containers scale to zero, one training container runs at
+a time, training is limited to one hour, and automatic function retries are disabled.
+An expired queue item refuses to start after 24 hours. Training is billed by Modal
+when an admin submits a changed-label retrain from Settings > Model.
+
+Only the source files listed in `backend/services/retrain_contract.py` are included in
+the image. Submission verifies deployed source hashes, then uploads the exact
+snapshot files, hashed champion artifacts and style file into the named Modal
+Volume. Whole repository/environment mounts are disabled. The image contains no
+database module or connection credentials. Backend runtime credentials, incident
+records, report uploads and personnel data are not part of the transfer.
+
+`ModalRunner.submit/status/fetch` persists the registry job ID and Modal call ID
+under ignored `backend/data/retraining/registry/modal_jobs/`. Cloud status, logs
+and bundles persist in the Volume under the same job ID, even after call results
+expire. Keep both the local metadata and the Volume while jobs need recovery.
+Running jobs retain their saved volume/environment if configuration changes.
+A dropped submission acknowledgement preserves the training reservation; polling
+never automatically resubmits. Network outages preserve the job for the next poll.
+Interrupted downloads leave no installed version, and imports verify all hashes
+before atomically installing a complete bundle. Remote artifacts remain in the
+Volume for inspection; deletion/retention is a separate administrator operation.
+
+Cloud adapter/worker regression checks use a fake transport and temporary
+directories; registry tests use disposable SQLite with PostgreSQL locks mocked:
+
+```powershell
+.\backend\venv\Scripts\python.exe -m unittest backend.tests.test_modal_retraining backend.tests.test_model_registry -q
+```
 
 Validation covers disposable SQLite service/API tests with PostgreSQL advisory
 locks mocked explicitly, offline PostgreSQL migration SQL, and a full synthetic
