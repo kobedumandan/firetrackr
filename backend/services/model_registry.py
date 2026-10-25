@@ -1,4 +1,4 @@
-"""Admin-controlled local retraining with durable, immutable model history.
+"""Admin-controlled retraining with durable, immutable model history.
 
 The transaction advisory lock serializes registry mutations across web workers.
 The partial unique index retains the single-training guard between transactions.
@@ -14,11 +14,12 @@ import uuid
 from sqlalchemy import text
 
 from config import (MODEL_VERSIONS_ROOT, RETRAIN_WORK_ROOT, RETRAIN_PYTHON,
-                    RETRAIN_TIMEOUT_MIN, RETRAIN_RUNNER, RETRAIN_POLL_SECONDS)
+                    RETRAIN_TIMEOUT_MIN, RETRAIN_RUNNER, RETRAIN_POLL_SECONDS,
+                    RETRAIN_MODAL_APP, RETRAIN_MODAL_VOLUME, RETRAIN_MODAL_ENVIRONMENT)
 from models import ModelVersion
 from services.label_snapshot import build_snapshot, read_database_snapshot, write_snapshot
 from services.model_artifacts import verify_artifacts, sha256, read_json
-from services.retrain_runner import LocalRunner
+from services.retrain_runner import LocalRunner, RunnerUnavailable
 
 logger = logging.getLogger(__name__)
 _REGISTRY_LOCK_KEY = 74120933
@@ -81,7 +82,8 @@ def registry_summary(db):
             "training": serialize_version(training) if training else None,
             "can_initialize": False, "can_retrain": changed and training is None,
             "labels_changed": changed,
-            "snapshot": {key: snapshot[key] for key in ("segments", "positive_segments", "active_drawn_rows", "drawn_segments")}}
+            "snapshot": {key: snapshot[key] for key in ("segments", "positive_segments", "active_drawn_rows", "drawn_segments",
+                                                        "partial_edge_rows_not_used_as_training_labels")}}
 
 
 def preview_version(db, version):
@@ -137,12 +139,35 @@ def initialize_registry(db, actor):
 
 
 def local_runner():
-    if RETRAIN_RUNNER != "local":
-        raise RegistryError("Only the local retrain runner is implemented", 503)
     try:
         return LocalRunner(RETRAIN_WORK_ROOT / "jobs", RETRAIN_PYTHON, RETRAIN_TIMEOUT_MIN)
     except ValueError as exc:
         raise RegistryError("Configure RETRAIN_PYTHON with the isolated training interpreter", 503) from exc
+
+
+def retrain_runner(job_id=None):
+    # An existing job keeps its original adapter even if configuration changes.
+    if job_id:
+        from services.retrain_contract import validate_job_id
+        validate_job_id(job_id)
+        if (RETRAIN_WORK_ROOT / "modal_jobs" / job_id / "job.json").is_file():
+            runner_kind = "modal"
+        elif (RETRAIN_WORK_ROOT / "jobs" / job_id / "job.json").is_file():
+            runner_kind = "local"
+        else:
+            runner_kind = RETRAIN_RUNNER
+    else:
+        runner_kind = RETRAIN_RUNNER
+    if runner_kind == "local":
+        return local_runner()
+    if runner_kind == "modal":
+        try:
+            from services.modal_retrain_runner import ModalRunner
+            return ModalRunner(RETRAIN_WORK_ROOT / "modal_jobs", RETRAIN_MODAL_APP,
+                               RETRAIN_MODAL_VOLUME, RETRAIN_MODAL_ENVIRONMENT, RETRAIN_TIMEOUT_MIN)
+        except (ValueError, ImportError) as exc:
+            raise RegistryError("Configure the Modal runner and install backend/requirements-modal.txt", 503) from exc
+    raise RegistryError("RETRAIN_RUNNER must be local or modal", 503)
 
 
 def start_retrain(db, actor):
@@ -158,7 +183,7 @@ def start_retrain(db, actor):
     base_manifest, _, _ = verify_artifacts(baseline)
     if base_manifest["files"]["predicted_constraints.geojson"] != (manifest.get("baseline_sha256") or manifest["files"]["predicted_constraints.geojson"]):
         raise RegistryError("The road/feature baseline changed; reconcile and verify it first", 422)
-    runner = local_runner()
+    runner = retrain_runner()
     collection, history, snapshot = read_database_snapshot(db, baseline / "predicted_constraints.geojson", actor)
     if snapshot["label_hash"] == champion.label_hash:
         raise RegistryError("No new effective labels since the champion; retraining refused")
@@ -178,10 +203,14 @@ def start_retrain(db, actor):
     db.commit()
     try:
         runner.submit(snapshot_dir, directory, version=version, job_id=job_id)
+    except RunnerUnavailable:
+        # The request may have reached Modal before the connection dropped.
+        # Keep the reservation and recover by job ID instead of launching twice.
+        logger.warning("Retrain acknowledgement pending for %s; polling its reserved job", version)
     except Exception:
-        logger.exception("Local retrain submission failed for %s", version)
+        logger.exception("Retrain submission failed for %s", version)
         row.status = "failed"
-        row.error = "Local retrain could not start; inspect the server log and runner configuration."
+        row.error = "Retrain could not start; inspect the server log and runner configuration."
         db.commit()
         raise RegistryError(row.error, 503)
     return row
@@ -206,12 +235,12 @@ def _complete_job(db, row, runner):
         created = row.created_at.replace(tzinfo=timezone.utc) if row.created_at.tzinfo is None else row.created_at
         if (datetime.now(timezone.utc) - created).total_seconds() < 120:
             return None  # Submission reservation may still be spawning.
-        status = {"state": "failed", "error": "Reserved job never reached the local runner; retry with a new retrain."}
+        status = {"state": "failed", "error": "Reserved job never reached the retrain runner; retry with a new retrain."}
     if status["state"] in ("queued", "running"):
         return None
     if status["state"] != "succeeded":
         row.status = "failed"
-        row.error = str(status.get("error", "Local retrain failed"))[:2000]
+        row.error = str(status.get("error", "Retrain failed"))[:2000]
         row.report = {"schema_version": 1, "job_status": status["state"],
                       "log_tail": str(status.get("log_tail", ""))[-8000:]}
         return {"type": "model_training_failed", "data": {"version": row.version}}
@@ -247,13 +276,18 @@ def synchronize_jobs():
         rows = db.query(ModelVersion).filter_by(status="training").all()
         if not rows:
             return []
-        runner = local_runner()
         events = []
         for row in rows:
             try:
+                runner = retrain_runner(row.job_id)
                 event = _complete_job(db, row, runner)
                 if event:
                     events.append(event)
+            except RunnerUnavailable:
+                logger.warning("Retrain status/download unavailable for %s; retrying next poll", row.version)
+            except RegistryError:
+                # Missing SDK/config must not discard a job already in the cloud.
+                logger.exception("Retrain runner unavailable for %s", row.version)
             except Exception:
                 logger.exception("Candidate verification failed for %s", row.version)
                 row.status = "failed"
@@ -274,6 +308,6 @@ async def poll_model_jobs():
                 await manager.broadcast(event)
         except Exception:
             if not unavailable_logged:
-                logger.exception("Model job polling unavailable; check migration 0026 and local runner settings")
+                logger.exception("Model job polling unavailable; check migration 0026 and runner settings")
                 unavailable_logged = True
         await asyncio.sleep(RETRAIN_POLL_SECONDS)

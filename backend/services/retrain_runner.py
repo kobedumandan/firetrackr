@@ -14,6 +14,10 @@ import subprocess
 import uuid
 
 
+class RunnerUnavailable(RuntimeError):
+    """A cloud communication failure that must not fail or relaunch a job."""
+
+
 class LocalRunner:
     def __init__(self, work_root, python_executable, timeout_minutes=60):
         self.work_root = Path(work_root).resolve()

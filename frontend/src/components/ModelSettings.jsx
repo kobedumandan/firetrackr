@@ -144,6 +144,7 @@ export default function ModelSettings() {
   const failedReport = reportError?.version === selected ? reportError.message : ''
   const audit = envelope?.report
   const stale = !!error
+  const partialRoads = summary?.snapshot?.partial_edge_rows_not_used_as_training_labels || 0
   const choose = version => { setSelected(version); setPreview(false); setActionError('') }
   const confirm = kind => {
     setActionError('')
@@ -169,10 +170,11 @@ export default function ModelSettings() {
             <div><dt>Test F1</dt><dd>{percent(champion.metrics?.f1)}</dd></div>
           </dl>
           <div className="model-training-row"><div>
-            {summary.training ? <p role="status"><span className="model-pulse" />Training {summary.training.version}… Current routing remains available.</p>
-              : <p>{summary.labels_changed ? 'New effective labels are ready for training.' : 'No new labels since the current model.'}</p>}
-            {summary.snapshot && <p className="model-muted">{summary.snapshot.active_drawn_rows} active drawings cover {summary.snapshot.drawn_segments} road segments.</p>}
-          </div><button type="button" className="model-btn model-btn-primary" disabled={busy || stale || !summary.can_retrain} onClick={() => run('retrain')}><ModelSettingsIcon name="train" />{busy && !action ? 'Working…' : 'Retrain'}</button></div>
+            {summary.training ? <p id="model-retrain-status" role="status"><span className="model-pulse" />Training {summary.training.version}… Current routing remains available.</p>
+              : <p id="model-retrain-status">{summary.labels_changed ? 'New effective labels are ready for training.' : 'No new labels since the current model. Retrain becomes available when verified road conditions change.'}</p>}
+            {summary.snapshot && <p className="model-muted">{summary.snapshot.active_drawn_rows} saved constraint{summary.snapshot.active_drawn_rows === 1 ? '' : 's'} · {summary.snapshot.drawn_segments} model roads covered for training.</p>}
+            {partialRoads > 0 && <p id="model-partial-roads" className="model-muted">{partialRoads} partial-road selection{partialRoads === 1 ? ' affects' : 's affect'} routes but {partialRoads === 1 ? 'does' : 'do'} not label a whole model road for training. To make a training correction, use Edit constraints to select an existing model road and update its verified condition or severity.</p>}
+          </div><button type="button" className="model-btn model-btn-primary" disabled={busy || stale || !summary.can_retrain} aria-describedby={`model-retrain-status${partialRoads > 0 ? ' model-partial-roads' : ''}`} onClick={() => run('retrain')}><ModelSettingsIcon name="train" />{busy && !action ? 'Working…' : 'Retrain'}</button></div>
         </> : <><p>No model is registered yet.</p>{summary.can_initialize ? <button type="button" className="model-btn model-btn-primary" disabled={busy || stale} onClick={() => run('initialize')}><ModelSettingsIcon name="register" />Register current model</button> : <p className="model-warning">The model history needs administrator attention before training can start.</p>}</>}
       </article>
 

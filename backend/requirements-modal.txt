@@ -1,0 +1,2 @@
+# Optional web-side cloud adapter; training dependencies live in the Modal image.
+modal==1.6.2

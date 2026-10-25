@@ -51,7 +51,7 @@ def validate_bundle(directory):
     return manifest
 
 
-def score_bundle(directory, frame):
+def score_bundle(directory, frame, device="cpu"):
     directory = Path(directory)
     manifest = validate_bundle(directory)
     pipeline = json.loads((directory / "feature_pipeline.json").read_text(encoding="utf-8"))
@@ -59,13 +59,14 @@ def score_bundle(directory, frame):
     model = SegmentGAT(**manifest["architecture"])
     checkpoint = torch.load(directory / "checkpoint.pt", map_location="cpu", weights_only=True)
     model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+    model = model.to(device)
     model.eval()
     with torch.no_grad():
-        regression, classification = model(torch.from_numpy(matrix), torch.from_numpy(segment_edges(frame)))
-        probability = torch.softmax(classification, dim=1)[:, 1].numpy()
+        regression, classification = model(torch.from_numpy(matrix).to(device), torch.from_numpy(segment_edges(frame)).to(device))
+        probability = torch.softmax(classification, dim=1)[:, 1].cpu().numpy()
     if not np.isfinite(probability).all() or not torch.isfinite(regression).all():
         raise ValueError("Model returned nonfinite scores")
-    return probability, regression.numpy()
+    return probability, regression.cpu().numpy()
 
 
 def main():
