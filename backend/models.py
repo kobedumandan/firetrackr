@@ -129,12 +129,21 @@ class Device(Base):
 
 class LocationLog(Base):
     __tablename__ = "location_logs"
+    __table_args__ = (
+        Index('ix_location_logs_per_id_recorded', 'per_id', 'recorded_at'),
+        Index('uq_location_logs_sample_key', 'sample_key', unique=True),
+    )
 
     log_id         = Column(Integer, primary_key=True, autoincrement=True)
     device_id      = Column(Integer, ForeignKey("devices.device_id"), nullable=True)
     log_latitude   = Column(Float, nullable=False)
     log_longitude  = Column(Float, nullable=False)
     log_receive_at = Column(DateTime(timezone=True), default=_now)
+    per_id         = Column(Integer, ForeignKey('personnel.per_id', ondelete='SET NULL'))
+    recorded_at    = Column(DateTime(timezone=True))
+    accuracy_m     = Column(Float)
+    collection_mode = Column(String(20))
+    sample_key     = Column(String(160))
 
     device = relationship("Device", back_populates="location_logs")
 
@@ -290,6 +299,7 @@ class FireIncident(Base):
     record_kind            = Column(String(20))  # operational | drill | test | unknown
     suppression_started_at = Column(DateTime(timezone=True))
     fire_out_at            = Column(DateTime(timezone=True))
+    operation_completed_at = Column(DateTime(timezone=True))
     response_kind          = Column(String(20))  # fire | medical | rescue | other; NULL = unknown
     brgy_id                = Column(Integer, ForeignKey("barangay_boundaries.brgy_id"), nullable=True)
 
@@ -371,6 +381,7 @@ class DispatchRecord(Base):
     dispatch_at           = Column(DateTime(timezone=True), default=_now)
     dispatch_arrived_at   = Column(DateTime(timezone=True), nullable=True)
     dispatch_completed_at = Column(DateTime(timezone=True), nullable=True)
+    cleared_at            = Column(DateTime(timezone=True))
     dispatch_truck_count  = Column(Integer, default=0)
     acknowledged_at       = Column(DateTime(timezone=True))
     acknowledged_by       = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"))
@@ -543,13 +554,19 @@ class RoadObstruction(Base):
 
 class GnnConstraint(Base):
     __tablename__ = "gnn_constraints"
-    __table_args__ = (CheckConstraint("narrow_severity IN ('slight', 'severe')", name='ck_constraint_narrow_severity'),)
+    __table_args__ = (
+        CheckConstraint("narrow_severity IN ('slight', 'severe')", name='ck_constraint_narrow_severity'),
+        Index('uq_active_baseline_override', 'baseline_segment_uid', unique=True,
+              postgresql_where=text('is_active AND baseline_segment_uid IS NOT NULL'),
+              sqlite_where=text('is_active AND baseline_segment_uid IS NOT NULL')),
+    )
 
     constraint_id = Column(Integer, primary_key=True, autoincrement=True)
     constraint_type = Column(String(50), nullable=False)   # "narrow_road" | "traffic_area"
     name          = Column(String(255), nullable=True)
     coordinates   = Column(Text, nullable=False)           # JSON array of [lon, lat] pairs
     segment_uids  = Column(JSON, nullable=True)             # NULL = legacy/unresolved
+    baseline_segment_uid = Column(String(255), nullable=True)  # Explicit replacement of one immutable model segment
     narrow_severity = Column(String(10), nullable=True)      # NULL preserves legacy regular narrow
     traffic_schedule = Column(JSON, nullable=True)          # NULL preserves legacy traffic behavior
     highway       = Column(String(100), nullable=True)
