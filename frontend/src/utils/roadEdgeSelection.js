@@ -27,3 +27,21 @@ export function nearestRoadEdge(point, features, zoom) {
 export function toggleRoadEdge(selected, uid) {
   return selected.includes(uid) ? selected.filter(value => value !== uid) : [...selected, uid]
 }
+
+// Reject distant bounding boxes before measuring every line segment on hover.
+// The final match uses exactly the same six-metre rule as selection clicks.
+export function createRoadEdgeLookup(features) {
+  const indexed = features.filter(feature => feature.geometry?.type === 'LineString').map(feature => {
+    const coordinates = feature.geometry.coordinates
+    return { feature, minX: Math.min(...coordinates.map(point => point[0])), maxX: Math.max(...coordinates.map(point => point[0])),
+      minY: Math.min(...coordinates.map(point => point[1])), maxY: Math.max(...coordinates.map(point => point[1])) }
+  })
+  return (point, zoom) => {
+    if (zoom < 16) return null
+    const latitudeMargin = 6 / 111320
+    const longitudeMargin = latitudeMargin / Math.max(0.001, Math.cos(point[1] * Math.PI / 180))
+    const nearby = indexed.filter(bounds => point[0] >= bounds.minX - longitudeMargin && point[0] <= bounds.maxX + longitudeMargin
+      && point[1] >= bounds.minY - latitudeMargin && point[1] <= bounds.maxY + latitudeMargin).map(bounds => bounds.feature)
+    return nearestRoadEdge(point, nearby, zoom)
+  }
+}

@@ -1,6 +1,7 @@
 import { constraintFeatures } from './commandMapData'
-import { setGoogleLinePath } from './googleMapGeometry'
+import { colorWithOpacity, setGoogleLinePath } from './googleMapGeometry'
 import { createRoadHover } from './roadHover'
+import { openConstraintPopup } from './constraintPopup'
 
 export function createGoogleConstraintOverlay(map, library, leaflet, L) {
   let cachedData
@@ -38,7 +39,7 @@ export function createGoogleConstraintOverlay(map, library, leaflet, L) {
       if (!element) {
         const Element = library.Polyline3DInteractiveElement || library.Polyline3DElement
         element = new Element({ altitudeMode: 'RELATIVE_TO_GROUND', drawsOccludedSegments: true,
-          strokeColor: feature.properties.color, strokeWidth: Math.max(3, feature.properties.weight) })
+          strokeColor: colorWithOpacity(feature.properties.color, feature.properties.opacity), strokeWidth: Math.max(3, feature.properties.weight) })
         setGoogleLinePath(element, feature.geometry.coordinates.map(([lng, lat]) => ({ lat, lng, altitude: 2 })))
         const showHover = event => {
           if (!active || !selectedData || (event.domEvent || pointer)?.buttons || leaflet.getContainer().classList.contains('pick-cursor')) { hideHover(); return }
@@ -53,8 +54,10 @@ export function createGoogleConstraintOverlay(map, library, leaflet, L) {
           if (leaflet.getContainer().classList.contains('pick-cursor')) return
           event.stopPropagation()
           if (!event.position) return
-          const content = document.createElement('div'); content.textContent = feature.properties.title
-          L.popup({ autoPan: false }).setLatLng([event.position.lat, event.position.lng]).setContent(content).openOn(leaflet)
+          hideHover()
+          const rect = leaflet.getContainer().getBoundingClientRect()
+          const screenAnchor = Number.isFinite(pointer?.clientX) ? { x: pointer.clientX - rect.left, y: pointer.clientY - rect.top } : undefined
+          openConstraintPopup(leaflet, L, feature.properties, [event.position.lat, event.position.lng], screenAnchor)
         })
         elements.set(feature.id, element)
       }

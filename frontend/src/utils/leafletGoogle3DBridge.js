@@ -1,7 +1,7 @@
 import { attachProjectedPopup } from './projectedPopup'
 import { rangeToZoom, zoomToRange } from './googleMaps3D'
 import { frameThrottle } from './commandMapData'
-import { setGoogleLinePath, setGooglePolygonPaths } from './googleMapGeometry'
+import { colorWithOpacity, setGoogleLinePath, setGooglePolygonPaths } from './googleMapGeometry'
 import { PANABO_BOUNDARY_COLOR } from './mapOverlayColors'
 import { attachIncidentHover } from './incidentHover'
 
@@ -20,13 +20,6 @@ export function polygonPaths(points) {
     return [{ path: points[0].map(position), innerPaths: points.slice(1).map(ring => ring.map(position)) }]
   }
   return points.flatMap(polygonPaths)
-}
-
-function colorWithOpacity(color = '#ff4d1a', opacity = 1) {
-  if (/^#[\da-f]{6}$/i.test(color)) {
-    return `${color}${Math.round(Math.max(0, Math.min(1, opacity)) * 255).toString(16).padStart(2, '0')}`
-  }
-  return color
 }
 
 function labelFor(layer) {
@@ -50,7 +43,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
       const rect = (element.firstElementChild || element).getBoundingClientRect()
       return { x: rect.left + rect.width / 2 - container.left, y: rect.top - container.top }
     }
-    return clickPoint
+    return popup.options?.screenAnchor || clickPoint
   }, () => active && !disposed && !unloaded)
   let syncing = false
   let disposed = false

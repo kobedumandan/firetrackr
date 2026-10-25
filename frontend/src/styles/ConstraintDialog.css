@@ -1,0 +1,76 @@
+/* Constraint forms share the application modal shell and form tokens. */
+.constraint-dialog { max-height: calc(100dvh - 60px); margin-block: auto; color: var(--text-primary); }
+.constraint-dialog .apm-subtitle { line-height: 1.6; }
+.constraint-dialog-form { display: flex; flex-direction: column; min-height: 0; }
+.constraint-dialog-body { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.constraint-dialog-context { display: flex; align-items: center; gap: 12px; margin-top: 18px; padding: 12px 14px; background: var(--surface-raise); border: 1px solid var(--border-dim); border-radius: 10px; }
+.constraint-dialog-road { width: 30px; height: 32px; flex: 0 0 auto; color: var(--road-color); }
+.constraint-dialog-context > div { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 5px; }
+.constraint-dialog-context strong { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.constraint-dialog-context div > span { color: var(--text-secondary); font-size: 10px; }
+.constraint-dialog-context-tag { padding: 4px 7px; border-radius: 5px; border: 1px solid var(--border-dim); color: var(--text-secondary); font: 9px var(--font-mono); text-transform: uppercase; }
+.constraint-dialog-description { margin: 10px 0 0; color: var(--text-secondary); font-size: 10.8px; line-height: 1.7; }
+.constraint-dialog .constraint-options { min-width: 0; margin: 0 0 16px; padding: 0; border: 0; }
+.constraint-dialog .constraint-options legend, .constraint-dialog .constraint-field > span { width: 100%; margin-bottom: 8px; padding: 0; color: var(--text-secondary); font-family: var(--font-condensed); font-size: 10px; font-weight: 500; }
+.constraint-dialog .constraint-field { margin-bottom: 16px; gap: 0; }
+.constraint-dialog .constraint-field > span { display: flex; align-items: center; justify-content: space-between; }
+.constraint-field > span small { color: var(--text-muted); font-size: 9px; font-weight: 400; }
+.constraint-dialog .constraint-field input, .constraint-dialog .constraint-field select { min-height: 38px; padding: 10px 11px 8px; font-size: 11px; }
+.constraint-dialog input[type="radio"] { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; }
+.constraint-condition-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.constraint-condition-card { position: relative; display: flex; align-items: center; gap: 9px; padding: 12px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); cursor: pointer; }
+.constraint-weekdays input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.constraint-condition-card .constraint-dialog-road { width: 25px; height: 28px; }
+.constraint-condition-card > span, .constraint-severity-card > span { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 5px; }
+.constraint-condition-card strong, .constraint-severity-card strong { font-size: 10.5px; font-weight: 500; line-height: 1.5; }
+.constraint-condition-card small, .constraint-severity-card small { font-size: 9px; color: var(--text-secondary); line-height: 1.5; }
+.constraint-condition-card:has(input:checked), .constraint-severity-card:has(input:checked) { border-color: var(--accent-fire); background: var(--accent-fire-dim); }
+.constraint-condition-card:hover, .constraint-severity-card:hover { border-color: var(--accent-fire); }
+.constraint-dialog :is(.constraint-condition-card, .constraint-severity-card, .constraint-weekdays label):has(input:focus-visible) { outline: 2px solid var(--accent-fire); outline-offset: 3px; }
+.constraint-severity-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.constraint-severity-card { position: relative; display: flex; flex: 1 1 130px; align-items: center; gap: 9px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); cursor: pointer; }
+.constraint-dialog .eim-section { padding-bottom: 0; }
+.constraint-timezone { color: var(--text-muted); font: 9px var(--font-mono); }
+.constraint-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 8px 12px; box-sizing: border-box; border: 1px solid var(--border-dim); border-radius: 8px; background: var(--surface-raise); cursor: pointer; font-size: 11px; }
+.constraint-toggle--compact { min-height: 30px; margin-bottom: 10px; padding: 0; border: 0; background: transparent; }
+.constraint-dialog .constraint-toggle input.nim-switch { flex: 0 0 34px; margin: 0; }
+.constraint-timing-option { margin-bottom: 16px; }
+.constraint-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.constraint-weekdays label { position: relative; cursor: pointer; }
+.constraint-weekdays span { display: grid; place-items: center; min-height: 36px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); color: var(--text-secondary); font-size: 10px; }
+.constraint-weekdays input:checked + span { border-color: color-mix(in srgb, var(--accent-fire) 55%, var(--border)); background: var(--accent-fire-dim); color: var(--text-primary); }
+.constraint-dialog-hint { margin: 9px 0 14px; color: var(--text-secondary); font-size: 10px; line-height: 1.7; }
+.constraint-time-ranges { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.constraint-time-range { display: flex; align-items: flex-end; gap: 9px; }
+.constraint-time-range label { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 6px; color: var(--text-secondary); font-size: 10px; }
+.constraint-time-range input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 38px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); color: var(--text-primary); font: 11px var(--font-ui); color-scheme: dark; }
+.constraint-dialog select { color-scheme: dark; }
+[data-theme="light"] .constraint-dialog :is(input[type="time"], select) { color-scheme: light; }
+.constraint-time-separator { align-self: flex-end; padding-bottom: 12px; color: var(--text-muted); font-size: 12px; }
+.constraint-remove-time { display: grid; place-items: center; width: 34px; height: 38px; flex: 0 0 auto; padding: 8px; border: 1px solid var(--border); border-radius: 7px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.constraint-remove-time svg { width: 17px; height: 17px; }
+.constraint-remove-time:hover:not(:disabled) { color: var(--accent-fire); background: var(--accent-fire-dim); }
+.constraint-add-time { display: flex; align-items: center; gap: 6px; margin-top: 12px; padding: 7px 10px; border: 1px dashed var(--border); border-radius: 7px; background: transparent; color: var(--text-secondary); font: 10px var(--font-ui); cursor: pointer; }
+.constraint-add-time:hover:not(:disabled) { border-color: var(--accent-fire); color: var(--text-primary); }
+.constraint-add-time::before { content: '+'; font-size: 14px; }
+.constraint-dialog button:focus-visible, .constraint-dialog input:focus-visible, .constraint-dialog select:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 3px; }
+.constraint-dialog button:disabled, .constraint-dialog fieldset:disabled { opacity: .55; cursor: not-allowed; }
+.constraint-dialog-error { margin-top: 12px; line-height: 1.7; }
+.constraint-dialog .eim-footer { flex: 0 0 auto; }
+.constraint-dialog-footer-note { color: var(--text-muted); font-size: 9px; }
+.constraint-dialog .eim-footer-actions { margin-left: auto; }
+.constraint-dialog .eim-footer button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 9px 14px 7px; white-space: nowrap; }
+@media (max-width: 520px) {
+  .constraint-dialog { max-width: calc(100vw - 24px); max-height: calc(100dvh - 60px); }
+  .constraint-dialog .eim-header { padding: 16px 16px 12px; }
+  .constraint-dialog .eim-body { padding-inline: 16px; }
+  .constraint-dialog .eim-footer { padding: 12px 16px; }
+  .constraint-dialog-footer-note { display: none; }
+  .constraint-dialog .eim-footer-actions { width: 100%; }
+  .constraint-dialog .eim-footer button { flex: 1; padding-inline: 9px; }
+  .constraint-condition-card { gap: 7px; padding: 10px 8px; }
+  .constraint-condition-card .constraint-dialog-road { width: 20px; }
+  .constraint-condition-card small { display: none; }
+  .constraint-weekdays { gap: 4px; }
+  .constraint-weekdays span { font-size: 9px; }
+}

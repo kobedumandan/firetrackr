@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useId } from "react";
 import "../styles/RightSidebar.css";
+import "../styles/CommandIncidentPanel.css";
+import AnalysisIcon from "./AnalysisIcon";
 import DispatchModal from "./DispatchModal";
 import EscalateAlarmModal from "./EscalateAlarmModal";
 import IncidentTimeline from "./IncidentTimeline";
@@ -82,13 +84,7 @@ function MaximizeIcon() {
 }
 
 function fmtTimestamp(isoStr) {
-  if (!isoStr) return "—";
-  const d = new Date(isoStr);
-  return d.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  return fmtTime(isoStr);
 }
 
 function SkeletonDetail() {
@@ -289,13 +285,36 @@ const TABS = [
 ];
 
 function fmtTime(isoStr) {
-  if (!isoStr) return "—";
+  if (!isoStr) return "Not recorded";
   const d = new Date(isoStr);
-  return d.toLocaleTimeString("en-US", {
+  if (Number.isNaN(d.getTime())) return "Not recorded";
+  return d.toLocaleTimeString("en-PH", {
+    timeZone: "Asia/Manila",
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
   });
+}
+
+function fullTime(value) {
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime())
+    ? new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }).format(date)
+    : "Not recorded";
+}
+
+const roleOf = (member) => String(member.member_role || "").toLowerCase().replaceAll("_", " ").trim();
+const isTeamLeader = (member) => roleOf(member) === "team leader";
+const readableStatus = (status) => ({ pending: "Pending", active: "Active", dispatched: "Dispatched", en_route: "En route", on_scene: "On scene", contained: "Contained", closed: "Closed", cancelled: "Cancelled", canceled: "Cancelled", recalled: "Recalled", completed: "Completed" }[status] || (status ? String(status).replaceAll("_", " ") : "Not recorded"));
+
+function AssignedTeam({ dispatch }) {
+  const members = [...(dispatch.members || [])].sort((a, b) => Number(isTeamLeader(b)) - Number(isTeamLeader(a)));
+  const leader = members.find(isTeamLeader);
+  return <article className="dispatch-team-card ci-team-card">
+    <header className="dispatch-team-header"><span className="ci-team-icon"><FireTruckIcon /></span><div className="dispatch-team-meta"><h4 className="dispatch-team-name">{dispatch.team_name || "Unnamed team"}</h4><span className="dispatch-team-station">{dispatch.station_name || "Station not recorded"}{dispatch.team_code ? ` · ${dispatch.team_code}` : ''}</span></div><span className="ci-dispatch-status" data-status={dispatch.dispatch_status}>{readableStatus(dispatch.dispatch_status)}</span></header>
+    <div className="ci-team-context">{dispatch.truck_platenums?.length > 0 && <span>{dispatch.truck_platenums.join(" · ")}</span>}<span>Dispatched {fmtTime(dispatch.dispatch_at)}{dispatch.dispatch_at ? ' PHT' : ''}</span>{leader && <span className="ci-lead-preview">Team leader · {leader.name || "Name not recorded"}</span>}</div>
+    {members.length ? <details className="ci-roster"><summary><span>Team roster<span className="ci-count">{members.length}</span></span><AnalysisIcon name="chevron" /></summary><div className="dispatch-members">{members.map((member) => <div key={member.per_id} className={`dispatch-member-row${isTeamLeader(member) ? ' dispatch-member-leader' : ''}`}><span className="dispatch-member-av">{member.initials || '?'}</span><div className="dispatch-member-info"><span className="dispatch-member-name">{member.name || "Name not recorded"}</span><span className="dispatch-member-rank">{member.rank || "Rank not recorded"}</span></div><span className="ci-member-role">{roleOf(member) || "Role not recorded"}</span></div>)}<p className="ci-roster-note">Current team membership; attendance is not confirmed here.</p></div></details> : <p className="ci-roster-unavailable">Team roster not recorded.</p>}
+  </article>;
 }
 
 function SevChip({ sev }) {
@@ -315,26 +334,16 @@ function SevChip({ sev }) {
       </span>
     );
   return (
-    <span className="detail-chip sev-chip chip-green">
+    <span className={`detail-chip sev-chip chip-${s === "minor" ? "green" : "normal"}`}>
       <FireGeneralIcon />
-      {sev}
+      {sev || "Severity not recorded"}
     </span>
   );
 }
 
 function StatusChip({ status }) {
-  if (status === "dispatched")
-    return (
-      <span className="detail-chip chip-amber">
-        <span className="status-blink-dot" />
-        Dispatched
-      </span>
-    );
-  if (status === "contained")
-    return <span className="detail-chip chip-green">Contained</span>;
-  if (status === "active")
-    return <span className="detail-chip chip-fire">Active</span>;
-  return <span className="detail-chip chip-normal">Pending</span>;
+  const tone = ["contained", "closed", "on_scene"].includes(status) ? "green" : ["dispatched", "en_route", "pending"].includes(status) ? "amber" : status === "active" ? "fire" : "normal";
+  return <span className={`detail-chip ci-status chip-${tone}`}><span className="ci-status-dot" />{readableStatus(status)}</span>;
 }
 
 export default function RightSidebar({
@@ -385,11 +394,21 @@ export default function RightSidebar({
     </div>
   );
 
-  const [activeTab, setActiveTab] = useState("Incident");
-
-  useEffect(() => {
-    if (focusNonce > 0) setActiveTab("Incident");
-  }, [focusNonce]);
+  const tabId = useId();
+  const [tabSelection, setTabSelection] = useState({ key: "Incident", focusNonce });
+  const activeTab = tabSelection.focusNonce === focusNonce ? tabSelection.key : "Incident";
+  const setActiveTab = (key) => setTabSelection({ key, focusNonce });
+  const onTabKeyDown = (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const index = TABS.findIndex(tab => tab.key === activeTab);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + TABS.length) % TABS.length;
+    setActiveTab(TABS[next].key);
+    event.currentTarget.querySelectorAll('[role="tab"]')[next]?.focus();
+  };
+  const canRespond = incident && !["contained", "closed", "cancelled", "canceled", "recalled"].includes(incident.status);
+  const highestAlarm = ["3rd Alarm", "General Alarm"].includes(incident?.alarm);
+  const headerTime = incident?.report_received_at || incident?.reported_at;
   const [showDispatch, setShowDispatch] = useState(false);
   const [showEscalate, setShowEscalate] = useState(false);
   const [rerouteConfirm, setRerouteConfirm] = useState(null); // dispatch_id awaiting confirm
@@ -399,6 +418,8 @@ export default function RightSidebar({
   // deviated unit is on the same dispatch.
   const [forceRerouteConfirm, setForceRerouteConfirm] = useState(null);
   const [forceRerouteBusy, setForceRerouteBusy] = useState(null);
+  const [routeSwitchBusy, setRouteSwitchBusy] = useState(null);
+  const [routeSwitchError, setRouteSwitchError] = useState(null);
 
   if (constraintEditing) {
     return <div className="right-sidebar-dock right-sidebar-dock--collapsed">
@@ -409,15 +430,16 @@ export default function RightSidebar({
 
   if (collapsed) {
     return (
-      <div className="right-sidebar-dock right-sidebar-dock--collapsed">
+        <div className="right-sidebar-dock right-sidebar-dock--collapsed ci-dock">
         <div className="right-sidebar-dock-top">
         <button
           className="right-sidebar-float-btn"
           onClick={onToggleCollapse}
           title="Expand details panel"
+          aria-label="Expand incident view"
         >
           <MaximizeIcon />
-          Tab
+          Incident view
         </button>
         {viewModeButtons}
         </div>
@@ -428,40 +450,38 @@ export default function RightSidebar({
 
   return (
     <>
-      <div className="right-sidebar-dock">
-      <aside className="sidebar-right">
+      <div className="right-sidebar-dock ci-dock">
+      <aside className="sidebar-right ci-sidebar" aria-label="Incident view">
         <div className="sidebar-tabs">
-          <div className="sidebar-section-header">Incident View</div>
+          <div className="ci-panel-heading"><span className="ci-eyebrow">Command</span><h2 className="sidebar-section-header">Incident view</h2></div>
           <button
             className="sidebar-collapse-btn--right"
             onClick={onToggleCollapse}
             title="Collapse"
+            aria-label="Collapse incident view"
           >
             <MinimizeIcon />
           </button>
         </div>
 
-        {loading && !incident && <SkeletonDetail />}
-
         {incident && (
           <>
             <div className="detail-header">
               <div className="detail-tag">
-                {incident.id}
+                <span className="ci-incident-id">{incident.id}</span>
                 <StatusChip status={incident.status} />
               </div>
-              <div className="detail-title">{incident.loc}</div>
+              <h3 className="detail-title" title={incident.loc}>{incident.loc || "Location not recorded"}</h3>
+              {incident.addr && <p className="ci-address" title={incident.addr}>{incident.addr}</p>}
               <div className="detail-status-row">
-                <span className="detail-chip chip-normal">
-                  <TimeIcon /> {fmtTime(incident.reported_at)}
-                </span>
                 <SevChip sev={incident.sev} />
+                <span className="detail-chip ci-alarm-chip"><AnalysisIcon name="preparation" />{incident.alarm || "Alarm not recorded"}</span>
               </div>
+              <div className="ci-report-time"><TimeIcon /><span>{incident.report_received_at ? "Report received" : "Incident time"}</span><time dateTime={headerTime || undefined} title={fullTime(headerTime)}>{fmtTime(headerTime)}{headerTime ? ' PHT' : ''}</time></div>
             </div>
 
             <div className="sidebar-tabs--below">
-              <div className="detail-section-title">Details</div>
-              <div className="sidebar-tabs-wrap">
+              <div className="sidebar-tabs-wrap" role="tablist" aria-label="Incident detail sections" onKeyDown={onTabKeyDown}>
                 {TABS.map(({ key, Icon }) => (
                   <button
                     key={key}
@@ -469,14 +489,24 @@ export default function RightSidebar({
                     onClick={() => setActiveTab(key)}
                     title={key}
                     aria-label={key}
+                    role="tab"
+                    id={`${tabId}-${key}`}
+                    aria-controls={`${tabId}-panel`}
+                    aria-selected={activeTab === key}
+                    tabIndex={activeTab === key ? 0 : -1}
                   >
                     <Icon />
+                    <span>{key}</span>
                   </button>
                 ))}
               </div>
             </div>
           </>
         )}
+
+        <div className="ci-content" id={`${tabId}-panel`} role={incident ? "tabpanel" : undefined} aria-labelledby={incident ? `${tabId}-${activeTab}` : undefined} tabIndex={incident ? 0 : undefined}>
+        {loading && !incident && <div className="ci-loading" role="status" aria-label="Loading incident details"><SkeletonDetail /></div>}
+        {!loading && !incident && <div className="ci-empty"><span><AnalysisIcon name="handling" /></span><h3>No incident selected</h3><p>Select an incident from the map or incident list to review its details and response teams.</p></div>}
 
         {/* ── Routing tab ───────────────────────────────────────────────────── */}
         {incident &&
@@ -492,11 +522,12 @@ export default function RightSidebar({
 
             return (
               <div className="detail-body">
-                {incident.units > 0 && (
+                {incidentDispatches.length === 0 && <div className="ci-empty-inline">No teams assigned yet. Route options will appear after dispatch.</div>}
+                {incidentDispatches.length > 0 && (
                   <>
-                    <div className="detail-section-title">GNN Routing</div>
+                    <div className="detail-section-title">Dispatch routing</div>
                     <div className="routing-panel">
-                      <div className="routing-title">GNN Route Active</div>
+                      <div className="routing-title">Route overview</div>
                       <div className="routing-row">
                         <span className="routing-row-label">Incident</span>
                         <span className="routing-row-value">{incident.loc}</span>
@@ -509,14 +540,10 @@ export default function RightSidebar({
                         </span>
                       </div>
                       <div className="routing-row">
-                        <span className="routing-row-label">Units Assigned</span>
+                        <span className="routing-row-label">Team assignments</span>
                         <span className="routing-row-value highlight">
-                          {incident.units}
+                          {incidentDispatches.length}
                         </span>
-                      </div>
-                      <div className="routing-row">
-                        <span className="routing-row-label">Model</span>
-                        <span className="routing-row-value">GNN-RL v2.1</span>
                       </div>
                     </div>
                   </>
@@ -577,19 +604,26 @@ export default function RightSidebar({
                           {!r.isSelected && r.route_id != null && (
                             <button
                               className="route-option-btn"
-                              onClick={() =>
-                                onSelectRoute?.(d.dispatch_id, r.route_id)
-                              }
+                              disabled={routeSwitchBusy !== null}
+                              onClick={async () => {
+                                setRouteSwitchBusy(d.dispatch_id);
+                                setRouteSwitchError(null);
+                                try { await onSelectRoute?.(d.dispatch_id, r.route_id); }
+                                catch (error) { setRouteSwitchError({ dispatchId: d.dispatch_id, message: error.message }); }
+                                finally { setRouteSwitchBusy(null); }
+                              }}
                             >
                               <SwitchAltRouteIcon />
-                              Switch
+                              {routeSwitchBusy === d.dispatch_id ? 'Recalculating…' : 'Switch'}
                             </button>
                           )}
                           {r.isSelected && (
-                            <span className="route-option-active">Active</span>
+                            <span className="route-option-active">Selected</span>
                           )}
                         </div>
                       ))}
+
+                      {routeSwitchError?.dispatchId === d.dispatch_id && <p className="apm-error" role="alert">{routeSwitchError.message}</p>}
 
                       {!hasRealRoute && (
                         <div className="route-empty-note">
@@ -649,6 +683,8 @@ export default function RightSidebar({
                     </div>
                   );
                 })}
+
+                {incidentDispatches.length === 0 && <div className="ci-empty ci-empty--inline"><span><AnalysisIcon name="travel" /></span><h3>No dispatch routes yet</h3><p>Assigned teams and their route choices appear here after dispatch.</p></div>}
 
                 {deviatedPersonnel.map((p) => {
                   const dispatch = incidentDispatches.find(
@@ -765,162 +801,55 @@ export default function RightSidebar({
           })()}
 
         {incident && activeTab === "Incident" && (
-          <>
-            <div className="detail-body">
-              {incident.addr && (
-                <div className="detail-row">
-                  <span className="detail-label">Address</span>
-                  <span className="detail-value">{incident.addr}</span>
-                </div>
-              )}
-              <div className="detail-row">
-                <span className="detail-label">Reported By</span>
-                <span className="detail-value">{incident.reporter || "—"}</span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-label">Dispatch type</span>
-                <span className="detail-value">{incident.dispatch_type || 'Unspecified'}</span>
-              </div>
-              {incident.structure && (
-                <div className="detail-row">
-                  <span className="detail-label">Structure</span>
-                  <span className="detail-value">{incident.structure}</span>
-                </div>
-              )}
-              <div className="detail-row">
-                <span className="detail-label">Casualties</span>
-                <span
-                  className="detail-value"
-                  style={
-                    incident.casualties && incident.casualties !== "None"
-                      ? { color: "var(--accent-amber)" }
-                      : {}
-                  }
-                >
-                  {incident.casualties || "None"}
-                </span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-label">Alarm Level</span>
-                <span
-                  className="detail-value"
-                  style={{ color: "var(--accent-fire)" }}
-                >
-                  {incident.alarm || "—"}
-                </span>
-              </div>
-              {incident.remarks && (
-                <div className="detail-row">
-                  <span className="detail-label">Remarks</span>
-                  <span className="detail-value">{incident.remarks}</span>
-                </div>
-              )}
-
-              {incidentDispatches.length > 0 && (
-                <>
-                  <div className="detail-section-title">Assigned Teams</div>
-                  {incidentDispatches.map((d) => (
-                    <div key={d.dispatch_id} className="dispatch-team-card">
-                      <div className="dispatch-team-header">
-                        {/* <span className="dispatch-team-icon">
-                          <FireTruckIcon className="fire_truck_icon"/>
-                        </span> */}
-                        <div className="dispatch-team-meta">
-                          <span className="dispatch-team-name">
-                            {d.team_name}
-                            {/* {d.team_code ? (
-                              <span className="dispatch-team-code">
-                                {" "}
-                                · {d.team_code}
-                              </span>
-                            ) : null} */}
-                          </span>
-                          {d.station_name && (
-                            <span className="dispatch-team-station">
-                              {d.station_name}
-                            </span>
-                          )}
-                        </div>
-                        {/* <span
-                          className={`dispatch-status-chip dispatch-status-${d.dispatch_status}`}
-                        >
-                          {d.dispatch_status === "en_route"
-                            ? "En Route"
-                            : d.dispatch_status}
-                        </span> */}
-                      </div>
-                      {d.members && d.members.length > 0 && (
-                        <div className="dispatch-members">
-                          {[...d.members]
-                            .sort((a, b) =>
-                              a.member_role === "Team Leader"
-                                ? -1
-                                : b.member_role === "Team Leader"
-                                ? 1
-                                : 0
-                            )
-                            .map((p) => {
-                              const isLeader = p.member_role === "Team Leader";
-                              return (
-                                <div
-                                  key={p.per_id}
-                                  className={`dispatch-member-row${
-                                    isLeader ? " dispatch-member-leader" : ""
-                                  }`}
-                                >
-                                  <div className="dispatch-member-av">
-                                    {p.initials}
-                                  </div>
-                                  <div className="dispatch-member-info">
-                                    <span className="dispatch-member-name">
-                                      {isLeader && (
-                                        <span className="dispatch-leader-star">
-                                          ★
-                                        </span>
-                                      )}
-                                      {p.name}
-                                    </span>
-                                    <span className="dispatch-member-rank">
-                                      {p.rank}
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </>
-              )}
-
-            </div>
-          </>
+          <div className="detail-body ci-incident-body">
+            <section className="ci-response-summary" aria-label="Response overview">
+              <AnalysisIcon name="travel" />
+              <div><strong>{incidentDispatches.length} {incidentDispatches.length === 1 ? 'team assigned' : 'teams assigned'}</strong><span>{incidentDispatches.length ? `${incidentDispatches.filter(d => d.dispatch_status === 'on_scene').length} on scene · ${incidentDispatches.filter(d => d.dispatch_status === 'en_route').length} en route` : 'No units have been assigned to this incident.'}</span></div>
+              {incidentDispatches.length > 0 && <button className="ci-text-button" onClick={() => { setActiveTab('Routing'); document.getElementById(`${tabId}-Routing`)?.focus(); }}>View routes<AnalysisIcon name="chevron" /></button>}
+            </section>
+            <section className="ci-section">
+              <h4>Incident details</h4>
+              <dl className="ci-facts">
+                {incident.addr && <div className="ci-full-address"><dt>Address</dt><dd>{incident.addr}</dd></div>}
+                <div><dt>Dispatch type</dt><dd>{incident.dispatch_type || 'Unspecified'}</dd></div>
+                <div><dt>Structure</dt><dd>{incident.structure || 'Not recorded'}</dd></div>
+                <div><dt>Reported by</dt><dd>{incident.reporter || 'Not recorded'}</dd></div>
+                <div><dt>Casualties</dt><dd className={incident.casualties && incident.casualties.toLowerCase() !== 'none' ? 'ci-caution' : undefined}>{incident.casualties || 'Not recorded'}</dd></div>
+              </dl>
+              <details className="ci-report-details"><summary>Report timestamps <AnalysisIcon name="chevron" /></summary><dl className="ci-facts ci-time-facts"><div><dt>Incident time · PHT</dt><dd>{fullTime(incident.reported_at)}</dd></div><div><dt>Report received · PHT</dt><dd>{fullTime(incident.report_received_at)}</dd></div></dl></details>
+            </section>
+            {incident.remarks && <section className="ci-section ci-notes"><h4>Incident notes</h4><p>{incident.remarks}</p></section>}
+            <section className="ci-section ci-assigned-teams"><h4>Assigned teams<span className="ci-count">{incidentDispatches.length}</span></h4>
+              {incidentDispatches.length ? incidentDispatches.map(dispatch => <AssignedTeam key={dispatch.dispatch_id} dispatch={dispatch} />) : <p className="ci-section-empty">Assigned teams and their rosters will appear here after dispatch.</p>}
+            </section>
+          </div>
         )}
 
         {incident && activeTab === "Timeline" && (
           <IncidentTimeline incident={incident} liveDispatches={incidentDispatches} />
         )}
 
-        {incident && incident.status !== "contained" && (
-          <div className="detail-actions">
+        </div>
+        {canRespond && (
+          <div className="detail-actions ci-action-footer">
+            <span className="ci-action-label">Response actions</span>
             <button
               className="btn-dispatch"
               onClick={() => setShowDispatch(true)}
             >
-              Dispatch Unit
+              Dispatch unit
             </button>
             <button
               className="btn-secondary"
               onClick={() => setShowEscalate(true)}
-              disabled={(incident.alarm || "1st Alarm") === "3rd Alarm"}
+              disabled={highestAlarm}
               title={
-                (incident.alarm || "1st Alarm") === "3rd Alarm"
+                highestAlarm
                   ? "Already at the highest alarm level"
                   : "Raise the alarm level and dispatch more units"
               }
             >
-              Escalate Alarm
+              Escalate alarm
             </button>
           </div>
         )}
