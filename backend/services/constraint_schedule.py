@@ -26,5 +26,7 @@ def schedule_active(schedule, now=None):
 def constraint_style_key(row):
     if row.constraint_type == 'traffic_area':
         return 'traffic_general'
+    if row.constraint_type != 'narrow_road':
+        return row.constraint_type
     severity = getattr(row, 'narrow_severity', None)
     return {'slight': 'narrow_road_slight', 'severe': 'narrow_road_severe'}.get(severity, 'narrow_road')

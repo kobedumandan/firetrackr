@@ -12,6 +12,7 @@ from schemas import RouteRequest, RouteResponse
 from security import require_admin
 from services.constraints import (
     _CONSTRAINT_PROP_KEYS, _CUSTOM_STYLE_KEY, _label_for, _load_constraint_style,
+    map_constraint_style,
 )
 from services.routing import _load_active_obstructions
 from services.constraint_segments import load_segment_index, segment_uid
@@ -109,6 +110,10 @@ def gnn_constraints(
     with open(constraints_path, encoding="utf-8") as f:
         raw = json.load(f)
 
+    # Resolve from the complete export before hiding roads covered by drawings;
+    # the same severity keeps its color even when every baseline road is edited.
+    style = map_constraint_style(style, raw.get('features', []))
+
     custom_rows = db.query(GnnConstraint).filter(GnnConstraint.is_active.is_(True)).all()
     index = load_segment_index(constraints_path) if any(c.segment_uids is None for c in custom_rows) else None
     covered = set()
@@ -145,6 +150,8 @@ def gnn_constraints(
         out["segment_uid"] = uid
         out["routing_multiplier"] = multiplier_by_type.get(rtype, 1.0)
         out["display_label"] = _label_for(dtype, style)
+        from services.label_snapshot import baseline_edit_defaults
+        out['edit_defaults'] = baseline_edit_defaults(feat)
         features.append({
             "type": "Feature",
             "geometry": {"type": "LineString", "coordinates": geom["coordinates"]},
@@ -158,7 +165,7 @@ def gnn_constraints(
         s = style.get(style_key, {})
         type_counts[style_key] = type_counts.get(style_key, 0) + 1
         type_color.setdefault(style_key, s.get("color", "#E53935"))
-        constrained += 1
+        constrained += int(style_key != 'normal')
         features.append({
             "type": "Feature",
             "geometry": {"type": "LineString", "coordinates": json.loads(c.coordinates)},
@@ -166,14 +173,16 @@ def gnn_constraints(
                 "display_constraint_type": style_key,
                 "routing_constraint_type": style_key,
                 "display_label": c.name or s.get("label", style_key),
+                "name": c.name or '',
                 "map_color": s.get("color", "#E53935"),
                 "map_weight": s.get("weight", 4),
                 "map_opacity": s.get("opacity", 0.95),
-                "routing_multiplier": s.get("routing_multiplier", 1.45),
-                "model_predicted_constrained": 1,
+                "routing_multiplier": s.get("routing_multiplier", 1.0 if style_key == 'normal' else 1.45),
+                "model_predicted_constrained": int(style_key != 'normal'),
                 "hover_confidence_text": "Selected road edge" if any(uid.startswith('edge-v1-') for uid in (c.segment_uids or [])) else "Saved road constraint",
                 "custom": True,
                 "constraint_id": c.constraint_id,
+                "baseline_segment_uid": getattr(c, 'baseline_segment_uid', None),
                 "narrow_severity": c.narrow_severity,
                 "traffic_schedule": c.traffic_schedule,
                 "segment_uids": c.segment_uids if c.segment_uids is not None else index.snap(json.loads(c.coordinates)),

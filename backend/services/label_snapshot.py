@@ -13,6 +13,8 @@ LABEL_FLAGS = ("is_narrow", "is_narrow_severe", "narrow_severity", "is_construct
                "traffic_nightmarket", "traffic_market", "traffic_pnm", "traffic_general",
                "traffic_school", "traffic_highway")
 LABEL_FIELDS = LABEL_FLAGS + ("constraint_type", "constraint_score", "is_constrained")
+OVERRIDE_TYPES = ('normal', 'narrow_road', 'traffic_area', 'construction', 'traffic_general',
+                  'traffic_nightmarket', 'traffic_market', 'traffic_pnm', 'traffic_school', 'traffic_highway')
 
 
 def simplify_constraint_for_gnn(row):
@@ -57,6 +59,24 @@ def label_hash(features):
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def baseline_edit_defaults(feature):
+    """Editable conditions come from manual flags, never model probabilities."""
+    props = feature.get('properties') or {}
+    kind = simplify_constraint_for_gnn(props)['constraint_type']
+    return {'name': props.get('name') or '',
+            'constraint_type': 'narrow_road' if kind.startswith('narrow_road') else kind,
+            'narrow_severity': 'severe' if kind == 'narrow_road_severe' else 'slight' if kind == 'narrow_road_slight' else None,
+            'traffic_schedule': None}
+
+
+def override_preserves_labels(feature, row):
+    current = baseline_edit_defaults(feature)
+    kind = row.get('constraint_type') if isinstance(row, dict) else row.constraint_type
+    severity = row.get('narrow_severity') if isinstance(row, dict) else getattr(row, 'narrow_severity', None)
+    kind = 'traffic_general' if kind == 'traffic_area' else kind
+    return kind == current['constraint_type'] and severity == current['narrow_severity']
+
+
 def build_snapshot(baseline_path, annotations, created_by=None, purpose="training"):
     from .constraint_segments import SegmentIndex, segment_uid
 
@@ -66,7 +86,8 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
     for row in annotations:
         if not isinstance(row.get("is_active", True), bool):
             raise ValueError("Annotation activity must be boolean")
-        if row['constraint_type'] not in ('narrow_road', 'traffic_area'):
+        allowed = OVERRIDE_TYPES if row.get('baseline_segment_uid') else ('narrow_road', 'traffic_area')
+        if row['constraint_type'] not in allowed:
             raise ValueError("Unsupported annotation type")
         uids = row.get('segment_uids')
         if uids is not None and (not isinstance(uids, list) or any(not isinstance(uid, str) for uid in uids)):
@@ -109,13 +130,28 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
     baseline_pairs = {uid: pairs(feature['geometry']['coordinates']) for uid, feature in by_uid.items()}
     history, touched = [], set()
     partial_edge_rows = 0
+    overridden = set()
+    unchanged_override_labels = set()
+    for row in annotations:
+        uid = row.get('baseline_segment_uid')
+        if not uid or not row.get('is_active', True):
+            continue
+        if uid not in by_uid or row.get('segment_uids') != [uid] or uid in overridden:
+            raise ValueError('Baseline overrides need one unique original segment identity')
+        overridden.add(uid)
+        if override_preserves_labels(by_uid[uid], row):
+            unchanged_override_labels.add(uid)
+        else:
+            by_uid[uid]['properties'].update({flag: 0 for flag in LABEL_FLAGS})
+    # Replacement labels are applied before independent additive drawings.
+    annotations.sort(key=lambda row: not bool(row.get('baseline_segment_uid')))
     active_count = matched_count = 0
     for row in annotations:
         active = row.get("is_active", True)
         if not isinstance(active, bool):
             raise ValueError("Annotation activity must be boolean")
         kind = row["constraint_type"]
-        if kind not in ("narrow_road", "traffic_area"):
+        if kind not in (OVERRIDE_TYPES if row.get('baseline_segment_uid') else ('narrow_road', 'traffic_area')):
             raise ValueError("Unsupported annotation type")
         uids = row.get("segment_uids")
         if uids is None:
@@ -138,6 +174,7 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
         history.append({"id": row.get("id", row.get("constraint_id")), "constraint_type": kind,
                         "is_active": active, "segment_uids": uids,
                         "narrow_severity": row.get('narrow_severity'), "traffic_schedule": row.get('traffic_schedule'),
+                        **({'baseline_segment_uid': row['baseline_segment_uid']} if row.get('baseline_segment_uid') else {}),
                         **({'selected_edge_uids': selected_edge_uids} if selected_edge_uids else {})})
         if not active:
             continue
@@ -145,7 +182,9 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
         matched_count += bool(uids)
         for uid in uids:
             props = by_uid[uid]["properties"]
-            if kind == "narrow_road":
+            if row.get('baseline_segment_uid') and uid in unchanged_override_labels:
+                pass  # A name/schedule edit retains all original manual flags.
+            elif kind == "narrow_road":
                 props["is_narrow"] = 1
                 severity = row.get('narrow_severity')
                 if severity in ('slight', 'severe'):
@@ -153,8 +192,10 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
                     props['narrow_severity'] = 1 if severity == 'slight' else 3
                 else:
                     props["narrow_severity"] = max(2, props["narrow_severity"])
-            else:
-                props["traffic_general"] = 1
+            elif kind == 'traffic_area' or kind.startswith('traffic_'):
+                props['traffic_general' if kind == 'traffic_area' else kind] = 1
+            elif kind == 'construction':
+                props['is_construction'] = 1
             props.update(simplify_constraint_for_gnn(props))
             props["annotation_source"] = "user_drawn"
             touched.add(uid)
@@ -170,6 +211,7 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
         "drawn_segments": len(touched), "inactive_drawn_rows": len(history) - active_count,
         "model_predictions_used_as_labels": False,
         "partial_edge_rows_not_used_as_training_labels": partial_edge_rows,
+        "baseline_overrides": len(overridden),
     }
     return {"type": "FeatureCollection", "features": features}, history, manifest
 
@@ -203,6 +245,7 @@ def read_database_snapshot(db, baseline_path, created_by):
                     "coordinates": row.coordinates, "segment_uids": row.segment_uids,
                     "narrow_severity": row.narrow_severity,
                     "traffic_schedule": row.traffic_schedule,
+                    "baseline_segment_uid": row.baseline_segment_uid,
                     "is_active": row.is_active} for row in rows]
     return build_snapshot(baseline_path, annotations, created_by)
 
