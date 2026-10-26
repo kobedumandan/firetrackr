@@ -1,0 +1,238 @@
+/* Combined incident analysis. Reuse the dashboard's type, color and state tokens. */
+.rp-view {
+  --ro-soft: color-mix(in srgb, var(--text-primary) 3%, var(--bg-panel));
+  --ro-accent: color-mix(in srgb, var(--accent-fire) 7%, var(--bg-panel));
+  padding: 28px 28px 40px;
+}
+.ro-workspace { width: 100%; max-width: 1440px; margin-inline: auto; container-type: inline-size; }
+.rp-view .rp-page-heading { align-items: center; gap: 20px; margin-bottom: 22px; }
+.rp-page-heading h1 { margin: 0 0 7px; font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -.5px; text-wrap: balance; }
+.rp-page-heading p { margin: 0; max-width: 72ch; font-size: 11px; }
+.ro-eyebrow { display: block; margin-bottom: 7px; color: var(--rp-muted); font: 9px var(--font-mono); text-transform: uppercase; letter-spacing: 1.3px; }
+.ro-heading-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 11px; flex-shrink: 0; }
+.ro-heading-actions .rp-timezone { display: inline-flex; align-items: center; gap: 6px; width: auto; font-size: 9px; }
+.ro-heading-actions .rp-timezone svg { width: 12px; height: 12px; }
+.rp-view .rp-refresh { min-height: 34px; background: var(--bg-panel); }
+.rp-view .rp-filter-panel { padding: 16px 18px 0; margin-bottom: 22px; border-radius: 12px; }
+.rp-view .rp-filter-title { margin-bottom: 16px; }
+.rp-view .ro-reset-filters { padding: 2px 0; border: none; background: transparent; color: var(--rp-muted); font-size: 10px; }
+.rp-view .ro-reset-filters:hover { background: transparent; color: var(--accent-fire); }
+.rp-view .rp-filters { grid-template-columns: 1.15fr 1.55fr 1fr 1fr .95fr; gap: 14px; }
+.rp-view .rp-filters :is(select,input:not([type="checkbox"])) { height: 38px; padding-inline: 11px; border-radius: 7px; background: var(--ro-soft); font-size: 11px; }
+.rp-view .rp-filters input:disabled { opacity: .5; }
+.rp-view .rp-filters label { gap: 7px; }
+.ro-refinements { margin-top: 15px; border-top: 1px solid var(--border-dim); }
+.ro-refinements > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 43px; color: var(--rp-muted); font-size: 10px; cursor: pointer; list-style: none; }
+.ro-refinements > summary::-webkit-details-marker { display: none; }
+.ro-refinements > summary > span { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ro-refinements summary svg { width: 13px; height: 13px; }
+.ro-refinements[open] > summary > svg { transform: rotate(90deg); }
+.rp-view .ro-refinement-fields { grid-template-columns: repeat(4,minmax(0,1fr)); padding: 2px 0 18px; }
+.rp-view .rp-team-trigger { height: 38px; background: var(--ro-soft); border-radius: 7px; }
+.rp-view .rp-team-options { z-index: 3; }
+.ro-filter-footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin: 0 -18px; padding: 11px 18px; border-top: 1px solid var(--border-dim); border-radius: 0 0 12px 12px; background: var(--ro-soft); color: var(--rp-muted); font-size: 9px; line-height: 1.6; }
+.ro-filter-footer > span:last-child { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 65ch; }
+.ro-filter-footer svg { flex-shrink: 0; width: 12px; height: 12px; margin-top: 1px; }
+.ro-filter-chips { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 0 13px; }
+.rp-view .ro-filter-chips button { padding: 4px 8px; border-color: color-mix(in srgb,var(--accent-fire) 20%,var(--border)); background: var(--ro-accent); color: var(--accent-fire); font-size: 10px; }
+.ro-filter-chips button > span { margin-left: 6px; font-size: 13px; }
+.ro-demo-banner { display: flex; align-items: flex-start; gap: 12px; padding: 15px 18px; margin-bottom: 20px; border: 1px solid var(--border-dim); border-radius: 9px; background: var(--accent-amber-dim); }
+.ro-demo-banner > svg { flex-shrink: 0; color: var(--accent-amber); margin-top: 1px; }
+.ro-demo-banner strong { font-size: 11px; }
+.ro-demo-banner p { font-size: 10px; }
+
+/* A single overview surface puts the two incident endpoints on the same baseline. */
+.rp-view .ro-overview { grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 24px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); overflow: hidden; }
+.rp-view .ro-overview.is-demo { grid-template-columns: 1fr; }
+.rp-view .ro-overview-card { padding: 22px 24px; min-width: 0; }
+.ro-overview-card + .ro-overview-card { border-left: 1px solid var(--border-dim); }
+.ro-metric-heading { display: flex; align-items: center; gap: 9px; }
+.ro-metric-heading h2 { font-size: 12px; font-weight: 500; }
+.ro-metric-icon { display: grid; place-items: center; width: 29px; height: 29px; flex-shrink: 0; border-radius: 7px; background: var(--ro-accent); color: var(--accent-fire); }
+.ro-metric-icon svg { width: 16px; height: 16px; }
+.ro-unit-label { margin-left: auto; color: var(--rp-muted); font-size: 9px; white-space: nowrap; }
+.ro-overview-card .ro-metric-definition { min-height: 18px; margin-top: 9px; font-size: 10px; }
+.rp-view .ro-overview-card .rp-overall { margin-top: 17px; font-size: 43px; font-weight: 500; letter-spacing: -1.8px; }
+.ro-mean-caption { display: flex; justify-content: space-between; gap: 10px; margin-top: 9px; color: var(--rp-muted); font-size: 10px; }
+.ro-mean-caption > span { font-size: 9px; }
+.ro-overview-card .rp-quality { margin-top: 17px; padding-top: 13px; border-top: 1px solid var(--border-dim); }
+.ro-overview-card .rp-quality-heading { font-size: 9px; }
+.ro-overview-card .rp-quality-heading strong { font-size: 10px; }
+.ro-overview-card .rp-quality-meter { height: 4px; margin: 8px 0 12px; }
+.ro-overview-card .rp-distribution { margin-bottom: 10px; }
+.ro-overview-card .rp-distribution > span { display: flex; align-items: baseline; gap: 8px; }
+.ro-overview-card .rp-distribution strong { display: inline; margin: 0; font-weight: 500; }
+.ro-overview-card .rp-quality-counts { gap: 5px 12px; }
+.rp-view .rp-quality-counts span[data-present="false"] { display: none; }
+
+/* Stage selection controls the chart; quality details stay available on demand. */
+.ro-stages-panel { margin-bottom: 20px; padding: 20px 22px 14px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); }
+.ro-stages-panel h2 { margin-top: 0; }
+.ro-section-hint { align-self: flex-end; color: var(--rp-muted); font-size: 10px; }
+.rp-view .ro-stage-kpis { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 0; margin: 20px -4px 0; }
+.ro-stage-kpis .rp-metric-card { position: relative; min-width: 0; padding: 3px 18px 8px; border: 0; border-radius: 0; background: transparent; }
+.ro-stage-kpis .rp-metric-card:first-child { padding-left: 4px; }
+.ro-stage-kpis .rp-metric-card:last-child { padding-right: 4px; }
+.ro-stage-kpis .rp-metric-card + .rp-metric-card { border-left: 1px solid var(--border-dim); }
+.ro-stage-number { display: block; margin-bottom: 11px; color: var(--rp-muted); font: 9px var(--font-mono); }
+.rp-view .ro-stage-kpis .kpi-card { position: relative; padding-bottom: 11px; margin-bottom: 9px; }
+.rp-view .ro-stage-kpis .kpi-card-label { font-size: 11px; }
+.rp-view .ro-stage-kpis .kpi-card-value { margin-top: 5px; font-size: 28px; font-weight: 500; letter-spacing: -.8px; }
+.rp-view .ro-stage-kpis .kpi-card-icon { width: 25px; height: 25px; border-radius: 6px; background: var(--ro-soft); color: var(--rp-muted); }
+.rp-view .ro-stage-kpis .kpi-card-sub { min-height: 32px; max-width: 27ch; line-height: 1.7; font-size: 9px; }
+.ro-stage-kpis .is-selected .kpi-card-label,.ro-stage-kpis .is-selected .ro-stage-number { color: var(--accent-fire); }
+.rp-view .ro-stage-kpis .is-selected .kpi-card-icon { background: var(--ro-accent); color: var(--accent-fire); }
+.rp-view .ro-stage-kpis .kpi-card-action { border: 0; border-radius: 6px; background: transparent; }
+.rp-view .ro-stage-kpis .kpi-card:has(> .kpi-card-action:hover),
+.rp-view .ro-stage-kpis .kpi-card:has(> .kpi-card-action:focus-visible) { background: var(--ro-accent); }
+.rp-view .ro-stage-kpis .kpi-card-action:hover { border: 0; background: transparent; }
+.rp-view .ro-stage-kpis .kpi-card-action:active { transform: none; }
+.rp-view .ro-stage-note { display: flex; align-items: flex-start; gap: 7px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-dim); font-size: 9px; }
+.ro-stage-note svg { width: 12px; height: 12px; flex-shrink: 0; margin-top: 1px; }
+.ro-quality-compact > summary { display: flex; align-items: center; justify-content: space-between; gap: 7px; cursor: pointer; list-style: none; }
+.ro-quality-compact > summary::-webkit-details-marker { display: none; }
+.ro-quality-compact > summary > strong { font-size: 9px; color: var(--rp-muted); font-weight: 400; }
+.ro-quality-compact > summary > span { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; }
+.ro-quality-compact > summary svg { width: 10px; height: 10px; }
+.ro-quality-compact[open] > summary svg { transform: rotate(90deg); }
+.ro-quality-body { padding-top: 7px; }
+.ro-quality-body .rp-distribution { grid-template-columns: 1fr 1fr; gap: 5px; }
+.ro-quality-body .rp-distribution strong { font-size: 11px; }
+
+/* Charts and the common-cohort distribution share a compact analysis row. */
+.ro-analysis-grid { display: grid; grid-template-columns: minmax(0,1.9fr) minmax(270px,1fr); gap: 18px; margin-bottom: 22px; }
+.rp-view .ro-analysis-grid .ota-trends { min-width: 0; padding: 20px; margin: 0; border-radius: 12px; }
+.rp-view .ota-section-head { align-items: center; gap: 14px; }
+.rp-view .ota-section-head h2 { font-size: 13px; }
+.rp-view .ota-section-head p { font-size: 10px; }
+.rp-view .ota-trend-filter { display: flex; align-items: center; gap: 8px; font-size: 9px; color: var(--rp-muted); }
+.rp-view .ota-trend-filter select { max-width: 160px; padding: 7px 9px; background: var(--ro-soft); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; font: 10px var(--font-condensed); }
+.rp-view .ota-chart-scroll { margin-top: 16px; }
+.rp-view .ota-chart-scroll svg { min-width: 480px; max-height: 260px; }
+.rp-view .ota-chart-footer { align-items: center; margin-top: 12px; }
+.rp-view .ota-legend { gap: 8px 12px; font-size: 9px; }
+.rp-view .ota-chart-data { font-size: 9px; }
+.ro-distribution-panel { min-width: 0; padding: 20px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); }
+.ro-distribution-panel h2 { margin-top: 0; font-size: 13px; }
+.ro-distribution-panel > p { font-size: 10px; }
+.ro-distribution-rows { margin-top: 20px; }
+.ro-distribution-row + .ro-distribution-row { margin-top: 15px; }
+.ro-distribution-row > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ro-distribution-row > div:first-child > span { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; color: var(--rp-muted); }
+.ro-distribution-row i { width: 5px; height: 5px; border-radius: 1px; flex-shrink: 0; }
+.ro-distribution-row strong { font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.ro-distribution-row strong small { display: inline; margin: 0 0 0 2px; font-size: 9px; }
+.ro-distribution-track { height: 4px; margin-top: 6px; overflow: hidden; border-radius: 3px; background: var(--ro-soft); }
+.ro-distribution-track > span { display: block; height: 100%; min-width: 0; border-radius: inherit; }
+.ro-distribution-duration { display: block; margin-top: 5px; color: var(--rp-muted); font: 9px var(--font-mono); }
+.ro-distribution-panel .ro-breakdown { margin: 18px 0 0; padding-top: 12px; border-top: 1px solid var(--border-dim); font-size: 9px; }
+.ro-distribution-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; min-height: 210px; text-align: center; color: var(--rp-muted); }
+.ro-distribution-empty strong { font-size: 11px; font-weight: 500; }
+.ro-distribution-empty p { font-size: 10px; }
+.ro-distribution-skeleton { width: 100%; height: 215px; margin-top: 20px; }
+
+/* Team analysis is a deliberate expansion, keeping the incident overview concise. */
+.rp-view .ro-team-analysis { margin: 0 0 22px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); }
+.ro-team-analysis > summary { display: flex; align-items: center; gap: 12px; padding: 17px 20px; cursor: pointer; list-style: none; }
+.ro-team-analysis > summary::-webkit-details-marker { display: none; }
+.ro-team-summary-icon { display: grid; place-items: center; flex-shrink: 0; width: 35px; height: 35px; border: 1px solid var(--border-dim); border-radius: 8px; color: var(--rp-muted); background: var(--ro-soft); }
+.ro-team-summary-copy { display: flex; flex-direction: column; gap: 4px; }
+.ro-team-summary-copy strong { font-size: 12px; font-weight: 500; }
+.ro-team-summary-copy > span { font-size: 10px; font-weight: 400; color: var(--rp-muted); }
+.ro-team-analysis > summary > .rp-count { margin-left: auto; }
+.ro-team-analysis > summary > svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--rp-muted); }
+.ro-team-analysis[open] > summary > svg { transform: rotate(90deg); }
+.ro-team-content { padding: 20px; border-top: 1px solid var(--border-dim); }
+.ro-team-content > .rp-kpis { margin-top: 16px; }
+.ro-team-content .rp-metric-card { padding: 13px; border: 1px solid var(--border-dim); border-radius: 8px; background: var(--ro-soft); }
+.ro-team-content .rp-trends { margin-top: 20px; border-radius: 9px; }
+.rp-view .ro-team-content .rp-observations { margin-bottom: 0; border-radius: 9px; }
+
+/* Bounded tables keep navigation and the incident identifier in view. */
+.rp-view .rp-observations { padding: 0; overflow: hidden; border-radius: 12px; }
+.rp-observations > .rp-section-heading { padding: 18px 20px; align-items: center; }
+.rp-observations .rp-section-heading p { max-width: 72ch; font-size: 10px; }
+.rp-view .rp-heading-title { gap: 8px; }
+.ro-table-icon { color: var(--rp-muted); display: inline-flex; margin-right: 2px; }
+.ro-table-icon svg { width: 17px; height: 17px; }
+.rp-view .rp-count { padding: 3px 6px; border: 1px solid var(--border-dim); border-radius: 4px; background: var(--ro-soft); font-size: 9px; font-weight: 400; }
+.rp-observations > .rp-scroll { max-height: 560px; margin: 0; }
+.rp-view .rp-observations table { border-collapse: separate; border-spacing: 0; font-size: 11px; }
+.rp-view .rp-observations :is(th,td) { padding: 14px 16px; }
+.rp-view .rp-observations th { position: sticky; top: 0; z-index: 1; background: var(--bg-hover); font-size: 9px; }
+.rp-view .rp-observations :is(th,td):first-child { position: sticky; left: 0; z-index: 1; background: var(--bg-panel); padding-left: 20px; }
+.rp-view .rp-observations th:first-child { z-index: 2; background: var(--bg-hover); }
+.rp-view .rp-observations tr:hover > td { background: var(--ro-soft); }
+.rp-view .rp-observations .rp-duration { font-size: 11px; font-weight: 500; }
+.rp-view .rp-observations .rp-duration small { white-space: normal; max-width: 23ch; font-size: 9px; font-weight: 400; }
+.rp-view .ro-missing { color: var(--rp-muted); }
+.rp-view .ro-record-status { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; }
+.ro-record-status::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--rp-muted); }
+.ro-record-status[data-status="closed"]::before { background: var(--accent-emerald); }
+.ro-record-status[data-status="cancelled"]::before,.ro-record-status[data-status="recalled"]::before { background: var(--accent-amber); }
+.ro-unit-count { font-size: 10px; }
+.ro-unit-count small { font-size: 9px; }
+.rp-view .rp-pagination { padding: 12px 20px; background: var(--ro-soft); font-size: 9px; }
+.rp-view .rp-pagination button { min-height: 30px; border-radius: 6px; font-size: 10px; }
+.rp-observations > .rp-active-month { margin: 0; padding: 10px 20px; border-top: 1px solid var(--border-dim); }
+.rp-observations > .rp-error { margin: 12px 20px; }
+.rp-view .rp-notice { padding: 0 2px; font-size: 9px; }
+
+@container (max-width: 1020px) {
+  .ro-analysis-grid { grid-template-columns: minmax(0,1.6fr) minmax(240px,1fr); gap: 14px; }
+  .rp-view .rp-filters { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .rp-view .ro-refinement-fields { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .ro-unit-label { display: none; }
+  .ro-stage-kpis .rp-metric-card { padding-inline: 12px; }
+  .ro-team-content > .rp-kpis { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+@container (max-width: 760px) {
+  .rp-view .rp-page-heading { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .ro-heading-actions { width: 100%; flex-direction: row; justify-content: space-between; align-items: center; }
+  .ro-analysis-grid { grid-template-columns: 1fr; }
+  .ro-distribution-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px; }
+  .ro-distribution-row + .ro-distribution-row { margin-top: 0; }
+  .rp-view .ro-stage-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); row-gap: 20px; }
+  .ro-stage-kpis .rp-metric-card:nth-child(3) { border-left: 0; padding-left: 4px; }
+  .ro-stage-kpis .rp-metric-card:nth-child(2) { padding-right: 4px; }
+  .ro-section-hint { max-width: 20ch; text-align: right; font-size: 9px; }
+  .ro-team-summary-copy > span { max-width: 43ch; }
+  .rp-view .ro-overview-card { padding: 18px; }
+  .rp-view .ro-overview-card .rp-overall { font-size: 34px; }
+  .ro-mean-caption { flex-direction: column; gap: 4px; }
+  .rp-view .ro-overview-card .ro-metric-definition { min-height: 34px; }
+}
+@container (max-width: 560px) {
+  .rp-view .rp-page-heading { margin-bottom: 20px; }
+  .rp-page-heading h1 { font-size: 21px; }
+  .ro-heading-actions .rp-timezone { font-size: 8px; }
+  .rp-view .rp-filter-panel { padding-inline: 14px; }
+  .rp-view .rp-filters,.rp-view .ro-refinement-fields { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 13px 10px; }
+  .ro-filter-footer { margin-inline: -14px; padding-inline: 14px; flex-direction: column; gap: 5px; }
+  .rp-view .ro-overview { grid-template-columns: 1fr; }
+  .ro-overview-card + .ro-overview-card { border-left: 0; border-top: 1px solid var(--border-dim); }
+  .rp-view .ro-overview-card .ro-metric-definition { min-height: 0; }
+  .ro-mean-caption { flex-direction: row; }
+  .ro-stages-panel { padding: 18px 16px 13px; }
+  .rp-view .ro-stage-kpis .kpi-card-value { font-size: 25px; }
+  .rp-view .ro-stage-kpis .kpi-card-icon { display: none; }
+  .ro-team-analysis > summary { flex-wrap: wrap; gap: 9px; padding: 15px; }
+  .ro-team-summary-copy { flex: 1; min-width: 0; }
+  .ro-team-summary-copy strong { font-size: 11px; }
+  .ro-team-summary-copy > span { font-size: 9px; }
+  .ro-team-analysis > summary > .rp-count { margin-left: 44px; }
+  .ro-team-analysis > summary > svg { margin-left: auto; }
+  .ro-team-content { padding: 14px; }
+  .ro-team-content > .rp-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .rp-view .ota-section-head { flex-wrap: wrap; }
+  .rp-view .ota-trend-filter { justify-content: space-between; width: 100%; }
+  .rp-view .ota-trend-filter select { flex: 1; max-width: 200px; }
+  .rp-view .ota-chart-footer .ota-tag { display: none; }
+  .ro-distribution-rows { gap: 18px 14px; }
+  .rp-observations > .rp-section-heading { align-items: flex-start; gap: 12px; padding: 16px; }
+  .rp-observations .rp-section-heading > button { padding: 7px 9px; font-size: 9px; }
+  .rp-view .rp-pagination { padding-inline: 16px; gap: 10px; }
+  .rp-view .rp-pagination > div { width: 100%; justify-content: space-between; }
+}
+@media (max-width: 760px) { .rp-view { padding: 20px 16px 30px; } }
+@media (prefers-reduced-motion: reduce) { .rp-view * { scroll-behavior: auto; } }

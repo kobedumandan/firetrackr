@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, memo, Fragment } from "react";
 import { createPortal } from "react-dom";
 import PanelToggleIcon from "./PanelToggleIcon";
 import StationMapMarker from "./StationMapMarker";
+import PersonnelMapMarker from "./PersonnelMapMarker";
 import {
   MapContainer,
   AttributionControl,
@@ -18,13 +19,20 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "../styles/MapArea.css";
+import "../styles/ConstraintPopup.css";
 import ConfirmModal from "./ConfirmModal";
 import CommandBasemapSelector from "./CommandBasemapSelector";
 import GooglePhotorealisticMap from "./GooglePhotorealisticMap";
 import RasterCommandMap from "./RasterCommandMap";
 import HeatmapPanel from "./HeatmapPanel";
+import RoadEdgeSelector from "./RoadEdgeSelector";
+import ConstraintEdgeSaveDialog from "./ConstraintEdgeSaveDialog";
+import { toggleRoadEdge } from "../utils/roadEdgeSelection";
+import { constraintFeatures } from "../utils/commandMapData";
+import { splitRouteAtPoint, truckProgressPoint } from "../utils/routeProgress";
+import { openConstraintPopup } from "../utils/constraintPopup";
 import ConstraintLayersPanel from "./ConstraintLayersPanel";
-import { buildConstraintLayers, constraintLayerId } from "../utils/constraintLayers";
+import { baselineConstraintForEdit, buildConstraintLayers, constraintLayerId } from "../utils/constraintLayers";
 import HeatmapIncidents from "./HeatmapIncidents";
 import { useHeatmap } from "../hooks/useHeatmap";
 import { EMPTY_HEATMAP, filterHeatmapPoints, heatmapSurface } from "../utils/heatmap";
@@ -34,7 +42,7 @@ import { readCommandBasemap, saveCommandBasemap } from "../utils/commandBasemap"
 import { MAP_CENTER, MAP_ZOOM, tileLayersFor, REGION_BOUNDARY } from "../data/mapConfig";
 import { useTheme, readCssVar } from "../hooks/useTheme";
 import { activeLayersFor } from "../utils/mapLayers";
-import { PANABO_BOUNDARY_COLOR, BARANGAY_BOUNDARY_COLOR } from "../utils/mapOverlayColors";
+import { PANABO_BOUNDARY_COLOR, BARANGAY_BOUNDARY_COLOR, NARROW_ROAD_COLOR, TRAFFIC_AREA_COLOR, roadConstraintColor } from "../utils/mapOverlayColors";
 import {
   fetchObstructions,
   snapToRoad,
@@ -42,10 +50,13 @@ import {
   deleteObstruction,
   fetchGnnConstraints,
   fetchConstraints,
-  createConstraint,
+  fetchConstraintRoadEdges,
+  saveConstraintEdges,
   updateConstraint,
+  saveBaselineConstraintOverride,
   deleteConstraint,
   fetchBarangays,
+  fetchTeams,
 } from "../api";
 
 function FireGeneralIcon() {
@@ -173,6 +184,10 @@ function MapFocuser({ mapFocus }) {
   useEffect(() => {
     if (mapFocus?.lat == null || mapFocus?.lng == null) return;
     const animate = document.documentElement.dataset.motion !== "off";
+    if (mapFocus.bounds?.length) {
+      map.fitBounds(mapFocus.bounds, { paddingTopLeft: [340, 80], paddingBottomRight: [50, 70], maxZoom: 18, animate });
+      return;
+    }
     map.flyTo([mapFocus.lat, mapFocus.lng], mapFocus.zoom ?? 17, {
       animate,
       duration: animate ? 0.9 : 0,
@@ -270,21 +285,6 @@ function fireIcon(severity, selected = false, isNew = false) {
         }
         <div class="fire-marker-inner" style="background:${color};box-shadow:0 0 16px ${shadow}"></div>
       </div>`,
-  });
-}
-
-function personnelIcon(initials, color, shadow, deviated = false) {
-  const badge = deviated
-    ? `<div style="position:absolute;top:-6px;right:-6px;width:14px;height:14px;border-radius:50%;background:#ffb020;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;color:#000;border:1.5px solid #0a0c0f;">!</div>`
-    : "";
-  return L.divIcon({
-    className: "",
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    html: `<div style="position:relative;display:inline-block">
-             <div class="personnel-marker" style="border-color:${color};color:${color};box-shadow:0 0 10px ${shadow}">${initials}</div>
-             ${badge}
-           </div>`,
   });
 }
 
@@ -647,66 +647,43 @@ function HeatmapLayer({ data }) {
   return null;
 }
 
-const NORMAL_ROAD_COLOR = "#B0BEC5";
 const GnnConstraintsLayer = memo(function GnnConstraintsLayer({ data }) {
+  const map = useMap();
   const renderer = useMemo(() => L.canvas({ padding: 0.5 }), []);
-  const ordered = useMemo(() => {
-    const features = data?.constraints?.features;
-    if (!features?.length) return [];
-    return [...features]
-      .sort((a, b) => {
-        const an = a.properties?.display_constraint_type === "normal" ? 0 : 1;
-        const bn = b.properties?.display_constraint_type === "normal" ? 0 : 1;
-        return an - bn;
-      })
-      .map((feature, index) => {
-        const props = feature.properties || {};
-        return {
-          key: `gc-${props.road_id ?? index}-${index}`,
-          props,
-          isNormal: props.display_constraint_type === "normal",
-          positions: feature.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
-        };
-      });
-  }, [data]);
+  const features = useMemo(() => constraintFeatures(data).features, [data]);
 
-  return <>{ordered.map(({ key, props, isNormal, positions }) => {
-    const color = props.map_color || NORMAL_ROAD_COLOR;
+  return <>{features.map(feature => {
+    const props = feature.properties;
     const pathOptions = {
-      color,
-      weight: props.map_weight || 2,
-      opacity: props.map_opacity ?? 0.85,
+      color: props.color,
+      weight: props.weight,
+      opacity: props.opacity,
       renderer,
-      interactive: !isNormal,
+      interactive: !props.normal,
     };
-    if (isNormal) return <Polyline key={key} positions={positions} pathOptions={pathOptions} />;
-    const confidence = props.hover_confidence_text ||
-      (props.final_display_confidence_pct != null
-        ? `Confidence ${props.final_display_confidence_pct.toFixed(0)}%`
-        : null);
     return (
-      <Polyline key={key} positions={positions} pathOptions={pathOptions}>
-        <Tooltip sticky className="leaflet-dark-tooltip">
-          <div className="tooltip-id" style={{ color }}>
-            {props.display_label || props.display_constraint_type}
-          </div>
-          {(props.name || props.barangay) && (
-            <div className="tooltip-sub">{[props.name, props.barangay].filter(Boolean).join(" · ")}</div>
-          )}
-          <div className="tooltip-sub">
-            Avoidance ×{props.routing_multiplier ?? 1}
-            {confidence ? ` · ${confidence}` : ""}
-            {props.custom ? " · custom" : ""}
-          </div>
-        </Tooltip>
+      <Polyline key={feature.id} positions={feature.geometry.coordinates.map(([lon, lat]) => [lat, lon])} pathOptions={pathOptions}
+        eventHandlers={props.normal ? undefined : { click: event => {
+          if (map.getContainer().classList.contains('pick-cursor')) return;
+          L.DomEvent.stopPropagation(event.originalEvent || event);
+          event.target?.closeTooltip?.();
+          openConstraintPopup(map, L, props, event.latlng);
+        } }}>
+        {!props.normal && <Tooltip sticky className="command-map-tooltip">
+          <div className="command-road-tooltip-label">{props.hoverLabel}</div>
+          <div className="command-road-tooltip-location">{props.hoverLocation}</div>
+          <div className="command-road-tooltip-meta">{props.hoverMeta}</div>
+        </Tooltip>}
       </Polyline>
     );
   })}</>;
 });
 
-// Shared colors for the custom constraint editor.
-const NARROW_ROAD_COLOR = "#E53935";
-const TRAFFIC_AREA_COLOR = "#FFD54F";
+function ConstraintMapInteractions({ onPick }) {
+  useMapEvents({ constraintpick: event => onPick(event.key, event.edit) });
+  return null;
+}
+
 
 // Legend driven by the server-built meta.legend (already sorted, and covering
 // the GAT-only prediction buckets the style config doesn't define). Normal
@@ -743,47 +720,11 @@ const CONSTRAINT_TYPES = [
   },
   {
     id: "traffic_area",
-    label: "Traffic Crowded Area",
+    label: "Traffic Congestion",
     color: TRAFFIC_AREA_COLOR,
     symbol: "◈",
   },
 ];
-
-// ── Draw-mode click handler (multi-click polyline) ──────────────────────────
-function DrawClickHandler({ active, onPoint }) {
-  useMapEvents({
-    click(e) {
-      if (active) onPoint([e.latlng.lat, e.latlng.lng]);
-    },
-  });
-  return null;
-}
-
-// ── Live preview polyline while drawing ─────────────────────────────────────
-function DrawPreview({ points, color }) {
-  if (points.length < 1) return null;
-  return (
-    <>
-      <Polyline
-        positions={points}
-        pathOptions={{ color, weight: 4, opacity: 0.9, dashArray: "8 6" }}
-      />
-      {points.map((p, i) => (
-        <Marker
-          key={`draw-pt-${i}`}
-          position={p}
-          icon={L.divIcon({
-            className: "",
-            iconSize: [12, 12],
-            iconAnchor: [6, 6],
-            html: `<div class="draw-vertex" style="border-color:${color}"></div>`,
-          })}
-        />
-      ))}
-    </>
-  );
-}
-
 // Layer tools keep their state in MapArea and render into the shared right
 // dock below the camera controls. Match the Actions panel's header and controls.
 function ObstructionPanel({
@@ -906,168 +847,9 @@ function ConstraintEditorPanel({ data, loadError, onRetry, editing, onToggleEdit
     <div className="constraint-editor-body">
       {data ? <GnnLegend data={data} /> : <div className="constraint-load-state" role="status"><span>{loadError ? 'Could not load road constraints.' : 'Loading road constraints...'}</span>{loadError && <button type="button" onClick={onRetry}>Retry</button>}</div>}
       <button type="button" className="constraint-draw-btn" style={{ '--constraint-color': 'var(--accent-fire)' }} disabled={blocked || (!data && !editing)} aria-pressed={editing} onClick={onToggleEdit}>{editing ? 'Done editing' : 'Edit constraints'}</button>
-      <p className="constraint-help">{editing ? 'Select a layer on the left to inspect or edit a drawing.' : 'Enter editing mode to browse layers and manage drawings.'}</p>
+      <p className="constraint-help">{editing ? 'Select roads on the map, then confirm and save.' : 'Enter editing mode to select roads and review saved edges.'}</p>
     </div>
   </section>;
-}
-
-function ConstraintSaveDialog({
-  constraintType,
-  onSave,
-  onCancel,
-  editingConstraint,
-}) {
-  const [name, setName] = useState(editingConstraint?.name || "");
-  const [highway, setHighway] = useState(editingConstraint?.highway || "");
-  const [surface, setSurface] = useState(editingConstraint?.surface || "");
-  const [maxspeed, setMaxspeed] = useState(editingConstraint?.maxspeed || "");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const saveLock = useRef(false);
-  async function submit() {
-    if (saveLock.current) return;
-    saveLock.current = true;
-    setSaving(true); setSaveError('');
-    try { await onSave({ name, highway, surface, maxspeed }); }
-    catch (error) { setSaveError(error.message || 'Could not save this drawing.'); setSaving(false); saveLock.current = false; }
-  }
-  const info =
-    CONSTRAINT_TYPES.find((t) => t.id === constraintType) ||
-    CONSTRAINT_TYPES[0];
-
-  return (
-    <div className="constraint-save-dialog" role="dialog" aria-modal="true" aria-label="Save constraint drawing" aria-busy={saving}>
-      {saveError && <p role="alert" className="constraint-help">{saveError}</p>}
-      <div className="constraint-save-title" style={{ color: info.color }}>
-        {info.symbol} {editingConstraint ? "Edit" : "Save"} {info.label}
-      </div>
-      <label className="constraint-field">
-        <span>Name</span>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Rizal Ave segment"
-        />
-      </label>
-      <label className="constraint-field">
-        <span>Highway type</span>
-        <input
-          value={highway}
-          onChange={(e) => setHighway(e.target.value)}
-          placeholder="e.g. residential"
-        />
-      </label>
-      <label className="constraint-field">
-        <span>Surface</span>
-        <input
-          value={surface}
-          onChange={(e) => setSurface(e.target.value)}
-          placeholder="e.g. asphalt"
-        />
-      </label>
-      <label className="constraint-field">
-        <span>Max speed (km/h)</span>
-        <input
-          value={maxspeed}
-          onChange={(e) => setMaxspeed(e.target.value)}
-          placeholder="e.g. 30"
-        />
-      </label>
-      <div className="constraint-save-actions">
-        <button
-          className="constraint-save-btn"
-          onClick={submit}
-          disabled={saving}
-        >
-          {saving ? "Saving..." : editingConstraint ? "Update" : "Save"}
-        </button>
-        <button className="constraint-cancel-btn" onClick={onCancel} disabled={saving}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
-function personnelStatusColor(status) {
-  if (status === "dispatched")
-    return { color: "var(--accent-amber)", shadow: "rgba(255,176,32,0.5)" };
-  if (status === "onscene")
-    return { color: "var(--accent-fire)", shadow: "rgba(255,77,26,0.5)" };
-  return { color: "var(--accent-green)", shadow: "rgba(0,230,118,0.5)" };
-}
-
-// Splits a [lat, lon] polyline at the point nearest `pt` ([lat, lon]) so the
-// dispatcher can see truck progress: the part behind the truck (traveled) and
-// the part still ahead (remaining). Projection is done in a local planar frame
-// (metres) — accurate at city scale. Mirrors the mobile updateRouteProgress
-// guard: if the truck is more than 60 m from the line (off route) the whole
-// path is returned as `remaining` so it stays fully visible until they rejoin.
-function splitRouteAtPoint(line, pt) {
-  if (!line || line.length < 2 || !pt) {
-    return { traveled: [], remaining: line || [] };
-  }
-  const D2R = Math.PI / 180;
-  const lat0 = pt[0] * D2R;
-  const mx = (lon) => lon * D2R * Math.cos(lat0) * 6371000;
-  const my = (lat) => lat * D2R * 6371000;
-  const px = mx(pt[1]);
-  const py = my(pt[0]);
-
-  let best = { i: 0, point: line[0], d: Infinity };
-  for (let i = 0; i < line.length - 1; i++) {
-    const a = line[i];
-    const b = line[i + 1];
-    const ax = mx(a[1]);
-    const ay = my(a[0]);
-    const dx = mx(b[1]) - ax;
-    const dy = my(b[0]) - ay;
-    const L2 = dx * dx + dy * dy;
-    let t = L2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / L2;
-    t = Math.max(0, Math.min(1, t));
-    const ex = px - (ax + dx * t);
-    const ey = py - (ay + dy * t);
-    const d = Math.sqrt(ex * ex + ey * ey);
-    if (d < best.d) {
-      const point = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-      best = { i, point, d };
-    }
-  }
-
-  if (best.d > 60) return { traveled: [], remaining: line };
-  return {
-    traveled: [...line.slice(0, best.i + 1), best.point],
-    remaining: [best.point, ...line.slice(best.i + 1)],
-  };
-}
-
-// Picks the live location for a dispatch that is furthest along the route, so a
-// multi-person crew on one truck trims from the lead position rather than a
-// straggler. Returns the [lat, lon] to split at, or null when none is on route.
-// Stale positions are ignored — an outdated fix (e.g. a crew that was already
-// near the incident) shouldn't trim the route; it falls back to the full
-// station→incident line instead.
-function truckProgressPoint(line, dispatchId, liveLocations) {
-  const candidates = liveLocations.filter(
-    (p) =>
-      p.dispatch_id === dispatchId &&
-      !p.is_stale &&
-      p.latitude != null &&
-      p.longitude != null
-  );
-  if (!candidates.length) return null;
-
-  let best = null;
-  for (const p of candidates) {
-    const pt = [p.latitude, p.longitude];
-    const { traveled } = splitRouteAtPoint(line, pt);
-    if (!best || traveled.length > best.progress) {
-      best = { pt, progress: traveled.length };
-    }
-  }
-  // progress <= 1 means no segment was consumed (truck off route / at start).
-  return best && best.progress > 1 ? best.pt : null;
 }
 
 export default function MapArea({
@@ -1105,6 +887,13 @@ export default function MapArea({
     () => document.documentElement.dataset.motion !== "off"
   );
   const activeLayers = useMemo(() => activeLayersFor(viewMode, layerPrefs), [viewMode, layerPrefs]);
+  const [personnelTeams, setPersonnelTeams] = useState([]);
+  useEffect(() => {
+    if (!personnel.length || !activeLayers.has("Personnel")) return;
+    let cancelled = false;
+    fetchTeams().then(rows => { if (!cancelled) setPersonnelTeams(rows); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [personnel, dispatches, activeLayers]);
   const constraintsView = activeLayers.has("GNN Constraints");
   const theme = useTheme();
   const [selectedBasemap, setSelectedBasemap] = useState(() => {
@@ -1154,30 +943,34 @@ export default function MapArea({
     return () => { alive = false; };
   }, [activeLayers, gnnData, gnnAttempt]);
 
-  // ── Custom constraint drawing ─────────────────────────────────────────────
+  // ── Custom road-edge constraints ──────────────────────────────────────────
   const [customConstraints, setCustomConstraints] = useState([]);
-  const [drawingType, setDrawingType] = useState(null); // "narrow_road" | "traffic_area" | null
-  const [drawPoints, setDrawPoints] = useState([]); // [[lat, lon], ...]
+  const [selectionType, setSelectionType] = useState(null); // "narrow_road" | "traffic_area" | null
+  const [selectedEdges, setSelectedEdges] = useState([]); // authoritative edge IDs
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [editingConstraint, setEditingConstraint] = useState(null);
+  const constraintDialogOpen = showSaveDialog || !!editingConstraint;
+  const [roadCatalog, setRoadCatalog] = useState(null);
+  const [roadError, setRoadError] = useState('');
   const [hiddenConstraints, setHiddenConstraints] = useState(new Set());
   const [selectedConstraint, setSelectedConstraint] = useState(null);
   const [constraintNotice, setConstraintNotice] = useState('');
   const [constraintError, setConstraintError] = useState('');
   const [exitConstraintMode, setExitConstraintMode] = useState(false);
   function cancelConstraintDraft() {
-    setDrawingType(null); setDrawPoints([]); setShowSaveDialog(false); setEditingConstraint(null);
+    setSelectionType(null); setSelectedEdges([]); setShowSaveDialog(false);
   }
   function finishConstraintMode() {
+    setEditingConstraint(null);
     cancelConstraintDraft(); setSelectedConstraint(null); setHiddenConstraints(new Set());
     setExitConstraintMode(false); onConstraintEditingChange(false);
   }
   function toggleConstraintMode() {
-    if (showSaveDialog) return;
+    if (constraintDialogOpen) return;
     if (!constraintEditing) {
       onConstraintEditingChange(true);
       if (isGoogle3D) changeBasemap(theme === 'light' ? 'street' : 'dark');
-    } else if (drawingType && drawPoints.length) setExitConstraintMode(true);
+    } else if (selectionType && selectedEdges.length) setExitConstraintMode(true);
     else finishConstraintMode();
   }
 
@@ -1186,49 +979,49 @@ export default function MapArea({
     let alive = true;
     fetchConstraints()
       .then(rows => { if (alive) { setCustomConstraints(rows); setConstraintError(''); } })
-      .catch(() => { if (alive) setConstraintError('Saved drawings could not load. Retry before editing.'); });
+      .catch(() => { if (alive) setConstraintError('Saved road constraints could not load. Retry before editing.'); });
     return () => { alive = false; };
   }, [activeLayers, gnnAttempt]);
 
-  // Keyboard: Enter to finish drawing, Esc to cancel
   useEffect(() => {
-    if (!constraintEditing || !constraintsView || !drawingType || showSaveDialog) return;
+    if (!constraintEditing) return;
+    let alive = true;
+    fetchConstraintRoadEdges().then(data => {
+      if (alive) { setRoadCatalog(data); setRoadError(''); }
+    }).catch(error => { if (alive) setRoadError(error.message); });
+    return () => { alive = false; };
+  }, [constraintEditing, gnnAttempt]);
+
+  // Enter reviews selected roads; Escape cancels selection.
+  useEffect(() => {
+    if (!constraintEditing || !constraintsView || !selectionType || constraintDialogOpen) return;
     function handleKey(e) {
-      if (e.target.matches?.("input, textarea, select")) return;
-      if (e.key === "Enter" && drawPoints.length >= 2) {
+      if (e.target.closest?.("input, textarea, select, button, [contenteditable=true]")) return;
+      if (e.key === "Enter" && selectedEdges.length > 0) {
         setShowSaveDialog(true);
       } else if (e.key === "Escape") {
-        setDrawingType(null);
-        setDrawPoints([]);
-        setEditingConstraint(null);
+        setSelectionType(null);
+        setSelectedEdges([]);
       }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [constraintEditing, constraintsView, drawingType, drawPoints, showSaveDialog]);
+  }, [constraintEditing, constraintsView, selectionType, selectedEdges, constraintDialogOpen]);
 
-  function handleDrawPoint(latlng) {
-    if (!constraintEditing || !drawingType || showSaveDialog) return;
-    setDrawPoints((prev) => [...prev, latlng]);
+  function handleEdgeToggle(uid) {
+    if (!constraintEditing || !selectionType || constraintDialogOpen) return;
+    if (selectedEdges.length >= 500 && !selectedEdges.includes(uid)) {
+      setConstraintNotice('Save this selection before selecting more than 500 edges.'); return;
+    }
+    setSelectedEdges(previous => toggleRoadEdge(previous, uid));
+    setConstraintNotice('');
   }
 
   async function handleSaveConstraint(fields) {
-    const coords = drawPoints.map(([lat, lon]) => [lon, lat]); // GeoJSON is [lon, lat]
-    const body = {
-      constraint_type: drawingType,
-      coordinates: coords,
-      ...fields,
-    };
-    let saved;
-    if (editingConstraint) {
-      saved = await updateConstraint(editingConstraint.id, body);
-      setCustomConstraints(prev => prev.map(row => row.id === saved.id ? saved : row));
-    } else {
-      saved = await createConstraint(body);
-      setCustomConstraints(prev => [saved, ...prev]);
-    }
-    setConstraintNotice(!saved.segment_uids?.length ? 'Saved, but no road segments matched. Adjust the drawing to follow the road.'
-      : saved.routing_applied === false ? 'Saved. Routing refresh is pending.' : 'Saved. Routing has been updated.');
+    const saved = await saveConstraintEdges({ constraint_type: selectionType, segment_uids: selectedEdges, ...fields });
+    const ids = new Set(saved.constraints.map(row => row.id));
+    setCustomConstraints(previous => [...saved.constraints, ...previous.filter(row => !ids.has(row.id))]);
+    setConstraintNotice(`${saved.constraints.length} road edges saved. ${saved.routing_applied === false ? 'Routing refresh is pending.' : 'Routing has been updated.'}`);
     setGnnData(null);
     setGnnAttempt(value => value + 1);
     cancelConstraintDraft();
@@ -1238,6 +1031,18 @@ export default function MapArea({
   // constraint deletes go through a confirmation first.
   const [pendingDelete, setPendingDelete] = useState(null); // { kind, item }
 
+  async function handleUpdateConstraint(fields) {
+    const saved = editingConstraint.id
+      ? await updateConstraint(editingConstraint.id, fields)
+      : await saveBaselineConstraintOverride(editingConstraint.baseline_segment_uid, fields);
+    setCustomConstraints(previous => [saved, ...previous.filter(row => row.id !== saved.id)]);
+    setSelectedConstraint(previous => ({ ...previous, key: `custom:${saved.id}` }));
+    setEditingConstraint(null);
+    setConstraintNotice(`Constraint updated. ${saved.routing_applied === false ? 'Routing refresh is pending.' : 'Routing has been updated.'}`);
+    setGnnData(null);
+    setGnnAttempt(value => value + 1);
+  }
+
   function handleDeleteConstraint(id) {
     const item = customConstraints.find((c) => c.id === id);
     if (item) setPendingDelete({ kind: "constraint", item });
@@ -1245,24 +1050,17 @@ export default function MapArea({
 
   // Throws on failure so the confirmation shows the error and stays open.
   async function confirmDeleteConstraint(id) {
+    const originalUid = customConstraints.find(row => row.id === id)?.baseline_segment_uid;
     await deleteConstraint(id);
     setCustomConstraints((prev) => prev.filter((c) => c.id !== id));
     setGnnData(null);
-    setSelectedConstraint(null);
-    setConstraintNotice('Drawing removed. Baseline annotations remain available.');
+    setSelectedConstraint(originalUid ? { key: `segment:${originalUid}` } : null);
+    setConstraintNotice(originalUid ? 'Your edit was removed. The current model’s road condition is restored.' : 'Road constraint removed. Baseline annotations remain available.');
     setGnnAttempt(value => value + 1);
   }
 
-  function handleEditConstraint(c) {
-    if (!constraintEditing) return;
-    setEditingConstraint(c);
-    setDrawingType(c.constraint_type);
-    setDrawPoints(c.coordinates.map(([lon, lat]) => [lat, lon]));
-  }
-
-  const isDrawing = constraintEditing && constraintsView && !!drawingType && !showSaveDialog;
-  const drawColor =
-    CONSTRAINT_TYPES.find((t) => t.id === drawingType)?.color || "#fff";
+  const isSelecting = constraintEditing && constraintsView && !!selectionType && !constraintDialogOpen;
+  const selectionColor = roadConstraintColor(selectionType, selectionType === 'narrow_road' ? 'slight' : null, gnnData?.style_config);
 
   // ── Road obstructions ──────────────────────────────────────────────────────
   const [obstructions, setObstructions] = useState([]);
@@ -1424,21 +1222,49 @@ export default function MapArea({
 
   const constraintLayers = useMemo(() => buildConstraintLayers(gnnData, customConstraints, barangays), [gnnData, customConstraints, barangays]);
   const selectedLayer = constraintLayers.find(row => row.key === selectedConstraint?.key);
+  function editConstraint(row) {
+    if (!selectionType && !constraintDialogOpen) setEditingConstraint(row.drawing || baselineConstraintForEdit(row));
+  }
+  function selectConstraint(row, focus = true) {
+    if (constraintDialogOpen) return;
+    setHiddenConstraints(previous => { const next = new Set(previous); next.delete(row.key); return next; });
+    setSelectedConstraint({ key: row.key, focus: focus ? { lat: row.center[1], lng: row.center[0], bounds: row.coordinates.map(([lng, lat]) => [lat, lng]), zoom: 17, nonce: Date.now() } : undefined });
+  }
+  function pickConstraint(key, edit) {
+    if (constraintDialogOpen || isSelecting || !constraintsView) return;
+    const row = constraintLayers.find(item => item.key === key);
+    if (!row) return;
+    if (edit) {
+      onConstraintEditingChange(true);
+      if (isGoogle3D) changeBasemap(theme === 'light' ? 'street' : 'dark');
+    }
+    selectConstraint(row, !!edit);
+    if (edit) editConstraint(row);
+  }
   const visibleGnnData = useMemo(() => {
     if (!activeLayers.has('GNN Constraints')) return null;
-    if (!constraintEditing || !gnnData) return gnnData;
-    return { ...gnnData, constraints: { ...gnnData.constraints, features: gnnData.constraints.features
-      .filter(feature => !hiddenConstraints.has(constraintLayerId(feature)))
-      .map(feature => constraintLayerId(feature) === selectedConstraint?.key ? { ...feature, properties: { ...feature.properties, map_color: '#ffb020', map_weight: 8, map_opacity: 1 } } : feature) } };
-  }, [activeLayers, constraintEditing, gnnData, hiddenConstraints, selectedConstraint]);
+    if (!gnnData) return gnnData;
+    const focusedKey = constraintEditing && selectedLayer ? selectedLayer.key : null;
+    return { ...gnnData, editing: constraintEditing, constraints: { ...gnnData.constraints, features: gnnData.constraints.features
+      .filter(feature => !constraintEditing || !hiddenConstraints.has(constraintLayerId(feature)))
+      .map(feature => {
+        const props = feature.properties;
+        const focused = constraintLayerId(feature) === focusedKey;
+        if (!props.custom && !focusedKey) return feature;
+        return { ...feature, properties: { ...props,
+          map_color: props.map_color || roadConstraintColor(props.routing_constraint_type || props.display_constraint_type, props.narrow_severity, gnnData.style_config),
+          ...(focusedKey ? { constraint_selected: focused, map_opacity: focused ? 1 : 0.14, ...(focused ? { map_weight: 8 } : {}) } : {}),
+        } };
+      }) } };
+  }, [activeLayers, constraintEditing, gnnData, hiddenConstraints, selectedLayer]);
 
   // Only data/theme changes reconcile operational overlays. Camera readout
   // updates stay inside the renderer and never trigger a whole-layer scan.
   const overlayRevision = useMemo(() => ({}), [
-    activeIncidents, newIncidents, reporterLocations, stations, personnel,
+    activeIncidents, newIncidents, reporterLocations, stations, personnel, personnelTeams,
     livePersonnelLocations, dispatchRoutes, dispatches, focusedIncidentId,
     ripplingIncidentId, pickedLocation, ghost, obstructions, barangays, theme,
-    drawPoints, isDrawing, customConstraints, mapZoom, recentlyUpdatedIds, activeLayers, visibleGnnData,
+    selectedEdges, isSelecting, customConstraints, mapZoom, recentlyUpdatedIds, activeLayers, visibleGnnData,
   ]);
 
   return (
@@ -1458,43 +1284,9 @@ export default function MapArea({
         </div>
       )}
 
-      {/* Constraint drawing banner */}
-      {isDrawing && !pickingMode && (
-        <div
-          className="map-pick-banner constraint-draw-banner"
-          style={{ borderColor: drawColor }}
-        >
-          {CONSTRAINT_TYPES.find((t) => t.id === drawingType)?.symbol} Drawing{" "}
-          {CONSTRAINT_TYPES.find((t) => t.id === drawingType)?.label}
-          {" · "}
-          {drawPoints.length} point{drawPoints.length !== 1 ? "s" : ""}
-          {drawPoints.length >= 2
-            ? " · Press Enter to save"
-            : " · Click to add points"}
-          {drawPoints.length > 0 && (
-            <>
-              {"  ·  "}
-              <span
-                className="banner-action"
-                onClick={() => setDrawPoints((p) => p.slice(0, -1))}
-              >
-                Undo
-              </span>
-            </>
-          )}
-          {"  ·  "}
-          <span
-            className="banner-action"
-            onClick={() => {
-              setDrawingType(null);
-              setDrawPoints([]);
-              setEditingConstraint(null);
-            }}
-          >
-            Cancel
-          </span>
-        </div>
-      )}
+      {isSelecting && !pickingMode && <div className="map-pick-banner constraint-draw-banner" style={{ borderColor: selectionColor }}>
+        {CONSTRAINT_TYPES.find(t => t.id === selectionType)?.label} / {selectedEdges.length} selected / Click a road to select or deselect
+      </div>}
 
       {/* Obstruction placement banner */}
       {obstructionPlacementActive && !pickingMode && (
@@ -1540,8 +1332,9 @@ export default function MapArea({
           onObstructionPick={handleObstructionPlace}
           onObstructionHover={handleObstructionHover}
         />
-        <DrawClickHandler active={isDrawing} onPoint={handleDrawPoint} />
-        <CursorController active={pickingMode || obstructionPlacementActive || isDrawing} />
+
+        <CursorController active={pickingMode || obstructionPlacementActive || isSelecting} />
+        <ConstraintMapInteractions onPick={pickConstraint} />
         <MapResizeWatcher />
 
         <PersonnelFocuser
@@ -1550,8 +1343,8 @@ export default function MapArea({
         />
         <MapFocuser mapFocus={constraintEditing && selectedConstraint ? selectedConstraint.focus : mapFocus} />
 
-        {/* Live preview of constraint being drawn */}
-        {isDrawing && <DrawPreview points={drawPoints} color={drawColor} />}
+        {constraintEditing && roadCatalog && <RoadEdgeSelector key={`${selectionType}:${isSelecting}`} catalog={roadCatalog} selected={selectedEdges}
+          active={isSelecting} color={selectionColor} onToggle={handleEdgeToggle} onMiss={setConstraintNotice} />}
 
         {/* Coverage mask + jurisdiction boundary */}
         <CoverageLayers />
@@ -1729,10 +1522,9 @@ export default function MapArea({
               }
 
               // Selected route: trim at the truck's live position so the line
-              // shrinks as the crew makes progress. Traveled part stays as a
+              // shrinks as the manning driver makes progress. Traveled part stays as a
               // faint ghost for context; remaining part keeps the full style.
               const truckPt = truckProgressPoint(
-                dr.positions,
                 dr.dispatch_id,
                 livePersonnelLocations
               );
@@ -1822,39 +1614,22 @@ export default function MapArea({
                 const lat = live?.latitude ?? p.latitude;
                 const lon = live?.longitude ?? p.longitude;
                 if (!lat || !lon) return null;
-                const { color, shadow } = personnelStatusColor(p.status);
-                const deviated = live?.is_deviated ?? false;
-                const stale = live?.is_stale ?? false;
-                const ageText = live ? `${live.age_minutes} min ago` : null;
+                const dispatch = dispatches.find(row =>
+                  ["dispatched", "en_route", "on_scene"].includes(row.dispatch_status) &&
+                  (live && Object.hasOwn(live, 'dispatch_id') ? row.dispatch_id === live.dispatch_id :
+                    row.members?.some(member => member.per_id === p.per_id))
+                );
+                const team = personnelTeams.find(row => row.team_id === (dispatch?.team_id ?? p.team_id));
                 return (
-                  <Marker
+                  <PersonnelMapMarker
                     key={p.per_id}
+                    personnel={p}
+                    live={live}
+                    dispatch={dispatch}
+                    team={team}
                     position={[lat, lon]}
-                    icon={personnelIcon(
-                      p.initials,
-                      stale ? "#555" : color,
-                      stale ? "rgba(80,80,80,0.3)" : shadow,
-                      deviated
-                    )}
-                    zIndexOffset={recentlyUpdatedIds.has(p.per_id) ? 1000 : 0}
-                  >
-                    <Tooltip direction="top" className="leaflet-dark-tooltip">
-                      <div className="tooltip-id">
-                        {p.name} · {p.rank}
-                        {deviated ? " · ⚠ Off Route" : ""}
-                      </div>
-                      <div className="tooltip-sub">{p.station}</div>
-                      {ageText && (
-                        <div
-                          className="tooltip-sub"
-                          style={stale ? { color: "#ff6b6b" } : {}}
-                        >
-                          Last seen {ageText}
-                          {stale ? " (stale)" : ""}
-                        </div>
-                      )}
-                    </Tooltip>
-                  </Marker>
+                    recentlyUpdated={recentlyUpdatedIds.has(p.per_id)}
+                  />
                 );
               })
               .filter(Boolean);
@@ -2038,7 +1813,7 @@ export default function MapArea({
             overlayRevision={overlayRevision}
             gnnData={visibleGnnData}
             heatmapData={heatSurface}
-            picking={pickingMode || obstructionPlacementActive || isDrawing}
+            picking={pickingMode || obstructionPlacementActive || isSelecting}
             onUnavailable={() => setRasterFallback(true)}
           />
         )}
@@ -2046,32 +1821,32 @@ export default function MapArea({
 
       {constraintEditing && <ConstraintLayersPanel
         rows={constraintLayers} selectedKey={selectedLayer?.key} hidden={hiddenConstraints}
-        onSelect={row => setSelectedConstraint({ key: row.key, focus: { lat: row.center[1], lng: row.center[0], zoom: 17, nonce: Date.now() } })}
+        onSelect={row => selectConstraint(row)} onClearSelection={() => setSelectedConstraint(null)}
         onVisibility={key => setHiddenConstraints(previous => { const next = new Set(previous); if (next.has(key)) next.delete(key); else next.add(key); return next; })}
-        onExit={toggleConstraintMode} drawingType={drawingType} pointCount={drawPoints.length}
-        onStartDraw={type => { setDrawingType(type); setDrawPoints([]); setEditingConstraint(null); }}
-        onUndo={() => setDrawPoints(previous => previous.slice(0, -1))} onFinish={() => setShowSaveDialog(true)}
-        onCancel={cancelConstraintDraft} onEdit={handleEditConstraint} onDelete={handleDeleteConstraint}
-        loading={!gnnData && !gnnError} error={constraintError || (gnnError ? 'Road constraints could not load.' : '')}
+        onExit={toggleConstraintMode} selectionType={selectionType} edgeCount={selectedEdges.length} locked={constraintDialogOpen} roadsReady={!!roadCatalog && !roadError && !constraintError}
+        onStartSelection={type => { setSelectionType(type); setSelectedEdges([]); setSelectedConstraint(null); setConstraintNotice(''); }}
+        onFinish={() => { if (selectedEdges.length) setShowSaveDialog(true); }}
+        onCancel={cancelConstraintDraft} onEdit={editConstraint} onDelete={handleDeleteConstraint}
+        loading={!gnnData && !gnnError} error={roadError || constraintError || (gnnError ? 'Road constraints could not load.' : '')}
         onRetry={() => { setGnnAttempt(value => value + 1); setBarangayAttempt(value => value + 1); }}
         notice={constraintNotice} locationError={barangayError}
       />}
-      {exitConstraintMode && <ConfirmModal title="Discard this drawing?" message="Your unsaved drawing will be discarded when you leave editing mode. Saved constraints remain unchanged." confirmLabel="Discard and exit" onConfirm={finishConstraintMode} onClose={() => setExitConstraintMode(false)} />}
+      {exitConstraintMode && <ConfirmModal title="Discard selected edges?" message="Your unsaved road selection will be discarded when you leave editing mode. Saved constraints remain unchanged." confirmLabel="Discard and exit" onConfirm={finishConstraintMode} onClose={() => setExitConstraintMode(false)} />}
 
       {/* Constraint save dialog */}
       {showSaveDialog && (
-        <ConstraintSaveDialog
-          constraintType={drawingType}
-          editingConstraint={editingConstraint}
+        <ConstraintEdgeSaveDialog
+          constraintType={selectionType}
+          styleConfig={gnnData?.style_config}
+          edgeCount={selectedEdges.length}
           onSave={handleSaveConstraint}
-          onCancel={() => {
-            setShowSaveDialog(false);
-            setDrawingType(null);
-            setDrawPoints([]);
-            setEditingConstraint(null);
-          }}
+          onCancel={() => setShowSaveDialog(false)}
         />
       )}
+      {editingConstraint && <ConstraintEdgeSaveDialog key={editingConstraint.id || editingConstraint.baseline_segment_uid}
+        styleConfig={gnnData?.style_config}
+        initialConstraint={editingConstraint} onSave={handleUpdateConstraint}
+        onCancel={() => setEditingConstraint(null)} />}
 
       {pendingDelete?.kind === "obstruction" && (() => {
         const o = pendingDelete.item;
@@ -2096,18 +1871,18 @@ export default function MapArea({
 
       {pendingDelete?.kind === "constraint" && (() => {
         const c = pendingDelete.item;
-        const info = CONSTRAINT_TYPES.find((t) => t.id === c.constraint_type) || CONSTRAINT_TYPES[0];
+        const info = CONSTRAINT_TYPES.find((t) => t.id === c.constraint_type);
         return (
           <ConfirmModal
-            eyebrow="DELETE CONSTRAINT"
-            title={`Delete ${c.name ? `"${c.name}"` : "this constraint"}?`}
+            eyebrow={c.baseline_segment_uid ? 'RESTORE ROAD' : 'DELETE CONSTRAINT'}
+            title={c.baseline_segment_uid ? 'Restore the original road condition?' : `Delete ${c.name ? `"${c.name}"` : "this constraint"}?`}
             details={[
-              { label: "Type", value: info.label },
+              { label: "Type", value: info?.label || c.constraint_type.replaceAll('_', ' ') },
               ...(c.name ? [{ label: "Name", value: c.name }] : []),
               ...(c.highway ? [{ label: "Road class", value: c.highway }] : []),
             ]}
-            message="Remove this drawing? Baseline constraints for the road will remain. The deletion is retained in annotation history."
-            confirmLabel="Delete"
+            message={c.baseline_segment_uid ? 'Remove your saved edit and use the current model’s road condition. Your edit remains in annotation history.' : 'Remove this saved road constraint? Baseline constraints for the road will remain. The deletion is retained in annotation history.'}
+            confirmLabel={c.baseline_segment_uid ? 'Restore original' : 'Delete'}
             onConfirm={() => confirmDeleteConstraint(c.id)}
             onClose={() => setPendingDelete(null)}
           />
@@ -2123,7 +1898,7 @@ export default function MapArea({
             loadError={gnnError}
             onRetry={() => { setGnnError(null); setGnnAttempt((v) => v + 1); }}
             editing={constraintEditing}
-            blocked={showSaveDialog}
+            blocked={constraintDialogOpen}
             onToggleEdit={toggleConstraintMode}
           />
         ) : viewMode === "obstructions" ? (

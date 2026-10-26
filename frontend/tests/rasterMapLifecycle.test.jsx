@@ -25,6 +25,7 @@ vi.mock('maplibre-gl', () => {
     getLayer(id) { return this.layers.get(id) }
     addLayer(layer) { this.layers.set(layer.id, layer) }
     setLayoutProperty = vi.fn()
+    jumpTo = vi.fn()
     getCanvas() { return this.canvas }
     remove() {}
   }
@@ -74,7 +75,7 @@ describe('standard map fallback', () => {
     const controlsHost = document.getElementById('controls')
     const render = portalHost => act(async () => root.render(<RasterCommandMap
       portalHost={portalHost} controlsHost={controlsHost} active tileMode="satellite"
-      overlayRevision={null} gnnData={null} heatPoints={null} picking={false}
+      overlayRevision={null} gnnData={null} heatmapData={null} picking={false}
     />))
     await render(document.getElementById('map'))
     const first = maplibre.__instance()
@@ -101,7 +102,7 @@ describe('standard map fallback', () => {
         tileMode="street"
         overlayRevision={{}}
         gnnData={null}
-        heatPoints={null}
+        heatmapData={null}
         picking={false}
         onUnavailable={onUnavailable}
       />,

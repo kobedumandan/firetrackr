@@ -595,7 +595,7 @@ body {
 
 /* Dark actions echo the Command shortcut without darkening selector tabs. */
 [data-theme="light"] :is(
-  .table-export-btn, .rp-view .rp-export, .plan-header-actions .plan-btn,
+  .table-export-btn, .rp-view .rp-export,
   .topbar-signout-btn, .user-avatar, .map-camera-buttons button
 ) {
   background: #17191c;
@@ -604,7 +604,7 @@ body {
 }
 
 [data-theme="light"] :is(
-  .table-export-btn, .rp-view .rp-export, .plan-header-actions .plan-btn,
+  .table-export-btn, .rp-view .rp-export,
   .topbar-signout-btn, .map-camera-buttons button
 ):hover:not(:disabled) {
   background: #30343a;

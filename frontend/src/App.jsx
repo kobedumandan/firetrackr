@@ -24,6 +24,7 @@ import { useNotifications, readNotifPrefs, NOTIF_STORAGE_KEY } from './hooks/use
 import { fetchActiveIncidents, fetchPersonnel, fetchStations, fetchDispatches, selectRoute, fetchPersonnelLocations, fullReroute, createIncident, fetchReporterSessions, invalidateModelRouting, notifyModelUpdate, WS_URL } from './api'
 import { readMapLayerPrefs, MAP_LAYER_STORAGE_KEY } from './utils/mapLayers'
 import useCommandShortcut from './hooks/useCommandShortcut'
+import { replaceDispatchRoutes } from './utils/dispatchRouteUpdates'
 import './App.css'
 
 const ACTIVE_STATUSES = new Set(['pending', 'active', 'dispatched', 'contained'])
@@ -279,14 +280,13 @@ export default function App() {
   }, [])
 
   const navigateToPage = useCallback(nav => {
-    if (constraintEditing && nav === 'Incidents') return
     setConstraintEditing(false)
     setActiveNav(nav)
     setReviewIncident(null)
     setShowSettings(false)
     setFocusedPersonnel(null)
     setMapFocus(null)
-  }, [constraintEditing])
+  }, [])
   useCommandShortcut(navigateToPage, route.view === 'dashboard')
 
   // Auto-select the first incident when the list loads or changes
@@ -467,6 +467,10 @@ export default function App() {
               fireId: fire_id,
               severity: 'critical',
             })
+          } else if (msg.type === 'personnel_arrived') {
+            const { per_id, dispatch_id, personnel_arrived_at } = msg.data
+            setLivePersonnelLocations(prev => prev.map(row => row.per_id === per_id && row.dispatch_id === dispatch_id
+              ? { ...row, personnel_status: 'on_scene', personnel_arrived_at } : row))
           } else if (msg.type === 'dispatch_arrived') {
             const { fire_id, team_name } = msg.data
             const loc = incidentSnapRef.current.get(fire_id)?.loc
@@ -519,6 +523,13 @@ export default function App() {
               next[idx] = row
               return next
             })
+          } else if (msg.type === 'dispatch_deviation') {
+            const { per_id, dispatch_id, is_deviated, connector_geojson, deviation_detected_at } = msg.data
+            setLivePersonnelLocations(prev => prev.map(row => row.per_id === per_id && row.dispatch_id === dispatch_id
+              ? { ...row, is_deviated, connector_geojson, deviation_detected_at } : row))
+          } else if (msg.type === 'route_updated') {
+            if (Array.isArray(msg.data.routes)) setDispatchRoutes(prev => replaceDispatchRoutes(prev, msg.data))
+            else fetchDispatches().then(rows => setDispatchRoutes(_routesFromDispatchRows(rows))).catch(console.error)
           } else if (msg.type === 'dispatch_rerouted') {
             const { dispatch_id, fire_id, routes = [] } = msg.data
             setDispatchRoutes(prev => {
@@ -666,12 +677,9 @@ export default function App() {
   }
 
   function handleSelectRoute(dispatchId, routeId) {
-    selectRoute(dispatchId, routeId).then(() => {
-      setDispatchRoutes(prev => prev.map(r => {
-        if (r.dispatch_id !== dispatchId) return r
-        return { ...r, isSelected: r.route_id === routeId }
-      }))
-    }).catch(console.error)
+    return selectRoute(dispatchId, routeId).then(result => {
+      setDispatchRoutes(prev => replaceDispatchRoutes(prev, { ...result, dispatch_id: dispatchId }))
+    })
   }
 
   // fireId is passed explicitly: a dispatch whose routing failed has only the
@@ -856,7 +864,6 @@ export default function App() {
         theme={theme}
         onThemeToggle={toggleTheme}
         onOpenSettings={() => { setConstraintEditing(false); setShowSettings(s => !s) }}
-        constraintEditing={constraintEditing && activeNav === 'Command' && !showSettings}
         showingSettings={showSettings}
         user={route.user}
         onLogout={handleLogout}

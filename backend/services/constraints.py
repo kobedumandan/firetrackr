@@ -54,6 +54,19 @@ def _load_constraint_style(source=_CURRENT_SOURCE) -> dict:
     return style
 
 
+def map_constraint_style(style: dict, features: list) -> dict:
+    """Match saved-road presentation to the export without changing routing style."""
+    palette = {key: dict(value) for key, value in style.items()}
+    seen = set()
+    for feature in features:
+        props = feature.get('properties') or {}
+        kind, color = props.get('display_constraint_type'), props.get('map_color')
+        if kind and color and kind not in seen:
+            palette.setdefault(kind, {})['color'] = color
+            seen.add(kind)
+    return palette
+
+
 def _label_for(dtype: str, style: dict) -> str:
     """Human label for a display_constraint_type, preferring the style config."""
     if dtype in _DISPLAY_LABELS:

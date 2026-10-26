@@ -178,6 +178,10 @@ python -m alembic current
 ```
 
 The current migration head in this combined web checkout is `0028`. Revisions
+from the old feature branch with reused IDs are archived unchanged; see
+[legacy migration reconciliation](backend/alembic/legacy_versions/README.md)
+before upgrading a database previously on `feature/command-map-layers`.
+Main revisions
 `0025`/`0026` retain the original constraint/model registry history; `0027`/`0028`
 add operational timing and response performance. The earlier response-only
 worktree uses different migrations with overlapping revision numbers: use a fresh

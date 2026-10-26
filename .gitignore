@@ -66,3 +66,8 @@ backend/data/retraining/
 .venv-training/
 .training-cache/
 backend/ai/models/versions/
+# Local database backups made before applying synthetic Analysis data.
+backend/seed-backups/
+
+# Local unattended acceptance reports and browser profiles.
+.simulation-results/

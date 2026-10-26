@@ -1,3 +1,6 @@
+import { constraintLayerId } from './constraintLayers'
+import { scheduleSummary } from './constraintSchedule'
+
 export const EMPTY_GEOJSON = { type: 'FeatureCollection', features: [] }
 const constraintCache = new WeakMap()
 
@@ -13,6 +16,12 @@ export function constraintFeatures(data) {
       type: 'Feature', id: `${props.road_id ?? index}-${index}-${part}`,
       geometry: { type: 'LineString', coordinates },
       properties: {
+        constraintKey: constraintLayerId(feature), constraintEditing: !!data.editing,
+        roadName: props.name || 'Unnamed road', barangay: props.barangay || '',
+          source: props.baseline_segment_uid ? 'Edited baseline road' : props.custom ? 'Saved road constraint' : props.annotation_source === 'manual_verified' ? 'Baseline annotation' : 'Model prediction',
+        narrowSeverity: props.narrow_severity || '',
+        trafficSummary: props.traffic_schedule ? scheduleSummary(props.traffic_schedule) : '',
+        selected: !!props.constraint_selected,
         color: props.map_color || '#b0bec5', weight: Math.max(2, props.map_weight || 2),
         opacity: props.map_opacity ?? 0.85, normal: props.display_constraint_type === 'normal',
         hoverLabel: props.display_label || props.display_constraint_type || 'Road constraint',
@@ -26,7 +35,7 @@ export function constraintFeatures(data) {
           props.custom ? 'custom' : null].filter(Boolean).join(' · '),
       },
     }))
-  }).sort((a, b) => Number(b.properties.normal) - Number(a.properties.normal))
+  }).sort((a, b) => Number(b.properties.normal) - Number(a.properties.normal) || Number(a.properties.selected) - Number(b.properties.selected))
   const result = { type: 'FeatureCollection', features }
   constraintCache.set(data, result)
   return result

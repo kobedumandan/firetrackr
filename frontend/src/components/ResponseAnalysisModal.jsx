@@ -3,7 +3,7 @@ import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from
 import 'leaflet/dist/leaflet.css'
 import AppModal from './AppModal'
 import { Field } from './incidentForm'
-import { confirmOperationalMilestone, fetchOperationalDetail } from '../api'
+import { confirmDispatchClearance, confirmOperationalMilestone, fetchOperationalDetail } from '../api'
 import { MAP_CENTER, tileLayersFor } from '../data/mapConfig'
 import { STAGES, dateTime, duration, manilaInput, parseRouteWkt } from '../utils/operationalTimes'
 
@@ -39,20 +39,28 @@ function MilestoneForm({ data, unit, onSaved }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [submission, setSubmission] = useState(null)
+  const [dispatchId, setDispatchId] = useState('')
   async function save(e) {
     e.preventDefault(); setBusy(true); setError(null)
-    const body = { kind, occurred_at: new Date(`${at}+08:00`).toISOString(), response_kind: responseKind || null, dispatch_truck_id: ['departure', 'arrival'].includes(kind) ? unit?.id : null }
-    const signature = JSON.stringify(body)
-    const key = submission?.signature === signature ? submission.key : crypto.randomUUID()
-    setSubmission({ signature, key })
-    try { onSaved(await confirmOperationalMilestone(data.fire_id, { ...body, idempotency_key: key })); setAt('') }
+    try {
+      const body = { kind, occurred_at: new Date(`${at}+08:00`).toISOString(), response_kind: responseKind || null, dispatch_truck_id: ['departure', 'arrival'].includes(kind) ? unit?.id : null }
+      const signature = JSON.stringify({ ...body, dispatch_id: kind === 'clearance' ? dispatchId : null })
+      const key = submission?.signature === signature ? submission.key : crypto.randomUUID()
+      setSubmission({ signature, key })
+      if (kind === 'clearance') {
+        await confirmDispatchClearance(Number(dispatchId), { occurred_at: body.occurred_at, idempotency_key: key })
+        onSaved(await fetchOperationalDetail(data.fire_id))
+      } else onSaved(await confirmOperationalMilestone(data.fire_id, { ...body, idempotency_key: key }))
+      setAt('')
+    }
     catch (err) { setError(err.message) }
     finally { setBusy(false) }
   }
   return <details className="ota-confirm"><summary>Confirm a verified operational milestone</summary>
     <p className="ota-note">Use a verified occurrence time. Recorded milestones are preserved and cannot be overwritten here. Confirmations do not change dispatch or incident status.</p>
     <form onSubmit={save}>
-      <Field label="Milestone"><select value={kind} onChange={e => setKind(e.target.value)}>{Object.entries({ receipt: 'Report received', departure: 'Truck departed', arrival: 'Truck arrived', suppression_start: 'Suppression started', fire_out: 'Fire out', classification: 'Response classification' }).map(([key, label]) => <option key={key} value={key} disabled={['departure', 'arrival'].includes(key) && !unit}>{label}</option>)}</select></Field>
+      <Field label="Milestone"><select value={kind} onChange={e => setKind(e.target.value)}>{Object.entries({ receipt: 'Report received', departure: 'Truck departed', arrival: 'Truck arrived', suppression_start: 'Suppression started', fire_out: 'Fire out', classification: 'Response classification', clearance: 'Dispatch cleared', operation_complete: 'Operation complete / all units cleared' }).map(([key, label]) => <option key={key} value={key} disabled={['departure', 'arrival'].includes(key) && !unit}>{label}</option>)}</select></Field>
+      {kind === 'clearance' && <Field label="Responding dispatch"><select required value={dispatchId} onChange={e => setDispatchId(e.target.value)}><option value="">Select a dispatch</option>{(data.dispatches || []).map(d => <option key={d.dispatch_id} value={d.dispatch_id} disabled={!!d.cleared_at}>{d.team || `Dispatch ${d.dispatch_id}`} · {d.cleared_at ? 'Clearance recorded' : d.status}</option>)}</select></Field>}
       <Field label="Response classification"><select value={responseKind} onChange={e => setResponseKind(e.target.value)} disabled={!!data.response_kind}><option value="">Unknown</option>{['fire', 'medical', 'rescue', 'other'].map(v => <option key={v}>{v}</option>)}</select></Field>
       <Field label="Verified occurrence · Philippine time"><input type="datetime-local" step="1" required value={at} onChange={e => setAt(e.target.value)} /></Field>
       <button type="button" onClick={() => setAt(manilaInput())}>Happened now</button> <button type="submit" disabled={busy || !at}>{busy ? 'Saving…' : 'Confirm milestone'}</button>
@@ -61,7 +69,7 @@ function MilestoneForm({ data, unit, onSaved }) {
   </details>
 }
 
-export default function ResponseAnalysisModal({ fireId, theme, onClose }) {
+export default function ResponseAnalysisModal({ fireId, theme, onClose, onOpenDispatch }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   const [retry, setRetry] = useState(0)
@@ -93,11 +101,13 @@ export default function ResponseAnalysisModal({ fireId, theme, onClose }) {
     {!data && !error && <div className="ota-empty" role="status">Loading response analysis…</div>}
     {demo && <p className="m-data-note">Synthesized demonstration timeline · {data.source_record_id}. The source workbook records a date, not response timestamps. No real truck, crew or driven route is assigned to this simulation.</p>}
     {data?.location_specification && <p className="ota-note">{data.location_specification.label}: {data.location_specification.specification}</p>}
-    {data && <><div className="ota-modal-meta"><span>Report: {dateTime(data.reported_at)} · {data.address || 'Address unavailable'}</span><span>Station: {unit?.station || 'No assigned station'}</span>
+    {data && <><p className="ota-note">Overall operation: {duration(data.durations.operation)} · Report received {dateTime(data.reported_at)} → all units cleared {dateTime(data.operation_completed_at)}</p><div className="ota-modal-meta"><span>Report: {dateTime(data.reported_at)} · {data.address || 'Address unavailable'}</span><span>Station: {unit?.station || 'No assigned station'}</span>
       {data.units.length > 0 ? <label>Responding unit <select value={unit?.id || ''} onChange={e => setUnitId(Number(e.target.value))}>{data.units.map(u => <option key={u.id} value={u.id}>{u.truck} · {u.team} · dispatch #{u.dispatch_id}</option>)}</select></label> : <span>No truck assigned</span>}
       <span>Incident call-to-arrival: <strong>{duration(data.durations.cta)}</strong> · first valid arrival</span>
+      {onOpenDispatch && !demo && <div className="ro-dispatch-links">{(data.dispatches || []).map(dispatch => <button key={dispatch.dispatch_id} onClick={() => onOpenDispatch(dispatch.dispatch_id)}>Dispatch #{dispatch.dispatch_id} · {dispatch.team || 'Unknown team'} · {dispatch.status}</button>)}</div>}
     </div><div className="ota-modal-layout"><ResponseMap data={data} unit={unit} stage={stage} theme={theme} />
       <div className="ota-details"><div className="ota-stages" role="group" aria-label="Operational stage">{STAGES.map(s => <button key={s.key} className={s.key === stage ? 'active' : ''} aria-pressed={s.key === stage} onClick={() => setStage(s.key)}><span>{s.label}</span><strong>{s.key === 'suppression' && data.response_kind && data.response_kind !== 'fire' ? 'N/A' : duration(demo || s.key === 'suppression' ? data.durations[s.key] : unit?.durations[s.key])}</strong></button>)}</div>
+        {unit?.metrics?.[stage]?.reason && <p className="ota-note">Measurement quality: {unit.metrics[stage].reason.replaceAll('_', ' ')}. Original timestamps remain visible below.</p>}
         <dl>{pairs[stage].map(([label, at]) => <div key={label}><dt>{label}</dt><dd>{dateTime(at)}</dd></div>)}</dl>
         {['processing', 'preparation'].includes(stage) && unit?.dispatch_at && <p className="ota-note">Dispatch time source: the unit’s existing dispatch record.</p>}
         {stage === 'travel' && unit?.arrival_source === 'legacy_single_truck_dispatch' && <p className="ota-note">Arrival source: existing dispatch arrival record, with exactly one truck assigned.</p>}

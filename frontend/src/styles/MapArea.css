@@ -189,7 +189,10 @@
 }
 
 /* Personnel markers */
+.personnel-pin { position: relative; width: 28px; height: 28px; }
+.personnel-map-icon:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 5px; border-radius: 50%; }
 .personnel-marker {
+  box-sizing: border-box;
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -204,6 +207,33 @@
   box-shadow: 0 0 10px rgba(var(--accent-blue-rgb),0.4);
   font-family: var(--font-condensed);
 }
+.personnel-marker--truck { border-radius: 8px; }
+.personnel-truck-icon { display: block; }
+.personnel-deviation-badge {
+  position: absolute; top: -5px; right: -5px; display: grid; place-items: center;
+  width: 14px; height: 14px; border: 1.5px solid var(--bg-panel); border-radius: 50%;
+  background: var(--accent-amber); color: #151515; font: 700 10px var(--font-ui);
+}
+.personnel-popup .leaflet-popup-content { margin: 15px; font-family: var(--font-ui); }
+.personnel-card { color: var(--text-primary); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.personnel-card-heading { display: flex; align-items: center; gap: 10px; padding-right: 10px; margin-bottom: 12px; }
+.personnel-card-avatar {
+  display: grid; place-items: center; flex: 0 0 36px; height: 36px; border-radius: 50%;
+  background: var(--bg-hover); color: var(--accent-blue); font: 700 13px var(--font-condensed);
+}
+.personnel-card-avatar--truck { border-radius: 9px; color: var(--accent-amber); }
+.personnel-card-name, .personnel-card-kind, .personnel-card-rank { display: block; }
+.personnel-card-name { margin: 3px 0; font-size: 13px; font-weight: 600; }
+.personnel-card-kind { color: var(--text-secondary); font-size: 9px; }
+.personnel-card-rank { color: var(--text-secondary); font-size: 10px; }
+.personnel-card-facts { margin: 0; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.personnel-card-facts > div { display: grid; grid-template-columns: 83px minmax(0, 1fr); gap: 10px; margin: 0 0 7px; }
+.personnel-card-facts > div:last-child { margin-bottom: 0; }
+.personnel-card-facts dt { color: var(--text-secondary); }
+.personnel-card-facts dd { margin: 0; text-transform: capitalize; }
+.personnel-card-fix { margin-top: 10px; color: var(--text-secondary); font-size: 10px; }
+.personnel-card-fix--stale, .personnel-card-warning { color: var(--accent-amber); }
+.personnel-card-warning { margin-top: 5px; font-size: 10px; }
 
 /* Station markers */
 .station-marker {
@@ -670,9 +700,9 @@
 .constraint-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-secondary); font-size: 9px; }
 .constraint-section-note { color: var(--text-muted); font-size: 8px; }
 .constraint-editor-types { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
-.constraint-draw-btn { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); color: var(--text-primary); font: inherit; font-size: 10px; text-align: left; cursor: pointer; transition: background .15s, border-color .15s; }
-.constraint-draw-btn:hover { background: var(--bg-hover); border-color: color-mix(in srgb, var(--constraint-color) 50%, var(--border)); }
-.constraint-draw-btn[aria-pressed="true"] { border-color: var(--constraint-color); background: color-mix(in srgb, var(--constraint-color) 10%, var(--bg-panel)); }
+.constraint-draw-btn { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 7px; border: 1px solid var(--accent-fire); border-radius: 7px; background: var(--accent-fire); color: white; font: inherit; font-size: 10px; text-align: left; cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+.constraint-draw-btn:hover:not(:disabled) { background: var(--accent-fire-hover); border-color: var(--accent-fire-hover); box-shadow: 0 0 20px rgba(var(--accent-fire-rgb), 0.4); }
+.constraint-draw-btn:disabled { opacity: .45; cursor: not-allowed; }
 .constraint-type-icon { display: grid; place-items: center; width: 23px; height: 26px; flex: none; border-radius: 5px; color: var(--constraint-color); background: color-mix(in srgb, var(--constraint-color) 10%, transparent); }
 .constraint-help { margin: 0; font-size: 9px; line-height: 1.5; color: var(--text-secondary); }
 .constraint-drawing-hint { display: flex; flex-direction: column; gap: 7px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel); font-size: 10px; }
@@ -695,113 +725,6 @@
 .constraint-list-empty { margin-top: 6px; padding: 10px 8px; border: 1px dashed var(--border); border-radius: 6px; text-align: center; color: var(--text-secondary); font-size: 9px; }
 .constraint-editor button:focus-visible, .constraint-float-btn:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 2px; }
 
-/* Constraint save dialog. */
-.constraint-save-dialog {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: var(--z-modal);
-  background: rgba(var(--map-panel-rgb), 0.95);
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 20px 24px;
-  min-width: 280px;
-  color: var(--map-text);
-  box-shadow: var(--shadow-lg);
-  pointer-events: auto;
-}
-
-.constraint-save-title {
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 0.5px;
-  margin-bottom: 14px;
-}
-
-.constraint-field {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-bottom: 10px;
-  font-size: 10px;
-}
-
-.constraint-field span {
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--map-text-faint);
-  font-family: var(--font-condensed);
-}
-
-.constraint-field input {
-  padding: 6px 8px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: var(--surface-raise);
-  color: var(--map-text-bright);
-  font-size: 12px;
-  font-family: var(--font-ui);
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.constraint-field input:focus {
-  border-color: var(--border-bright);
-}
-
-.constraint-field input::placeholder {
-  color: var(--map-text-ghost);
-}
-
-.constraint-save-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.constraint-save-btn {
-  flex: 1;
-  padding: 7px 0;
-  border: 1px solid rgba(var(--accent-emerald-rgb),0.3);
-  border-radius: 6px;
-  background: rgba(var(--accent-emerald-rgb),0.15);
-  color: var(--accent-emerald);
-  font-family: var(--font-condensed);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.constraint-save-btn:hover {
-  background: rgba(var(--accent-emerald-rgb),0.25);
-}
-
-.constraint-cancel-btn {
-  flex: 1;
-  padding: 7px 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: var(--surface-raise);
-  color: var(--map-text-dim);
-  font-family: var(--font-condensed);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.constraint-cancel-btn:hover {
-  background: var(--surface-raise-strong);
-  color: var(--map-text-bright);
-}
 
 /* ── Barangay overlay labels ─────────────────────────────────────────────── */
 .brgy-label {

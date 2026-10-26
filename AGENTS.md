@@ -138,9 +138,13 @@ DOCX and CSV agree on the incident register.
 
 Change ORM models and add a reviewed Alembic migration together; do not edit applied
 historical migrations or replace them with `create_all()`. The checked-in chain
-is `0001` through `0028`. Revisions `0025`/`0026` preserve the original constraint
+is `0001` through `0031`. Revisions `0025`/`0026` preserve the original constraint
 and model registry history; `0027`/`0028` add operational timing and response
-performance. Review generated diffs, spatial types, indexes, foreign
+performance; `0029` adds optional narrow severity and traffic schedules; `0030`
+adds nullable baseline override targets and their active uniqueness guard.
+Revision `0031` adds attributed duty location logs, dispatch clearance and the
+independent operation-completion timestamp; legacy attribution stays unknown.
+Review generated diffs, spatial types, indexes, foreign
 keys, cascades and circular route/dispatch relationships. Enable PostGIS before
 migrating; no migration provisions it. Use a disposable database to validate
 schema/data changes. Seeds and `--clear` utilities write/delete data: review inputs

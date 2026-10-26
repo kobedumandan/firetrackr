@@ -144,6 +144,8 @@ def add_team_member(
         member_status=body.member_status or "standby",
     )
     db.add(m)
+    from services.personnel_deployment import sync_rosters
+    sync_rosters(db, team_id, _auth)
     db.commit()
     db.refresh(m)
     return {"members_id": m.members_id, "team_id": m.team_id, "per_id": m.per_id, "member_role": m.member_role}
@@ -165,6 +167,8 @@ def update_team_member(
         raise HTTPException(status_code=404, detail="Member not found.")
     if body.member_role   is not None: m.member_role   = body.member_role
     if body.member_status is not None: m.member_status = body.member_status
+    from services.personnel_deployment import sync_rosters
+    sync_rosters(db, team_id, _auth)
     db.commit()
     return {"members_id": m.members_id, "team_id": m.team_id, "per_id": m.per_id, "member_role": m.member_role}
 
@@ -183,4 +187,6 @@ def remove_team_member(
     if not m:
         raise HTTPException(status_code=404, detail="Member not found.")
     db.delete(m)
+    from services.personnel_deployment import sync_rosters
+    sync_rosters(db, team_id, _auth)
     db.commit()

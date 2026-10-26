@@ -5,7 +5,7 @@ function clock(iso) {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  return d.toLocaleTimeString("en-PH", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
 // "12m" / "1h 4m" between two instants.
@@ -190,6 +190,7 @@ export default function IncidentTimeline({ incident, liveDispatches = [] }) {
   return (
     <div className="detail-body">
       <div className="detail-section-title">Timeline</div>
+      <p className="ci-timeline-zone">Times shown in Philippine time (PHT)</p>
       {!loaded && liveDispatches.length === 0 ? (
         <div className="itl-state">Loading timeline…</div>
       ) : (

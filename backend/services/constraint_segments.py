@@ -88,24 +88,38 @@ def load_segment_index(path=None):
 
 def overlay_features(rows, index, style):
     """Use exact road geometries, not imprecise drawn vertices, for routing."""
-    from services.constraints import _CUSTOM_STYLE_KEY
+    from services.constraint_schedule import constraint_style_key
 
     selected = {}
     for row in rows:
         uids = row.segment_uids if row.segment_uids is not None else index.snap(json.loads(row.coordinates))
-        key = _CUSTOM_STYLE_KEY[row.constraint_type]
-        multiplier = max(1.0, float(style.get(key, {}).get("routing_multiplier", 1.45)))
+        key = constraint_style_key(row)
+        multiplier = max(1.0, float(style.get(key, {}).get("routing_multiplier", 1.0 if key == 'normal' else 1.45)))
         for uid in uids:
             original = index.features.get(uid)
+            if original is None and uid.startswith('edge-v1-'):
+                from services.road_edges import edge_uid
+                coordinates = json.loads(row.coordinates)
+                if edge_uid(coordinates) == uid:
+                    original = {'geometry': {'type': 'LineString', 'coordinates': coordinates}, 'properties': {}}
             if original is None:
                 continue
             previous = selected.get(uid)
-            if previous and previous["properties"]["routing_multiplier"] >= multiplier:
+            override = bool(getattr(row, 'baseline_segment_uid', None))
+            preserve_timing = False
+            if override and not getattr(row, 'traffic_schedule', None):
+                from .label_snapshot import override_preserves_labels
+                preserve_timing = override_preserves_labels(original, row)
+            if previous and not override and (previous['properties'].get('baseline_override') or previous["properties"]["routing_multiplier"] >= multiplier):
                 continue
             selected[uid] = {
                 "type": "Feature", "geometry": original["geometry"],
                 "properties": {**original.get("properties", {}), "segment_uid": uid,
-                               "routing_multiplier": multiplier,
+                               "routing_multiplier": 1.0 if getattr(row, 'traffic_schedule', None) else multiplier,
+                               "admin_constraint": (not preserve_timing) if override else bool(getattr(row, 'narrow_severity', None) or getattr(row, 'traffic_schedule', None)),
+                               "baseline_override": override,
+                               "traffic_schedule": getattr(row, 'traffic_schedule', None),
+                               "scheduled_multiplier": multiplier,
                                "routing_constraint_type": key},
             }
-    return list(selected.values())
+    return sorted(selected.values(), key=lambda feature: not feature['properties']['baseline_override'])

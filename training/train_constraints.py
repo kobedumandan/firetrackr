@@ -1,4 +1,4 @@
-"""CPU GAT challenger training and head-to-head audit on one immutable snapshot.
+"""GAT challenger training and head-to-head audit on one immutable snapshot.
 
 No model registration, promotion, DB access or routing-file replacement occurs.
 """
@@ -48,9 +48,13 @@ def prepare_training(snapshot_dir, champion_dir):
     return frame, snapshot, champion, split
 
 
-def train_and_audit(snapshot_dir, champion_dir, output_dir, style_path, epochs=700, lr=0.002, patience=80, seed=42, threads=4, version=None):
+def train_and_audit(snapshot_dir, champion_dir, output_dir, style_path, epochs=700, lr=0.002, patience=80, seed=42, threads=4, version=None, device="cpu"):
     if epochs < 1 or patience < 1 or threads < 1 or not np.isfinite(lr) or lr <= 0:
         raise ValueError("Training limits, learning rate and thread count must be positive")
+    if device not in ("cpu", "cuda"):
+        raise ValueError("Training device must be cpu or cuda")
+    if device == "cuda" and not torch.cuda.is_available():
+        raise ValueError("CUDA training requested but no CUDA device is available")
     output = Path(output_dir)
     if output.exists():
         raise FileExistsError("Refusing to overwrite an existing model bundle")
@@ -68,19 +72,20 @@ def train_and_audit(snapshot_dir, champion_dir, output_dir, style_path, epochs=7
     for partition in ("train", "val", "test"):
         setattr(data, partition + "_mask", torch.tensor(frame["split"].eq(partition).to_numpy()))
     data.train_edge_index = edges[:, data.train_mask[edges[0]] & data.train_mask[edges[1]]]
+    data = data.to(device)
     architecture = {"in_ch": matrix.shape[1], "hid": 64, "heads": 4, "dropout": 0.35}
     model = SegmentGAT(**architecture)
     model = train_model_conservative(model, data, "GAT", epochs=epochs, lr=lr, patience=patience)
     model.eval()
     with torch.no_grad():
         regression, classification = model(data.x, data.edge_index)
-        probabilities = torch.softmax(classification, dim=1)[:, 1].numpy()
-        regression = regression.numpy()
+        probabilities = torch.softmax(classification, dim=1)[:, 1].cpu().numpy()
+        regression = regression.cpu().numpy()
     if not np.isfinite(probabilities).all() or not np.isfinite(regression).all():
         raise ValueError("Training returned nonfinite predictions")
     validation = frame["split"].eq("val").to_numpy()
     threshold, validation_info = threshold_search_conservative(frame.is_constrained.to_numpy()[validation], probabilities[validation])
-    old_probabilities, _ = score_bundle(champion_dir, frame)
+    old_probabilities, _ = score_bundle(champion_dir, frame, device=device)
     def scores(values):
         return [{"segment_uid": row.segment_uid, "spatial_block": str(row.spatial_block),
                  "label": int(row.is_constrained), "probability": float(values[i]),
@@ -97,12 +102,14 @@ def train_and_audit(snapshot_dir, champion_dir, output_dir, style_path, epochs=7
                        "threshold": threshold, "label_hash": snapshot["label_hash"], "split_version": split["split_version"],
                        "parameters": {"epochs": epochs, "lr": lr, "patience": patience, "seed": seed, "threads": threads},
                        "training": model.training_summary, "validation": validation_info,
-                       "torch_version": str(torch.__version__), "validation_only": validation_only}
+                       "torch_version": str(torch.__version__), "validation_only": validation_only,
+                       "device": device, "cuda_version": torch.version.cuda,
+                       "gpu": torch.cuda.get_device_name(0) if device == "cuda" else None}
     export = hybrid_export(frame, probabilities, regression, threshold, style)
     output.mkdir(parents=True, exist_ok=False)
     torch.save({"base_model_key": "GAT", "model_class": "SegmentGAT", "model_arch": architecture,
                 "selected_threshold": threshold, "feature_cols": pipeline["feature_cols"],
-                "model_state_dict": model.state_dict()}, output / "checkpoint.pt")
+                "model_state_dict": {key: value.detach().cpu() for key, value in model.state_dict().items()}}, output / "checkpoint.pt")
     (output / "predicted_constraints.geojson").write_text(export.to_json() + "\n", encoding="utf-8")
     shutil.copyfile(Path(champion_dir) / "split_blocks.json", output / "split_blocks.json")
     for name, value in (("feature_pipeline.json", pipeline), ("validation_report.json", training_report),
@@ -131,9 +138,10 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--version", help="Registry-assigned artifact identity")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     args = parser.parse_args()
     train_and_audit(args.snapshot, args.champion, args.out, args.style,
-                    args.epochs, args.lr, args.patience, args.seed, args.threads, args.version)
+                    args.epochs, args.lr, args.patience, args.seed, args.threads, args.version, args.device)
 
 
 if __name__ == "__main__":

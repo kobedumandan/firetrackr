@@ -186,6 +186,7 @@ describe('tilted raster interactions', () => {
     })
     leaflet.setView = vi.fn(() => leaflet.fire('moveend'))
     const source = { setData: vi.fn() }
+    const canvas = document.createElement('canvas')
     const nativeMarkers = []
     class NativeMarker {
       constructor({ element }) { this.element = element; nativeMarkers.push(this) }
@@ -196,7 +197,7 @@ describe('tilted raster interactions', () => {
     const map = Object.assign(new L.Evented(), {
       getSource: () => source, getPitch: () => 30, getBearing: () => 15,
       getCenter: () => ({ lat: 7.4, lng: 125.7 }), getZoom: () => 13,
-      resize: vi.fn(), queryRenderedFeatures: vi.fn(() => []),
+      getCanvas: () => canvas, resize: vi.fn(), queryRenderedFeatures: vi.fn(() => []),
     })
     map.jumpTo = vi.fn(() => map.fire('moveend'))
     // Match MapLibre 6: on() returns a Subscription, not a chainable map.

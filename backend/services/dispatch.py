@@ -11,7 +11,7 @@ import state
 from config import RACE_WINDOW_SECONDS, STALE_MINUTES, _SOURCE_PRIORITY
 from models import (
     CurrentLocation, DispatchRecord, DispatchTruck, FireIncident, HeatmapData,
-    ResponseTeam, ResponseTeamMember, Route,
+    ResponseTeam, ResponseTeamMember, Route, Truck,
 )
 from serializers import _incident_dict
 from services.incident_events import record_changes, snapshot
@@ -51,17 +51,49 @@ async def _perform_dispatch(
 
     Raises HTTPException(404) if incident or team not found.
     """
-    incident = db.get(FireIncident, fire_id)
+    # Serialize assignment against incident closure and concurrent requests. A
+    # recommendation is only a snapshot; availability must be checked again here.
+    incident = db.query(FireIncident).filter_by(fire_id=fire_id).populate_existing().with_for_update().first()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found.")
-    team = db.get(ResponseTeam, team_id)
+    team = db.query(ResponseTeam).filter_by(team_id=team_id).populate_existing().with_for_update().first()
     if not team:
         raise HTTPException(status_code=404, detail="Team not found.")
+    if incident.operation_completed_at is not None:
+        raise HTTPException(409, 'This operation is already complete. Log a new incident for a renewed response.')
+    if incident.fire_status in ('closed', 'cancelled', 'canceled', 'recalled'):
+        raise HTTPException(409, 'This incident no longer accepts dispatches.')
+    active_statuses = ('dispatched', 'en_route', 'on_scene')
+    if db.query(DispatchRecord.dispatch_id).filter(
+        DispatchRecord.team_id == team_id,
+        DispatchRecord.dispatch_status.in_(active_statuses),
+    ).first():
+        raise HTTPException(409, 'This team is already assigned to an active dispatch.')
+    if (team.team_status or '').lower() in ('active', *active_statuses):
+        raise HTTPException(409, 'This team is not on standby.')
+    if team.station and team.station.station_status == 'inactive':
+        raise HTTPException(409, 'This team belongs to an inactive station.')
+    members = db.query(ResponseTeamMember).filter_by(team_id=team_id).populate_existing().all()
+    if any((member.member_status or '').strip().lower() not in ('', 'standby') for member in members):
+        raise HTTPException(409, 'This team has members who are not on standby.')
+    truck = None
+    if team.truck_id:
+        truck = db.query(Truck).filter_by(truck_id=team.truck_id).populate_existing().with_for_update().one()
+        busy = db.query(DispatchTruck.dispatch_truck_id).join(DispatchRecord).filter(
+            DispatchTruck.truck_id == truck.truck_id,
+            DispatchRecord.dispatch_status.in_(active_statuses),
+        ).first()
+        if truck.truck_status != 'available' or busy:
+            raise HTTPException(409, 'This team\'s truck is unavailable or already dispatched.')
+
+    from services.personnel_deployment import member_snapshot
+    assigned_at = datetime.now(timezone.utc)
 
     dispatch = DispatchRecord(
         fire_id=fire_id,
         team_id=team_id,
         dispatch_status="dispatched",
+        dispatch_at=assigned_at,
         dispatch_truck_count=0,
         context_snapshot={
             "provenance": "assignment",
@@ -71,6 +103,7 @@ async def _perform_dispatch(
             "shift_name": team.shift.shift_name if team.shift else None,
             "truck_id": team.truck_id,
             "truck": team.truck.truck_platenum if team.truck else None,
+            'roster': [member_snapshot(member, assigned_at) for member in team.members],
         },
     )
     db.add(dispatch)
@@ -83,19 +116,17 @@ async def _perform_dispatch(
     for m in team.members or []:
         m.member_status = "dispatched"
 
+    # Attach the team's assigned truck to this dispatch (if any). This is what the
+    # driver later "mans" and what _sync_truck follows. Reserve it in the same
+    # transaction as its team, before releasing either resource lock.
+    if truck:
+        db.flush()
+        db.add(DispatchTruck(dispatch_id=dispatch.dispatch_id, truck_id=truck.truck_id))
+        dispatch.dispatch_truck_count = 1
+        truck.truck_status = "dispatched"
     db.commit()
     db.refresh(dispatch)
     db.refresh(incident)
-
-    # Attach the team's assigned truck to this dispatch (if any). This is what the
-    # driver later "mans" and what _sync_truck follows.
-    if team.truck_id:
-        db.add(DispatchTruck(dispatch_id=dispatch.dispatch_id, truck_id=team.truck_id))
-        dispatch.dispatch_truck_count = 1
-        if team.truck:
-            team.truck.truck_status = "dispatched"
-        db.commit()
-        db.refresh(dispatch)
 
     await manager.broadcast({"type": "incident_updated", "data": _incident_dict(incident)})
 
@@ -303,6 +334,10 @@ def _race_condition_winner(
     rec_at = existing.recorded_at
     if rec_at.tzinfo is None:
         rec_at = rec_at.replace(tzinfo=timezone.utc)
+
+    # Delayed packets from the same source must never move a person backwards.
+    if existing.source == incoming_source:
+        return incoming_recorded_at > rec_at
 
     if (now - rec_at) > timedelta(minutes=STALE_MINUTES):
         return True

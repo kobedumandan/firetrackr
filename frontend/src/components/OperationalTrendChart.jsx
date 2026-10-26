@@ -4,8 +4,10 @@ import AnalysisIcon from './AnalysisIcon'
 
 const seriesColor = stage => stage.key === 'cta' ? 'var(--text-primary)' : `color-mix(in srgb, ${stage.color} 70%, var(--text-primary))`
 
-export default function OperationalTrendChart({ points = [], period, loading = false, demo = false }) {
-  const [metric, setMetric] = useState('all')
+export default function OperationalTrendChart({ points = [], period, loading = false, demo = false, selectedMetric, onMetricChange }) {
+  const [localMetric, setLocalMetric] = useState('all')
+  const metric = selectedMetric ?? localMetric
+  const setMetric = onMetricChange || setLocalMetric
   const series = metric === 'all' ? ALL_METRICS.slice(0, 4) : ALL_METRICS.filter(s => s.key === metric)
   const values = points.flatMap(p => series.map(s => p.values[s.key]).filter(v => v != null))
   const max = Math.max(60, ...values) * 1.15
@@ -13,8 +15,8 @@ export default function OperationalTrendChart({ points = [], period, loading = f
   const y = value => 180 - value / max * 150
   const label = at => new Intl.DateTimeFormat('en-PH', period === '1d' ? { timeZone: 'Asia/Manila', hour: 'numeric' } : { timeZone: 'Asia/Manila', month: 'short', ...(['2023-2024', 'all'].includes(period) ? { year: '2-digit' } : {}), ...(period === '1w' || period === '1m' ? { day: 'numeric' } : {}) }).format(new Date(at))
   return <section className="ota-card ota-trends">
-    <div className="ota-section-head"><div><h2>Operational Time Trends</h2><p>Average duration per stage over time. Gaps indicate missing measurements.</p></div>
-      <label className="ota-trend-filter">Show<select aria-label="Trend metric" value={metric} onChange={e => setMetric(e.target.value)}><option value="all">All Stages</option>{ALL_METRICS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}</select></label>
+    <div className="ota-section-head"><div><h2>Operational trends</h2><p>Mean durations · gaps indicate missing measurements.</p></div>
+      <label className="ota-trend-filter">Show<select aria-label="Trend metric" value={metric} onChange={e => setMetric(e.target.value)}><option value="all">All stages</option>{ALL_METRICS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}</select></label>
     </div>
     {loading ? <div className="kpi-sk ota-chart-skeleton" aria-hidden="true" /> : !values.length ? <div className="ota-empty ota-chart-empty"><AnalysisIcon name="chart" /><h3>No measured durations in this period.</h3><p>Try another period or stage. Intervals need both timestamps to appear here.</p></div> : <div className="ota-chart-scroll"><svg viewBox="0 0 990 230" role="img" aria-label={demo ? 'Synthesized demonstration duration trends in minutes' : 'Operational duration trends in minutes'}>
       {[0, 1, 2, 3].map(n => <g key={n}><line x1="50" x2="950" y1={y(n * max / 3)} y2={y(n * max / 3)} stroke="var(--border)" strokeDasharray="3 5" /><text x="40" y={y(n * max / 3) + 4} textAnchor="end">{(n * max / 180).toFixed(1)}</text></g>)}

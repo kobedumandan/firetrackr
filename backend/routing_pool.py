@@ -60,6 +60,12 @@ def compute_routes(origin_lat, origin_lng, target_lat, target_lng, obstructions)
     return _engine.compute_routes_multi_alpha(src[0][0], tgt[0][0], obstructions=obstructions)
 
 
+def compute_position_routes(lat, lon, fire_lat, fire_lon, obstructions, previous_position=None):
+    if _engine is None:
+        return None
+    return _engine.compute_routes_from_position(lat, lon, fire_lat, fire_lon, obstructions, previous_position)
+
+
 def compute_connector(lat, lon, fire_lat, fire_lon, obstructions):
     """Connector GeoJSON from an off-route point to the fire. Returns a dict or None."""
     if _engine is None:

@@ -1,3 +1,10 @@
+export function colorWithOpacity(color = '#ff4d1a', opacity = 1) {
+  if (/^#[\da-f]{6}$/i.test(color)) {
+    return `${color}${Math.round(Math.max(0, Math.min(1, opacity)) * 255).toString(16).padStart(2, '0')}`
+  }
+  return color
+}
+
 // Google renamed these properties across SDK releases. Assign after creation
 // so an older SDK can't silently discard geometry in its options dictionary.
 export function setGoogleLinePath(element, path) {

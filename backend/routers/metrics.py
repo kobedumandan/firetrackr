@@ -41,8 +41,8 @@ def metrics_summary(
 ):
     """One count per incident, source causes and explicitly labeled demo alarms.
 
-    The existing response key retains its incident-time proxy semantics. The
-    separate recorded metric requires a receipt and accepts per-unit arrivals.
+    Both response metrics require an actual report receipt. The separate
+    recorded metric also accepts per-unit arrivals.
     Synthesized historical metadata never supplies measured response timestamps.
     """
     now = datetime.now(timezone.utc)
@@ -68,12 +68,12 @@ def metrics_summary(
     prev_critical = _count(*_critical, since=prev_start, until=start)
 
     def _avg_response(since, until):
-        # Legacy proxy: first arrival per incident, so a second team arriving later doesn't
+        # First dispatch arrival per incident, so a second team arriving later doesn't
         # drag the average up. Durations outside (0, 6h] are clock skew or a
         # forgotten "arrived" tap, not a response, and are excluded.
         first_arrival = (
             db.query(
-                FireIncident.fire_incident_datetime.label("called_at"),
+                FireIncident.report_received_at.label("called_at"),
                 func.min(DispatchRecord.dispatch_arrived_at).label("arrived_at"),
             )
             .join(DispatchRecord, DispatchRecord.fire_id == FireIncident.fire_id)
@@ -81,8 +81,9 @@ def metrics_summary(
                 FireIncident.fire_incident_datetime >= since,
                 FireIncident.fire_incident_datetime < until,
                 DispatchRecord.dispatch_arrived_at.isnot(None),
+                FireIncident.report_received_at.isnot(None),
             )
-            .group_by(FireIncident.fire_id, FireIncident.fire_incident_datetime)
+            .group_by(FireIncident.fire_id, FireIncident.report_received_at)
             .subquery()
         )
         seconds = func.extract("epoch", first_arrival.c.arrived_at - first_arrival.c.called_at)
@@ -95,7 +96,7 @@ def metrics_summary(
 
     avg_response = _avg_response(start, now)
     prev_avg_response = _avg_response(prev_start, start)
-    # Preserve existing clients' incident-time proxy. New dashboard consumers
+    # Preserve the branch's receipt-based response key. New dashboard consumers
     # explicitly select the verified-receipt metric, including unit arrivals.
     recorded = overall(db, start, now, kind="all")
     prior_recorded = overall(db, prev_start, start, kind="all") if prev_start < start else {"mean_seconds": None}

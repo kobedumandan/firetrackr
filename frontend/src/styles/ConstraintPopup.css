@@ -1,0 +1,23 @@
+.constraint-road-popup .leaflet-popup-content-wrapper { padding: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-panel); color: var(--text-primary); box-shadow: var(--shadow-md); }
+.constraint-road-popup .leaflet-popup-content { width: 260px !important; max-width: calc(100vw - 64px); margin: 0; font-family: var(--font-ui); font-size: 11px; line-height: 1.6; }
+.constraint-road-popup .leaflet-popup-tip { background: var(--bg-panel); }
+.constraint-road-popup a.leaflet-popup-close-button { top: 9px; right: 9px; width: 24px; height: 24px; border-radius: 6px; color: var(--text-primary); font-weight: 400; }
+.constraint-road-popup a.leaflet-popup-close-button:hover { background: var(--surface-raise); color: var(--text-primary); }
+.constraint-popup-card { padding: 17px; overflow-wrap: anywhere; }
+.constraint-popup-header { display: flex; align-items: center; gap: 7px; padding-right: 22px; }
+.constraint-popup-dot { flex: 0 0 7px; height: 7px; border-radius: 50%; background: var(--constraint-color); box-shadow: 0 0 0 4px color-mix(in srgb, var(--constraint-color) 13%, transparent); }
+.constraint-popup-type { color: color-mix(in srgb, var(--text-primary) 70%, var(--bg-panel)); font-size: 10px; font-weight: 500; }
+.constraint-popup-card .constraint-popup-name { margin: 12px 0 4px; color: var(--text-primary); font-size: 15px; font-weight: 600; letter-spacing: -.3px; line-height: 1.5; }
+.constraint-popup-card .constraint-popup-location { margin: 0 0 9px; color: color-mix(in srgb, var(--text-primary) 65%, var(--bg-panel)); font-size: 11px; }
+.constraint-popup-source { display: inline-block; padding: 3px 7px; border: 1px solid var(--border); border-radius: 5px; color: color-mix(in srgb, var(--text-primary) 70%, var(--bg-panel)); font-size: 9px; background: var(--surface-raise); }
+.constraint-popup-card .constraint-popup-meta { margin: 12px 0 0; padding-top: 11px; border-top: 1px solid var(--border); color: color-mix(in srgb, var(--text-primary) 65%, var(--bg-panel)); font-size: 10px; line-height: 1.7; }
+.constraint-popup-card .constraint-popup-detail { margin: 8px 0 0; color: color-mix(in srgb, var(--text-primary) 80%, var(--bg-panel)); font-size: 10px; line-height: 1.7; }
+.constraint-popup-edit { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 36px; margin-top: 15px; padding: 8px 11px; border: 1px solid transparent; border-radius: 7px; background: var(--text-primary); color: var(--bg-panel); font: inherit; font-size: 10px; font-weight: 600; cursor: pointer; transition: background .15s; }
+.constraint-popup-edit::after { content: '→'; font-size: 15px; font-weight: 400; }
+.constraint-popup-edit:hover { background: color-mix(in srgb, var(--text-primary) 85%, var(--bg-panel)); }
+.constraint-popup-edit:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 3px; }
+.command-road-tooltip { border-left: 3px solid var(--constraint-color, var(--accent-amber)); }
+.leaflet-tooltip.command-map-tooltip:has(.command-road-tooltip-label) { width: max-content; min-width: 180px; }
+.command-road-tooltip .command-road-tooltip-label { font-size: 12px; line-height: 1.6; }
+.command-road-tooltip .command-road-tooltip-location, .command-road-tooltip .command-road-tooltip-meta { color: color-mix(in srgb, var(--text-primary) 65%, var(--bg-panel)); line-height: 1.6; }
+@media (prefers-reduced-motion: reduce) { .constraint-popup-edit { transition: none; } }

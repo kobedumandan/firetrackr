@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 class RouteRequest(BaseModel):
@@ -19,6 +19,8 @@ class RouteResponse(BaseModel):
 
 
 VALID_CONSTRAINT_TYPES = ("narrow_road", "traffic_area")
+BASELINE_CONSTRAINT_TYPES = Literal['normal', 'narrow_road', 'traffic_area', 'construction',
+    'traffic_general', 'traffic_nightmarket', 'traffic_market', 'traffic_pnm', 'traffic_school', 'traffic_highway']
 
 
 class ConstraintCreate(BaseModel):
@@ -30,13 +32,92 @@ class ConstraintCreate(BaseModel):
     maxspeed: str | None = None
 
 
+class TrafficWindow(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    start: str = Field(pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$')
+    end: str = Field(pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$')
+
+
+class TrafficSchedule(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    all_day: bool
+    days: list[Literal[0, 1, 2, 3, 4, 5, 6]] = Field(min_length=1, max_length=7)
+    windows: list[TrafficWindow] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode='after')
+    def validate_schedule(self):
+        self.days = sorted(set(self.days))
+        if self.all_day and self.windows:
+            raise ValueError('All-day schedules must not contain time ranges.')
+        if not self.all_day and not self.windows:
+            raise ValueError('Add at least one time range or choose All day.')
+        occupied = set()
+        for window in self.windows:
+            start = int(window.start[:2]) * 60 + int(window.start[3:])
+            end = int(window.end[:2]) * 60 + int(window.end[3:])
+            if start == end:
+                raise ValueError('Start and end must differ. Use All day for a full day.')
+            duration = (end - start) % 1440
+            for day in self.days:
+                minutes = {(day * 1440 + start + offset) % 10080 for offset in range(duration)}
+                if occupied & minutes:
+                    raise ValueError('Traffic time ranges must not overlap.')
+                occupied.update(minutes)
+        self.windows.sort(key=lambda window: window.start)
+        return self
+
+
 class ConstraintUpdate(BaseModel):
-    name: str | None = None
+    model_config = ConfigDict(extra='forbid')
+    name: str | None = Field(default=None, max_length=255)
     coordinates: list | None = None
-    constraint_type: str | None = None
-    highway: str | None = None
-    surface: str | None = None
-    maxspeed: str | None = None
+    constraint_type: BASELINE_CONSTRAINT_TYPES | None = None
+    highway: str | None = Field(default=None, max_length=100)
+    surface: str | None = Field(default=None, max_length=100)
+    maxspeed: str | None = Field(default=None, max_length=50)
+    narrow_severity: Literal['slight', 'severe'] | None = None
+    traffic_schedule: TrafficSchedule | None = None
+
+
+class ConstraintEdgeSelection(BaseModel):
+    constraint_type: Literal['narrow_road', 'traffic_area']
+    segment_uids: list[str] = Field(min_length=1, max_length=500)
+    name: str | None = Field(default=None, max_length=255)
+    highway: str | None = Field(default=None, max_length=100)
+    surface: str | None = Field(default=None, max_length=100)
+    maxspeed: str | None = Field(default=None, max_length=50)
+    narrow_severity: Literal['slight', 'severe'] | None = None
+    traffic_schedule: TrafficSchedule | None = None
+
+    @model_validator(mode='after')
+    def validate_details(self):
+        if self.constraint_type == 'narrow_road':
+            if self.narrow_severity is None or self.traffic_schedule is not None:
+                raise ValueError('Choose Slight or Severe for a narrow road; traffic schedules do not apply.')
+        elif self.traffic_schedule is None or self.narrow_severity is not None:
+            raise ValueError('A traffic constraint requires a schedule and cannot have narrow severity.')
+        return self
+
+
+class BaselineConstraintOverride(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    segment_uid: str = Field(min_length=1, max_length=255)
+    name: str | None = Field(default=None, max_length=255)
+    constraint_type: BASELINE_CONSTRAINT_TYPES
+    narrow_severity: Literal['slight', 'severe'] | None = None
+    traffic_schedule: TrafficSchedule | None = None
+
+    @model_validator(mode='after')
+    def validate_details(self):
+        if self.constraint_type == 'narrow_road':
+            if self.traffic_schedule is not None:
+                raise ValueError('Traffic schedules do not apply to narrow roads.')
+        elif self.constraint_type.startswith('traffic'):
+            if self.narrow_severity is not None:
+                raise ValueError('Narrow severity does not apply to traffic constraints.')
+        elif self.narrow_severity is not None or self.traffic_schedule is not None:
+            raise ValueError('Severity and schedules do not apply to this road type.')
+        return self
 
 
 class LoginRequest(BaseModel):
@@ -231,10 +312,10 @@ class SelectRouteBody(BaseModel):
 class LocationUpdateBody(BaseModel):
     accuracy_m: float | None = Field(None, ge=0, allow_inf_nan=False)
     sample_id: str | None = Field(None, max_length=80)
-    latitude:    float
-    longitude:   float
+    latitude:    float = Field(ge=-90, le=90, allow_inf_nan=False)
+    longitude:   float = Field(ge=-180, le=180, allow_inf_nan=False)
     recorded_at: str          # ISO 8601 from device clock
-    dispatch_id: int
+    dispatch_id: int | None = None
     battery:     int | None = None
 
 
@@ -252,8 +333,13 @@ class TruckManningBody(BaseModel):
     manning: bool
 
 
+class ClearanceBody(BaseModel):
+    occurred_at: datetime
+    idempotency_key: str = Field(min_length=8, max_length=100)
+
+
 class OperationalMilestoneBody(BaseModel):
-    kind: Literal['receipt', 'departure', 'arrival', 'suppression_start', 'fire_out', 'classification']
+    kind: Literal['receipt', 'departure', 'arrival', 'suppression_start', 'fire_out', 'classification', 'operation_complete']
     occurred_at: datetime
     dispatch_truck_id: int | None = None
     response_kind: Literal['fire', 'medical', 'rescue', 'other'] | None = None

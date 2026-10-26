@@ -12,6 +12,16 @@ const point = { fire_id: 1, lat: 7.3, lng: 125.6, occurred_at: '2026-10-18T17:00
 afterEach(() => { document.body.innerHTML = ''; vi.restoreAllMocks() })
 
 describe('individual heatmap incidents', () => {
+  it('labels representative coordinates, date-only history, and assumed alarms', () => {
+    const card = heatmapIncidentDetails([{ ...point, occurrence_precision: 'date_only', alarm_basis: 'synthetic_demo',
+      location_specification: { label: 'Barangay representative pin', specification: 'Inside the named barangay; exact property unknown.' } }])
+    expect(card.textContent).toContain('Barangay representative pin')
+    expect(card.textContent).toContain('exact property unknown')
+    expect(card.textContent).toContain('7.300000, 125.600000')
+    expect(card.textContent).toContain('time not recorded')
+    expect(card.textContent).toContain('3rd Alarm (showcase assumption)')
+    expect(card.querySelector('.heatmap-incident-date').textContent).not.toMatch(/AM|PM/)
+  })
   it('keeps duplicate coordinates together and renders details as text', () => {
     const second = { ...point, fire_id: 2, incident: { ...point.incident, id: 'INC-2026-002' } }
     const groups = groupHeatmapIncidents([point, second, { ...point, lng: 125.61 }])

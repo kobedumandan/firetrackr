@@ -9,6 +9,47 @@ navigation and execution reference, not a second set of competing instructions.
 
 ## Context and navigation
 
+The separate personnel movement simulator lives beside this checkout. Start it
+from the master workspace with `& .\firetrackr_personnel_simulator\start.ps1`, then
+open `http://localhost:5180` and sign in using mobile personnel credentials. See
+the [simulator guide](../firetrackr_personnel_simulator/README.md). It submits real
+mobile location/action requests to the configured backend; it needs no native app.
+
+Route selection remains available offline. Switching after departure uses fresh
+driver GPS when available; otherwise it selects the saved route. First/returning
+manning-driver GPS automatically refreshes planning from driver to incident even
+without deviation. Explicit forced planning can use the station while offline.
+Route replacements are broadcast to clients. `POST /api/dispatch/{id}/navigation-refresh`
+is personnel-only for the assigned manning driver; Response Lab uses it to connect
+a revised route to its current position without teleporting. Restart the API and
+simulator server after this update. Moving-route integration checks use
+`tools/simulation/run.py --skip-unit --acceptance-script tools/simulation/moving_routes.mjs`.
+
+Non-manning personnel have a separate approach via
+`POST /api/dispatch/{id}/personnel-navigation`. It uses the authenticated member's
+fresh accepted location and preserves the truck's selected routes. Branch state
+is attributed per personnel in the existing connector JSON, and the dashboard
+draws branch updates from WebSocket events or the location poll. Mobile status
+includes the caller's last accepted `location` and optional `personnel_route_wkt`;
+Response Lab resumes an active dispatch at its accepted fix when available.
+
+Arrival now separates personnel from vehicle arrival. The existing `/arrived`
+action records the caller's `personnel_status`/`personnel_arrived_at`; only a
+confirmed manning driver also marks its truck on scene. Other members keep
+moving and keep their own tracking cadence until they arrive. Restart the API
+and reload Response Lab/native screens to load this behavior. Isolated arrival
+checks use `tools/simulation/run.py --skip-unit --acceptance-script tools/simulation/personnel_arrival.mjs`.
+
+Unattended local acceptance run from this repository:
+
+```powershell
+& .\backend\venv\Scripts\python.exe tools/simulation/run.py
+```
+
+See [unattended simulation](documentation/unattended-simulation.md). This creates
+and removes its own local PostGIS database; native phone UI remains outside its
+coverage. Reports are saved under the ignored `.simulation-results/` directory.
+
 The React/Vite dashboard coordinates BFP Panabo incident response through FastAPI
 and PostgreSQL/PostGIS. A separate personnel mobile app consumes backend APIs.
 Routing loads a digitized road graph and precomputed constraints; ALT performs
@@ -22,9 +63,11 @@ Contracts live in [schemas.py](backend/schemas.py) and
 Operational response measurements live in
 [operational_times.py](backend/services/operational_times.py), behind the
 [administrator API](backend/routers/operational_times.py); its view is
-[OperationalTimePage.jsx](frontend/src/pages/OperationalTimePage.jsx). Apply migrations
-through `0028` before starting this revision. The Analysis sidebar page groups
-Response Performance, Operational Times and Coverage Planning under shared tabs;
+[ResponsePerformanceView.jsx](frontend/src/components/ResponsePerformanceView.jsx),
+with incident lifecycle cohorts in `backend/services/response_operations.py` and
+shared timing quality rules in `backend/services/timing_metrics.py`. Apply migrations
+through `0031` before starting this revision. The Analysis sidebar page groups
+Response & Operations, Coverage Planning and Operational Reports under shared tabs;
 Metrics contains the overview only. See `frontend/src/pages/AnalysisPage.jsx`;
 Response Performance's service is `backend/services/response_performance.py`. Mobile acknowledgement
 and departure use `PATCH /api/dispatch/{id}/acknowledge` and `/depart`.
@@ -116,11 +159,16 @@ Configuration and default values are catalogued in [KNOWLEDGE.md](KNOWLEDGE.md).
 
 ## Database and migration work
 
-The current chain ends at `0028_response_performance.py`. Original constraint/model
+The current chain ends at `0030_baseline_constraint_overrides.py`. Original constraint/model
 revisions `0025`/`0026` are retained; new `0027` adds operational timing. Do not use
 the earlier response-only review database, whose numeric revision IDs represent
 different migrations. Add a new migration for
 schema changes and review generated output; do not rewrite deployed history.
+The earlier feature branch reused IDs `0025`/`0026` for operational timing.
+Its files are preserved outside the active graph in
+[legacy_versions](backend/alembic/legacy_versions/README.md). Existing databases
+on that feature history require reviewed schema reconciliation, not a blind
+upgrade or stamp; Alembic rejects the ambiguous legacy state before migrating.
 From `backend/`, the standard Alembic generation command is:
 
 ```powershell
@@ -157,6 +205,15 @@ retrains, list versions, return status/reports and reject candidates. Migration
 promotion/rollback and the admin Settings Model tab are implemented; Lightning
 and scheduling remain pending. The tab includes live job state, audit/uncertainty,
 map preview, rejection, confirmations, rollback and version history.
+Modal is an optional online runner with the same registry/review/promotion gates.
+Install `backend/requirements-modal.txt` in the backend environment, authenticate
+with `python -m modal setup`, then run
+`python -m modal deploy -m training.modal_app --env main` from the repository root.
+Set `RETRAIN_RUNNER=modal` in the backend environment and restart. Defaults are
+the `firetrackr-training` app, `firetrackr-training-jobs` volume and `main` Modal
+environment. T4 training uses a pinned image and has a one-hour limit; no schedule
+or training starts at boot/deploy. See [training setup](training/README.md#modal-online-training)
+for profile access, optional CPU deployment, job recovery and verification limits.
 The CPU port matches original notebook CPU weights exactly. User-reported T4
 CUDA schema-2 confirmation passes: historical F1 and class/map decisions match
 exactly, and numerical differences are within absolute 1e-6. This is user-provided
@@ -172,7 +229,39 @@ Snapshot writes require `pyarrow` from the updated backend requirements. Migrati
 order and runner configuration; use an intended test DB for deployment checks.
 
 Constraints view: use GAT constraints ? Edit constraints to enter the left-side
-layer editor. Incident View, Incidents navigation and map actions hide until Done.
+layer editor. Incident View and map actions hide until Done. Main sidebar links and
+the section divider remain visible; page navigation exits constraint editing.
 The list supports search, barangay/source filters, geographic/name sorting, focus
-and local visibility. Baseline/model layers are read-only; saved drawings can be
-edited/deleted. Saving keeps failed drafts and reports routing refresh status.
+and local visibility. Choose Narrow road or Traffic, then click QGIS road edges
+between connected junctions (zoom 16+). Narrow edges use neon orange and traffic
+edges use neon yellow. Click a selected edge again to deselect it.
+Confirm and save the current type before choosing another type, or cancel the
+selection. Recently saved edges sorts newest first; clicking a row reveals and
+focuses its location. Freehand drawing is removed from the editor. Baseline/model
+layers can be edited through saved overrides; saved constraints can be edited or removed. Failed saves retain
+the selection. The admin APIs are GET `/api/constraints/road-edges` and POST
+`/api/constraints/edge-selection`; the server validates IDs and saves each batch
+atomically using canonical road geometry, with retry deduplication.
+
+The save dialog chooses Slight/Severe for new narrow annotations. Traffic saves
+use the existing name field as an optional label, plus Every day/selected weekdays
+and All day/up to eight non-overlapping time ranges. Overnight windows belong to
+their starting weekday. Exact windows are evaluated in Asia/Manila, start included
+and end excluded, on new route requests. Outside the schedule the admin traffic
+penalty is absent; the edge stays visible in the editor. Different constraints on
+the same saved edge return 409; select the existing annotation and choose Edit
+constraint to update it. The edit dialog prefills its name, type, severity and
+schedule and calls PATCH `/api/constraints/{id}`. It retains the saved edge's ID
+and geometry, keeps the row selected after save, and preserves form values on
+failure. The popup Edit Constraint action opens this form for saved annotations.
+Baseline/model popup actions open an editable form as well. POST
+`/api/constraints/baseline-override` saves canonical model-segment corrections;
+0030 adds a nullable target ID and the unique active-override guard. The form also
+supports construction, No constraint and preserved traffic subtypes. Restore
+original removes the saved edit and reveals the current model layer. Training
+replaces old flags for changed baseline conditions; name/timing edits preserve
+the original labels. Original model files stay immutable.
+Revision 0029 adds nullable `narrow_severity` and `traffic_schedule`. Legacy NULL
+values retain prior behavior. On the configured legacy database, the fields were
+applied additively with a backup and original-value verification; the legacy
+Alembic stamp remains unchanged. Do not blindly stamp/upgrade that database.

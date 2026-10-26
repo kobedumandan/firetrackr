@@ -379,7 +379,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
   const shiftedPersonnel = useMemo(
     () =>
       personnel.map((p) =>
-        isOnCurrentShift(p.shift_name) ? p : { ...p, status: "offduty" }
+        (p.on_duty ?? isOnCurrentShift(p.shift_name)) ? p : { ...p, status: "offduty" }
       ),
     [personnel]
   );

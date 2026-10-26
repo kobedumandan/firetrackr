@@ -17,6 +17,7 @@ export function createRoadHover() {
     }
     const nextKey = JSON.stringify([road.hoverLabel, road.hoverLocation, road.hoverMeta, road.title])
     if (contentKey !== nextKey) {
+      bubble.style.setProperty('--constraint-color', road.color || '#c47800')
       const heading = document.createElement('div')
       heading.className = 'command-road-tooltip-label'
       heading.textContent = road.hoverLabel || road.title
