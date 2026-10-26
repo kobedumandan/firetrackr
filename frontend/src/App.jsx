@@ -384,13 +384,14 @@ export default function App() {
         if (e.data === 'pong') return
         try {
           const msg = JSON.parse(e.data)
-          if (['model_candidate_ready', 'model_training_failed', 'model_promoted'].includes(msg.type)) {
+          if (['model_candidate_ready', 'model_training_failed', 'model_training_cancelled', 'model_promoted'].includes(msg.type)) {
             if (msg.type === 'model_promoted') invalidateModelRouting()
             notifyModelUpdate()
             if (route.user?.role === 'admin') {
               pushNotif('modelUpdates', {
                 title: msg.type === 'model_candidate_ready' ? `${msg.data.version} is ready for review`
-                  : msg.type === 'model_promoted' ? `${msg.data.version} is now active` : `${msg.data.version} training failed`,
+                  : msg.type === 'model_promoted' ? `${msg.data.version} is now active`
+                    : msg.type === 'model_training_cancelled' ? `${msg.data.version} training cancelled` : `${msg.data.version} training failed`,
                 body: 'Open Settings → Model to review the current status.',
               })
             }

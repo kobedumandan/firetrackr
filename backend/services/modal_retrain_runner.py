@@ -168,3 +168,20 @@ class ModalRunner:
         except (ConnectionError, TimeoutError, ClientError, StreamTerminatedError) as exc:
             raise RunnerUnavailable("Modal artifact download temporarily unavailable") from exc
         return destination
+
+    def cancel(self, job_id):
+        """Cancel the saved call, terminating its container and training child."""
+        status = self.status(job_id)
+        if status["state"] in ("succeeded", "failed", "cancelled"):
+            return status
+        directory = self._directory(job_id)
+        job = read_json(directory / "job.json")
+        if not job.get("call_id"):
+            raise RunnerUnavailable("Training call identity is not available yet; retry cancellation shortly")
+        try:
+            self.modal.FunctionCall.from_id(job["call_id"]).cancel(terminate_containers=True)
+        except (self.modal.exception.Error, ConnectionError, OSError, ClientError, StreamTerminatedError) as exc:
+            raise RunnerUnavailable("Modal cancellation could not be confirmed; retry shortly") from exc
+        status = {"job_id": job_id, "state": "cancelled", "updated_at": datetime.now(timezone.utc).isoformat()}
+        self._write(directory / "status.json", status)
+        return status

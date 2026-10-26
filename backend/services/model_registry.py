@@ -57,10 +57,13 @@ def get_version(db, version):
 
 
 def serialize_version(row):
-    return {key: getattr(row, key) for key in (
+    payload = {key: getattr(row, key) for key in (
         "version", "status", "label_hash", "split_version", "threshold", "metrics",
         "job_id", "champion_version", "error", "created_by", "created_at", "updated_at",
         "promoted_by", "promoted_at", "rejected_by", "rejected_at")}
+    payload["cancel_requested"] = bool((row.report or {}).get("cancel_requested_at")) and row.status == "training"
+    payload["job_status"] = (row.report or {}).get("job_status")
+    return payload
 
 
 def registry_summary(db):
@@ -228,6 +231,28 @@ def reject_version(db, version, actor):
     return row
 
 
+def cancel_retrain(db, version, actor):
+    """Keep the training reservation until the runner acknowledges termination."""
+    registry_lock(db)
+    row = get_version(db, version)
+    if (row.report or {}).get("job_status") == "cancelled":
+        return row
+    if row.status != "training":
+        raise RegistryError("Only an ongoing retrain can be cancelled")
+    if (row.report or {}).get("cancel_requested_at"):
+        return row
+    try:
+        retrain_runner(row.job_id).cancel(row.job_id)
+    except KeyError as exc:
+        raise RegistryError("Training is still starting; retry cancellation shortly") from exc
+    except RunnerUnavailable as exc:
+        raise RegistryError(str(exc), 503) from exc
+    row.report = {**(row.report or {}), "cancel_requested_at": datetime.now(timezone.utc).isoformat(),
+                  "cancel_requested_by": actor}
+    db.commit()
+    return row
+
+
 def _complete_job(db, row, runner):
     try:
         status = runner.status(row.job_id)
@@ -238,6 +263,15 @@ def _complete_job(db, row, runner):
         status = {"state": "failed", "error": "Reserved job never reached the retrain runner; retry with a new retrain."}
     if status["state"] in ("queued", "running"):
         return None
+    if status["state"] == "cancelled" or (row.report or {}).get("cancel_requested_at"):
+        # Existing registry statuses remain compatible: a stopped retrain is a
+        # rejected version with an explicit cancellation outcome in its report.
+        row.status = "rejected"
+        row.report = {**(row.report or {}), "schema_version": 1, "job_status": "cancelled"}
+        row.rejected_by = row.report.get("cancel_requested_by")
+        row.rejected_at = datetime.now(timezone.utc)
+        row.error = None
+        return {"type": "model_training_cancelled", "data": {"version": row.version}}
     if status["state"] != "succeeded":
         row.status = "failed"
         row.error = str(status.get("error", "Retrain failed"))[:2000]

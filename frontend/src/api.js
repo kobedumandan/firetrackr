@@ -759,6 +759,7 @@ export const fetchModelReport = (version, signal) => modelRequest(`/${encodeURIC
 export const fetchModelPreview = (version, signal) => modelRequest(`/${encodeURIComponent(version)}/preview`, { signal })
 export const initializeModels = () => modelRequest('/initialize', { method: 'POST' })
 export const retrainModel = () => modelRequest('/retrain', { method: 'POST' })
+export const cancelModelRetrain = (version) => modelRequest(`/${encodeURIComponent(version)}/cancel`, { method: 'POST' })
 export const rejectModel = (version) => modelRequest(`/${encodeURIComponent(version)}/reject`, { method: 'POST' })
 export async function promoteModel(version, expectedChampion) {
   const result = await modelRequest(`/${encodeURIComponent(version)}/promote`, {

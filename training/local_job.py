@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import traceback
+import time
 
 
 def run(directory):
@@ -19,7 +20,11 @@ def run(directory):
         pending.write_text(json.dumps(payload), encoding="utf-8")
         os.replace(pending, directory / "status.json")
     status("running")
+    process = None
     try:
+        if (directory / "cancel.requested").exists():
+            status("cancelled")
+            return
         command = [sys.executable, "-u", "-m", "training.train_constraints"]
         for key in ("snapshot", "champion", "out", "style"):
             command.extend(["--" + key, config[key]])
@@ -27,12 +32,33 @@ def run(directory):
             command.extend(["--" + key, str(value)])
         if config.get("version"):
             command.extend(["--version", config["version"]])
-        subprocess.run(command, check=True, timeout=config["timeout_seconds"], stdout=sys.stdout, stderr=subprocess.STDOUT,
-                       creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        process = subprocess.Popen(command, stdout=sys.stdout, stderr=subprocess.STDOUT,
+                                   creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        deadline = time.monotonic() + config["timeout_seconds"]
+        while True:
+            if (directory / "cancel.requested").exists():
+                process.kill()
+                process.wait()
+                status("cancelled")
+                return
+            try:
+                code = process.wait(timeout=min(0.5, max(0.001, deadline - time.monotonic())))
+                if code:
+                    raise subprocess.CalledProcessError(code, command)
+                break
+            except subprocess.TimeoutExpired:
+                if time.monotonic() >= deadline:
+                    raise
         status("succeeded")
     except subprocess.TimeoutExpired:
+        if process is not None:
+            process.kill()
+            process.wait()
         status("failed", "Local retrain timed out; champion untouched")
     except Exception as exc:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait()
         traceback.print_exc()
         status("failed", str(exc))
     finally:
