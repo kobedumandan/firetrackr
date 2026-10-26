@@ -44,13 +44,14 @@ def confirm_arrival(db, dispatch_id, user):
     inc = db.query(FireIncident).filter_by(fire_id=dispatch.fire_id).with_for_update().one()
     db.refresh(dispatch, with_for_update=True)
     per_id = user.personnel.per_id
-    if not db.query(ResponseTeamMember).filter_by(team_id=dispatch.team_id, per_id=per_id).first():
+    membership = db.query(ResponseTeamMember).filter_by(team_id=dispatch.team_id, per_id=per_id).first()
+    if not membership:
         raise HTTPException(403, 'You are not assigned to this dispatch.')
     if (dispatch.dispatch_status not in ('dispatched', 'en_route', 'on_scene')
             or inc.fire_status in ('closed', 'cancelled', 'canceled', 'recalled') or inc.operation_completed_at):
         raise HTTPException(409, 'This response no longer accepts arrival confirmations.')
 
-    from services.operational_times import audit, record_milestone
+    from services.operational_times import audit, record_milestone, unit_arrival
     now = datetime.now(timezone.utc)
     arrived_at = arrival_for(db, dispatch, per_id)
     repeated = arrived_at is not None
@@ -67,7 +68,9 @@ def confirm_arrival(db, dispatch_id, user):
     vehicle_changed = False
     if units or not dispatch.dispatch_trucks:
         for unit in units:
-            if unit.arrived_at is None:
+            # A sole truck can already have an accepted legacy dispatch-level
+            # arrival. Confirm the person without replacing that vehicle time.
+            if unit_arrival(unit) is None:
                 record_milestone(db, inc, 'arrival', now, user, unit, source='manning_driver_confirmation')
                 vehicle_changed = True
             if unit.truck:
@@ -80,6 +83,8 @@ def confirm_arrival(db, dispatch_id, user):
     return {
         'dispatch_id': dispatch_id, 'fire_id': dispatch.fire_id, 'team_id': dispatch.team_id,
         'team_name': dispatch.team.team_name if dispatch.team else f'Team {dispatch.team_id}',
+        'personnel_name': ' '.join(part for part in (user.personnel.per_firstname, user.personnel.per_lastname) if part),
+        'member_role': membership.member_role,
         'per_id': per_id, 'personnel_status': 'on_scene', 'personnel_arrived_at': arrived_at.isoformat(),
         'dispatch_status': dispatch.dispatch_status,
         'dispatch_arrived_at': dispatch.dispatch_arrived_at.isoformat() if dispatch.dispatch_arrived_at else None,
