@@ -55,7 +55,7 @@ const PERIODS = [
   { key: "year", label: "This Year" },
 ];
 
-export default function IncidentsPage({ onShowOnMap, initialIncident = null }) {
+export default function IncidentsPage({ onShowOnMap, initialIncident = null, theme = "dark" }) {
   const [incidents, setIncidents] = useState([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({
@@ -278,6 +278,7 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null }) {
       <>
         <IncidentDetailsPage
           incident={detailsView}
+          theme={theme}
           onBack={() => setDetailsIncident(null)}
           onEdit={setEditingIncident}
           onDelete={setDeletingIncident}

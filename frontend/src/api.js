@@ -22,6 +22,7 @@ export function fetchOperationalTimes(period, page = 1, source = 'recorded', kin
   return operationalCache.get(`${localStorage.getItem('bfp_token')}:${period}:${page}:${source}:${kind}`, () => operationalRequest(`?period=${period}&page=${page}&source=${source}${kind === 'all' ? '' : `&kind=${kind}`}`))
 }
 export function fetchOperationalDetail(fireId) { return operationalRequest(`/${fireId}`) }
+export function fetchResponderTracks(fireId, signal) { return operationalRequest(`/${fireId}/responder-tracks`, { signal }) }
 async function performanceRequest(path, query, signal) {
   const res = await apiFetch(`/api/metrics/response-performance${path}?${query}`, { signal })
   if (!res.ok) throw new Error(await _detail(res, `Response analysis unavailable (${res.status})`))

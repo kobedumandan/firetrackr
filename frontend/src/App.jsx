@@ -895,6 +895,7 @@ export default function App() {
         <AnalysisPage theme={theme} tab={analysisTab} onTabChange={setAnalysisTab} onOpenIncident={incident => { setReviewIncident(incident); setActiveNav('Incidents') }} />
       ) : activeNav === 'Incidents' ? (
         <IncidentsPage
+          theme={theme}
           initialIncident={reviewIncident}
           onShowOnMap={(inc) => {
             setActiveNav('Command')

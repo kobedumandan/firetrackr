@@ -94,7 +94,7 @@ def record_milestone(db, inc, kind, at, user, unit=None, key=None, response_kind
     if kind == "classification":
         if not response_kind:
             raise HTTPException(422, "Select a response classification.")
-        return audit(db, inc, "op_classification", at, user, source=source, key=key, metadata={"submission": signature})
+        return audit(db, inc, "op_classification", at, user, source=source, key=key, metadata={**(metadata or {}), "submission": signature})
     if inc.operation_completed_at is not None and kind != 'operation_complete':
         raise HTTPException(409, 'This operation is complete; preserve its verified timeline.')
     field = {"receipt": "report_received_at", "departure": "departed_at", "arrival": "arrived_at",
@@ -356,6 +356,7 @@ def analytics(db, period, page=1, now=None, source="recorded", kind='all'):
 
 
 def detail(db, inc):
+    from services.report_timing import timeline
     attach_history(db, [inc])
     result = record_dict(inc)
     events = db.query(IncidentEvent).filter_by(fire_id=inc.fire_id).order_by(IncidentEvent.created_at, IncidentEvent.event_id).all()
@@ -364,7 +365,7 @@ def detail(db, inc):
                                    'status': d.dispatch_status, 'cleared_at': iso(d.cleared_at)} for d in inc.dispatches],
                    'operation_completed_at': iso(inc.operation_completed_at),
                    "suppression_started_at": iso(inc.suppression_started_at), "fire_out_at": iso(inc.fire_out_at),
-                   "controlled_at": next((iso(e.occurred_at or e.created_at) for e in events if e.event_type == "status" and e.event_to == "contained"), None),
+                   "controlled_at": timeline(db, inc, events)['controlled_at'],
                    "events": [{"type": e.event_type, "at": iso(e.occurred_at or e.created_at), "received_at": iso(e.created_at),
                                "source": e.source, "verified": e.verified, "actor": e.event_actor, "unit_id": e.dispatch_truck_id}
                               for e in events if e.event_type != "op_routes"], "units": []})
