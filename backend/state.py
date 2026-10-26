@@ -7,7 +7,10 @@ assigned. Objects that are only ever mutated in place (`manager`, the reporter
 session dicts) are safe to import by name.
 """
 import asyncio
+from collections import deque
+from copy import deepcopy
 import logging
+from uuid import uuid4
 
 from fastapi import WebSocket
 
@@ -31,23 +34,61 @@ coverage_cache: "dict | None" = None
 class ConnectionManager:
     def __init__(self):
         self._active: set[WebSocket] = set()
+        self._broadcast_lock = asyncio.Lock()
+        self._notification_stream = uuid4().hex
+        self._notification_sequence = 0
+        self._notification_events = deque(maxlen=1000)
 
-    async def connect(self, ws: WebSocket):
+    @property
+    def notification_cursor(self):
+        return f'{self._notification_stream}:{self._notification_sequence}'
+
+    async def connect(self, ws: WebSocket, *, notifications=False, cursor=None):
         await ws.accept()
-        self._active.add(ws)
+        # Subscribe only after replay. The same lock serializes live delivery,
+        # closing the gap between a history snapshot and the next broadcast.
+        async with self._broadcast_lock:
+            if notifications:
+                previous = -1
+                if cursor:
+                    stream, _, sequence = cursor.partition(':')
+                    if stream == self._notification_stream and sequence.isascii() and sequence.isdigit():
+                        previous = int(sequence)
+                earliest = self._notification_events[0][0] if self._notification_events else self._notification_sequence + 1
+                reset = bool(cursor) and not earliest - 1 <= previous <= self._notification_sequence
+                if cursor:
+                    for sequence, event in self._notification_events:
+                        if reset or sequence > previous:
+                            await ws.send_json({**event, 'replayed': True})
+                await ws.send_json({'type': 'notification_stream', 'data': {
+                    'cursor': self.notification_cursor, 'reset': reset,
+                }})
+            self._active.add(ws)
 
     def disconnect(self, ws: WebSocket):
         self._active.discard(ws)
 
     async def broadcast(self, message: dict):
-        dead: set[WebSocket] = set()
-        for ws in self._active:
-            try:
-                await ws.send_json(message)
-            except Exception:
-                dead.add(ws)
-        self._active -= dead
+        async with self._broadcast_lock:
+            if message.get('type') in NOTIFICATION_EVENTS:
+                self._notification_sequence += 1
+                message = {**deepcopy(message), 'notification_cursor': self.notification_cursor}
+                self._notification_events.append((self._notification_sequence, message))
+            dead: set[WebSocket] = set()
+            for ws in tuple(self._active):
+                try:
+                    await ws.send_json(message)
+                except Exception:
+                    dead.add(ws)
+            self._active -= dead
 
+
+NOTIFICATION_EVENTS = frozenset({
+    'incident_created', 'incident_updated', 'incident_deleted',
+    'personnel_arrived', 'dispatch_arrived', 'dispatch_completed',
+    'report_submitted', 'auto_dispatch_failed', 'model_candidate_ready',
+    'model_training_failed', 'model_training_cancelled', 'model_promoted',
+})
 
 manager = ConnectionManager()
 

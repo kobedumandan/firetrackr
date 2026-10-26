@@ -25,6 +25,8 @@ import { fetchActiveIncidents, fetchPersonnel, fetchStations, fetchDispatches, s
 import { readMapLayerPrefs, MAP_LAYER_STORAGE_KEY } from './utils/mapLayers'
 import useCommandShortcut from './hooks/useCommandShortcut'
 import { replaceDispatchRoutes } from './utils/dispatchRouteUpdates'
+import { isTrackerOffline } from './utils/trackerStatus'
+import { NotificationCursor } from './utils/notificationCursor'
 import './App.css'
 
 const ACTIVE_STATUSES = new Set(['pending', 'active', 'dispatched', 'contained'])
@@ -367,13 +369,58 @@ export default function App() {
     let socket    = null
     let pingId    = null
     let retryId   = null
+    let recoveryTimer = null
+    let connectedOnce = false
+    let dataRevision = 0
+    const notificationCursor = new NotificationCursor()
+
+    async function recoverDashboard(ws, attempt = 0) {
+      const revision = dataRevision
+      const results = await Promise.allSettled([
+        fetchActiveIncidents(), fetchDispatches(), fetchPersonnelLocations(), fetchReporterSessions(),
+      ])
+      if (destroyed || socket !== ws || ws.readyState !== WebSocket.OPEN) return
+      if (revision !== dataRevision) {
+        // A live event overtook this snapshot. Retry rather than overwriting it.
+        if (attempt < 3) recoveryTimer = setTimeout(() => { void recoverDashboard(ws, attempt + 1) }, 300)
+        else pushNotif('connectionRecovery', { title: 'Live updates resumed; status refresh incomplete', body: 'New updates overtook the recovery snapshot. Refresh the dashboard to reload all current data.' })
+        return
+      }
+      const [incidents, dispatchRows, locations, reporters] = results
+      if (incidents.status === 'fulfilled') {
+        const rows = incidents.value
+        incidentSnapRef.current = new Map(rows.map(inc => [inc.fire_id, { alarm: inc.alarm, status: inc.status, loc: inc.loc }]))
+        setActiveIncidents(rows.filter(inc => ACTIVE_STATUSES.has(inc.status)))
+      }
+      if (dispatchRows.status === 'fulfilled') {
+        setDispatches(dispatchRows.value)
+        setDispatchRoutes(_routesFromDispatchRows(dispatchRows.value))
+        setRosterNonce(value => value + 1)
+      }
+      if (locations.status === 'fulfilled') {
+        detectNewlyOffline(locations.value)
+        setLivePersonnelLocations(locations.value)
+      }
+      if (reporters.status === 'fulfilled') setReporterLocations(reporters.value.map(row => ({ token: row.token, coords: row.coords, mobile: row.phone || '' })))
+      if (results.some(result => result.status === 'rejected')) {
+        if (attempt < 2) recoveryTimer = setTimeout(() => { void recoverDashboard(ws, attempt + 1) }, 3000)
+        else pushNotif('connectionRecovery', { title: 'Connection restored; status refresh incomplete', body: 'Some current data could not be loaded. Refresh the dashboard to retry.' })
+      }
+    }
 
     function connect() {
       if (destroyed) return
-      const ws = new WebSocket(`${WS_URL}?token=${token}`)
+      const url = new URL(WS_URL)
+      url.searchParams.set('token', token)
+      url.searchParams.set('notifications', 'true')
+      if (notificationCursor.value) url.searchParams.set('notification_cursor', notificationCursor.value)
+      const reconnect = connectedOnce
+      const ws = new WebSocket(url.href)
       socket = ws
 
       ws.onopen = () => {
+        if (destroyed || socket !== ws) { ws.close(); return }
+        connectedOnce = true
         setHeatmapRevision(value => value + 1)
         pingId = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) ws.send('ping')
@@ -381,9 +428,21 @@ export default function App() {
       }
 
       ws.onmessage = e => {
+        if (destroyed || socket !== ws) return
         if (e.data === 'pong') return
         try {
           const msg = JSON.parse(e.data)
+          if (msg.type === 'notification_stream') {
+            notificationCursor.accept(msg.data.cursor)
+            if (msg.data.reset) pushNotif('connectionRecovery', {
+              title: 'Some alerts from the connection gap are unavailable',
+              body: 'The server restarted or its replay buffer expired. Current incident and crew status is being refreshed.',
+            })
+            if (reconnect || msg.data.reset) void recoverDashboard(ws)
+            return
+          }
+          if (msg.notification_cursor && !notificationCursor.accept(msg.notification_cursor)) return
+          if (/^(incident_|dispatch_|personnel_arrived|report_submitted|route_updated)/.test(msg.type || '')) dataRevision += 1
           if (['model_candidate_ready', 'model_training_failed', 'model_training_cancelled', 'model_promoted'].includes(msg.type)) {
             if (msg.type === 'model_promoted') invalidateModelRouting()
             notifyModelUpdate()
@@ -472,6 +531,19 @@ export default function App() {
             const { per_id, dispatch_id, personnel_arrived_at } = msg.data
             setLivePersonnelLocations(prev => prev.map(row => row.per_id === per_id && row.dispatch_id === dispatch_id
               ? { ...row, personnel_status: 'on_scene', personnel_arrived_at } : row))
+            // A manning driver's shared arrival generates the unit alert below.
+            // Independent arrivals still need an alert, including after the truck.
+            if (!(msg.data.truck_arrived && msg.data.dispatch_transitioned)) {
+              const { fire_id, personnel_name, member_role, team_name } = msg.data
+              const role = (member_role || '').trim().toLowerCase().replaceAll('_', ' ')
+              const who = personnel_name || `Personnel #${per_id}`
+              const loc = incidentSnapRef.current.get(fire_id)?.loc
+              pushNotif('onScene', {
+                title: `${role === 'team leader' ? 'Team leader ' : ''}${who} on scene`,
+                body: [team_name, loc ? `Arrived at ${loc}` : 'Personnel arrival confirmed.'].filter(Boolean).join(' · '),
+                fireId: fire_id,
+              })
+            }
           } else if (msg.type === 'dispatch_arrived') {
             const { fire_id, team_name } = msg.data
             const loc = incidentSnapRef.current.get(fire_id)?.loc
@@ -562,6 +634,7 @@ export default function App() {
 
       ws.onclose = () => {
         clearInterval(pingId)
+        clearTimeout(recoveryTimer)
         if (!destroyed) retryId = setTimeout(connect, 3_000)
       }
 
@@ -579,6 +652,7 @@ export default function App() {
       clearInterval(pingId)
       // Without this a reconnect already in flight would outlive the cleanup.
       clearTimeout(retryId)
+      clearTimeout(recoveryTimer)
       socket?.close()
     }
   }, [route.view]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -606,11 +680,11 @@ export default function App() {
   // just seeds the set: a tracker that went offline before the shift started is
   // not news, and without this every login would open with a burst of alerts.
   function detectNewlyOffline(rows) {
-    const nowStale = new Set(rows.filter(r => r.is_stale).map(r => r.per_id))
+    const nowStale = new Set(rows.filter(isTrackerOffline).map(r => r.per_id))
     const seen = staleSeenRef.current
     if (seen === null) { staleSeenRef.current = nowStale; return }
     rows.forEach(r => {
-      if (r.is_stale && !seen.has(r.per_id)) {
+      if (isTrackerOffline(r) && !seen.has(r.per_id)) {
         pushNotif('deviceOffline', {
           title: `${r.name || `Personnel ${r.per_id}`} tracker offline`,
           body: `No location for ${Math.round(r.age_minutes)} min`,
