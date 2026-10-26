@@ -17,8 +17,96 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### Fire-report operational timing (2026-10-26)
+
+- The assigned team leader can record actual suppression-start and fire-out times
+  while filing the after-action report in the personnel app or Response Lab. Both
+  use Philippine time and preview suppression duration. Fire contained at is fixed
+  to the server timestamp of the containment action and is read-only in both forms.
+  Unknown suppression/fire-out times remain optional; filing time supplies neither.
+- Multipart `POST /api/dispatch/{id}/report` accepts optional `response_kind`,
+  `suppression_started_at`, `controlled_at` and `fire_out_at`. Times require timezone
+  offsets and chronological order. `controlled_at` may only echo the existing
+  containment time; reports cannot add or replace it. Fire out requires a suppression start; existing
+  verified milestones cannot be replaced. Unknown classification requires explicit
+  fire confirmation before fire timing is accepted; non-fire reports remain supported.
+- Report, incident milestones, attributed audit events and closure commit together
+  under the incident lock. The containment status event records its occurrence,
+  receipt, actor and dispatch when the leader confirms containment. Retries keep
+  the original timestamp. Its time takes precedence over legacy report-added
+  `op_fire_control` evidence; that older evidence is a fallback when no containment
+  status event exists. `op_report_timing` keeps the submitted timeline by report ID,
+  and report reads always use the canonical containment time. Existing columns and metadata
+  store this evidence, with no migration. Report reads include `operational_timing`;
+  mobile status supplies the same shape for prefilling. Existing clients may omit it.
+- The dashboard report shows the saved event times and calculated suppression
+  duration; Response Analysis uses the same incident milestones. Missing historical
+  containment times remain unknown rather than being manufactured during reporting.
+
+### Notification recovery and personal alerts (2026-10-26)
+
+- Mobile alert history reads `personnel_status` and the effective personal route
+  (`personnel_route_wkt`, falling back to `route_wkt`). Independent arrivals and
+  approach changes now notify the signed-in person; another unit arriving does
+  not announce that person as arrived. Payloads without the personal status field
+  retain their previous shared-status fallback.
+- Dashboard tracker-offline alerts require tracking eligibility. Off-duty pins
+  remain stale for map display, but intentional duty stops do not generate device
+  fault alerts. Genuine stale on-duty trackers still notify.
+- The dashboard opts into `/ws?notifications=true` and retains its last
+  `notification_cursor` for the current login. Replay checks current administrator
+  access and token revocation. The server retains the latest 1,000 low-frequency
+  lifecycle/model events in memory, without storing high-frequency GPS samples.
+  Reconnect replays newer events in order, suppresses duplicates, and refreshes
+  incidents, dispatches, locations and reporter pins. Initial connections silently
+  seed the cursor; legacy mobile/lab sockets keep their live protocol.
+- Replay remains process-local, consistent with the one-worker deployment. A
+  restart or expired buffer cannot recover every old event: the dashboard emits
+  a Connection Recovery alert and refreshes current state. The corresponding
+  browser-local preference controls these notices. History does not survive a
+  browser reload or logout; this change does not provide a durable alert archive.
+
+### Complete Response Lab workflow (2026-10-26)
+
+- Reopening an already-arrived responder keeps that person's accepted dispatch
+  location even when stale. It never restarts at a route origin/station; absent
+  a valid accepted fix, synthetic GPS is withheld. Saved arrival and current
+  distance from the incident are displayed separately. Route completion more
+  than 500 m from the incident cannot trigger automatic arrival.
+- Response Lab now offers per-person initial locations selected on an interactive
+  map or entered as coordinates before departure. The selected position survives
+  dispatch and connects through the existing driver/personnel navigation APIs.
+- Manual arrival, leader containment, scene clearance and after-action report
+  filing use the existing mobile endpoints. Report submission supports narrative,
+  cause, casualties, damage estimate, recommendations and optional scene photos;
+  it closes the incident and releases all responding teams. These leader actions
+  remain manual even when automatic travel is enabled.
+- Mobile GPS ingestion locks the incident before inserting dispatch evidence.
+  This prevents the observed foreign-key/incident lock cycle between simultaneous
+  crew GPS and arrival confirmations. Ended dispatches are rechecked after locking.
+- Zero-distance routes whose origin and incident snap to one road node now emit
+  parseable LineString WKT with repeated endpoints, avoiding a PostGIS error when
+  an already-arrived crew sends GPS. Distance and ETA remain zero.
+- Street tiles require internet access; route overlays and coordinate entry remain
+  available if tiles fail. See the sibling simulator's README for startup and
+  disposable-database workflow acceptance commands.
+
 ### Independent personnel and vehicle arrival (2026-10-25)
 
+- Personal arrival confirmation also accepts a sole truck's existing legacy
+  dispatch-level arrival timestamp. It preserves that vehicle evidence rather
+  than trying to overwrite it with the current confirmation time. The caller's
+  personal arrival is still recorded independently and switches tracking cadence.
+- Response Lab no longer swallows arrival conflicts or resubmits forced GPS on
+  every animation tick. A rejected action holds an explicit error for retry while
+  GPS follows its normal cadence; refreshed personal arrival resolves the hold.
+- The dashboard now notifies on `personnel_arrived` as well as truck arrival.
+  Personal arrival events include `personnel_name` and `member_role`, allowing a
+  named leader alert even when the truck is still travelling. Both alert types
+  respect the existing `onScene` preference; a driver's simultaneous personal and
+  truck arrival produces only the unit alert. Previously the new personal event
+  updated map state without creating an alert, which regressed notifications
+  for both Response Lab and native-app arrivals.
 - `PATCH /api/dispatch/{id}/arrived` records the authenticated member's own
   arrival in an attributed, idempotent `op_personnel_arrival` event. Only arrival
   by the confirmed manning driver also records its truck's arrival timestamp
@@ -580,7 +668,24 @@ objects and clears map/style/coverage caches. Other workers poll the committed
 champion; startup loads that version, falling back only for an absent/empty
 registry. The admin Settings Model tab now shows champion/job state, label guards,
 comparison/uncertainty, changed-class map preview, rejection, explicit
-promotion/rollback confirmation and paginated history. Summary/preview endpoints
+promotion/rollback confirmation and paginated history. Retraining also requires
+confirmation. The map preview opens a modal with linked before/after maps, using
+the audit's champion/challenger classes and the selected theme's shared tile
+configuration. Only changed roads are included; the baseline is the candidate's
+original audit comparison, which can differ from a subsequently promoted champion.
+`POST /api/models/{version}/cancel` requires an administrator and requests stopping
+an ongoing retrain. Local wrappers terminate and reap their training child before
+reporting cancellation; Modal cancels the saved call with container termination.
+Unavailable cloud call identities or failed acknowledgements retain the training
+reservation and return an error for retry. A cancellation request keeps the job
+reserved until polling observes a terminal result, and prevents a late completed
+bundle from entering candidate review. Cancelled retrains use the existing
+`rejected` registry status with `report.job_status = cancelled` and attributed
+request metadata; list/status responses add `job_status` and `cancel_requested`.
+The UI labels them Cancelled and handles `model_training_cancelled` notifications.
+No migration is needed. Local jobs must use the updated wrapper to stop promptly;
+an older running wrapper cannot observe the new cancellation marker.
+Summary/preview endpoints
 read annotations/artifacts without training or writes. The shared App WebSocket
 refreshes model state and feeds the Model updates notification preference. Browser
 constraint/coverage caches invalidate on promotion, and stale requests are ignored.
@@ -1130,6 +1235,35 @@ unit/time index. Dispatch deletion cascades the new samples; incident deletion
 explicitly removes associated vehicle logs. Retention currently lasts until
 explicit incident/dispatch deletion; no automatic age purge is configured.
 Agree a deployment retention policy before using production GPS history.
+
+Incident Details and the Response & Operations incident/dispatch drill-downs share
+the recorded responder route viewer. Its administrator-only
+`GET /api/operational-times/{fire_id}/responder-tracks` endpoint reads explicit
+dispatch/personnel associations, orders device timestamps, and clips samples to
+the dispatch's recorded assignment/completion window. It preserves the assignment
+roster's names/roles and shows members with no saved locations; legacy dispatches
+without a roster list only people with attributed samples. Current team membership
+and unattributed historical location logs never manufacture personal histories.
+Generated plans are optional dashed overlays, separate from the coloured personal
+GPS paths. Vehicle GPS and preserved generated-route revisions remain expandable
+context in analysis. Active dispatch locations refresh every ten seconds.
+The Response Analysis modal uses a left-side roster of member toggle buttons:
+selecting a member focuses their attributed GPS route and recording metrics;
+selecting them again restores all members in the selected team scope. Team buttons
+also refine the roster. Personal metrics show the GPS recording window, usable
+sample count, displayed segments and excluded fixes, rather than inferred travel
+or arrival. Selecting a member switches the separate vehicle timing section to
+their dispatch. Incident first-arrival and overall-operation summaries remain
+incident-wide. The modal follows the shared header/footer and both dashboard
+themes; narrow screens show a horizontally scrollable member row above the map.
+Gaps over 120 seconds, coordinates outside valid ranges, accuracy worse than 35 m,
+and jumps over 200 km/h break the displayed line; points with unknown accuracy
+remain explicitly labelled. Long traces retain gap boundaries and endpoints while
+limiting display to 1,500 points per person/dispatch. These lines connect observed
+fixes and do not establish the exact road taken between samples. No schema or
+location-collection change is required; existing migration `0028` supplies the
+dispatch-attributed samples. Historical GPS that was never recorded cannot be
+reconstructed from generated routes.
 
 Local checks use a new disposable PostGIS cluster on a separate port, without the
 configured application database or its .env. Coverage includes migration upgrade

@@ -9,6 +9,12 @@ navigation and execution reference, not a second set of competing instructions.
 
 ## Context and navigation
 
+Notification regression checks use
+`tools/simulation/run.py --skip-unit --acceptance-script ../firetrackr_personnel_simulator/tests/notification-regressions.mjs`.
+Restart the backend and reload the dashboard to enable cursor-based WebSocket
+notification recovery. Replay retains 1,000 events per server process; a restart
+or expired buffer produces a recovery notice rather than claiming complete history.
+
 The separate personnel movement simulator lives beside this checkout. Start it
 from the master workspace with `& .\firetrackr_personnel_simulator\start.ps1`, then
 open `http://localhost:5180` and sign in using mobile personnel credentials. See
@@ -204,7 +210,12 @@ retrains, list versions, return status/reports and reject candidates. Migration
 `0026` adds durable history and unique training/champion guards. Immediate
 promotion/rollback and the admin Settings Model tab are implemented; Lightning
 and scheduling remain pending. The tab includes live job state, audit/uncertainty,
-map preview, rejection, confirmations, rollback and version history.
+linked before/after map preview with theme-based tiles, rejection, confirmations,
+rollback and version history. `POST /api/models/{version}/cancel` requests stopping
+an ongoing retrain; the registry keeps its training reservation until the runner
+reports a terminal result. Cancelled jobs remain in history, with the active
+champion unchanged. See KNOWLEDGE.md for cancellation metadata and local-wrapper
+compatibility.
 Modal is an optional online runner with the same registry/review/promotion gates.
 Install `backend/requirements-modal.txt` in the backend environment, authenticate
 with `python -m modal setup`, then run
