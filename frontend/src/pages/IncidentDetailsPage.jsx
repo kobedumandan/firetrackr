@@ -15,6 +15,8 @@ import {
   formatReported,
 } from "../components/incidentUi";
 import { fetchIncidentReport, fetchDispatches } from "../api";
+import ResponderRouteHistory from "../components/ResponderRouteHistory";
+import { dateTime, duration as operationalDuration } from "../utils/operationalTimes";
 
 const STEPS = [
   { key: "pending", label: "Reported" },
@@ -266,6 +268,7 @@ function PhotoViewer({ photos, index, onIndexChange, onClose, caption }) {
  */
 export default function IncidentDetailsPage({
   incident,
+  theme = "dark",
   onBack,
   onEdit,
   onDelete,
@@ -507,6 +510,10 @@ export default function IncidentDetailsPage({
         </DetailsGrid>
       </DetailsSection>
 
+      {fireId != null && <DetailsSection title="Responder Route History">
+        <ResponderRouteHistory key={fireId} fireId={fireId} theme={theme} />
+      </DetailsSection>}
+
       {/* ── Report ───────────────────────────────────────────────────── */}
       {closed && (
         <DetailsSection title="After-Action Report">
@@ -546,6 +553,15 @@ export default function IncidentDetailsPage({
                 <StatTile label="Casualties" value={report.casualties || "—"} />
                 <StatTile label="Damage Estimate" value={report.damage_estimate || "—"} />
               </div>
+
+              {report.operational_timing?.response_kind === 'fire' && <DetailsField label="Fire-operation times · Philippine time">
+                <DetailsGrid min={150}>
+                  <DetailsField label="Suppression started" value={dateTime(report.operational_timing.suppression_started_at)} />
+                  <DetailsField label="Fire contained" value={dateTime(report.operational_timing.controlled_at)} />
+                  <DetailsField label="Fire out" value={dateTime(report.operational_timing.fire_out_at)} />
+                  <DetailsField label="Suppression duration" value={operationalDuration(report.operational_timing.suppression_seconds)} />
+                </DetailsGrid>
+              </DetailsField>}
 
               <DetailsField label="Narrative">
                 <DetailsProse>{report.narrative}</DetailsProse>

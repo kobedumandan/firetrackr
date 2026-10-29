@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from config import _REROUTE_INLINE
 from database import get_db
 from models import (
-    CurrentLocation, DispatchRecord, LocationLog, Personnel, PushToken, ResponseTeamMember,
+    CurrentLocation, DispatchRecord, FireIncident, LocationLog, Personnel, PushToken, ResponseTeamMember,
     Route, Users,
 )
 from schemas import LocationUpdateBody, PushTokenBody, PushTokenRef
@@ -23,6 +23,7 @@ from services.routing import _check_deviation, _recompute_deviation_routing_bg
 from services.tracking_policy import policy as tracking_policy
 from services.personnel_navigation import navigation_for, save_navigation
 from services.personnel_arrival import arrival_for, personnel_status
+from services.report_timing import timeline as report_timeline
 from state import manager
 
 
@@ -198,6 +199,7 @@ def mobile_me_status(
                     "fire_severity":      inc.fire_severity,
                     "fire_structure_type": inc.fire_structure_type,
                     "fire_status":        inc.fire_status,
+                    "operational_timing": report_timeline(db, inc),
                     "fire_incident_datetime": inc.fire_incident_datetime.isoformat() if inc.fire_incident_datetime else None,
                 } if inc else None,
             }
@@ -280,6 +282,15 @@ def location_update(
         raise HTTPException(422, 'Sample must be a recent fix from the current duty period (at most two minutes old), and cannot be in the future.')
     if dispatch and (not dispatch.dispatch_at or recorded_at < dispatch.dispatch_at):
         raise HTTPException(422, 'Sample cannot precede this dispatch.')
+
+    if dispatch:
+        # Match milestone actions: lock the incident before inserting evidence
+        # that takes foreign-key locks on the dispatch/truck. Otherwise concurrent
+        # GPS and arrival can deadlock while telemetry upgrades the incident lock.
+        db.query(FireIncident).filter_by(fire_id=dispatch.fire_id).with_for_update().one()
+        db.refresh(dispatch)
+        if dispatch.dispatch_status not in ('dispatched', 'en_route', 'on_scene'):
+            return {'status': 'dispatch_ended', 'tracking': tracking_policy(db, person, datetime.now(timezone.utc))}
 
     # Atomically deduplicate attributed phone history before any vehicle effects.
     from sqlalchemy.dialects.postgresql import insert

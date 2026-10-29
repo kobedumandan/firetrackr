@@ -311,7 +311,8 @@ def get_incident_report(
     )
     if not report:
         return {"report": None}
-    return {"report": _report_dict(report)}
+    from services.report_timing import report_timeline
+    return {"report": {**_report_dict(report), 'operational_timing': report_timeline(db, report)}}
 
 
 @router.get("/api/incidents/{fire_id}/events")

@@ -58,7 +58,7 @@ class LocalRunner:
                 previous = self.status(previous_id)
             except (KeyError, ValueError):
                 previous = {"state": "unknown"}
-            if previous["state"] not in ("succeeded", "failed"):
+            if previous["state"] not in ("succeeded", "failed", "cancelled"):
                 raise RuntimeError("A local retrain is already active; inspect its persisted status") from exc
             # A finished wrapper can leave a marker after an interrupted cleanup.
             if active.exists() and active.read_text(encoding="utf-8") == previous_id:
@@ -123,3 +123,10 @@ class LocalRunner:
             raise RuntimeError("Job returned no complete bundle")
         shutil.copytree(source, Path(destination), dirs_exist_ok=False)
         return Path(destination)
+
+    def cancel(self, job_id):
+        """Ask the durable wrapper to stop and reap its training subprocess."""
+        status = self.status(job_id)
+        if status["state"] not in ("succeeded", "failed", "cancelled"):
+            (self._directory(job_id) / "cancel.requested").touch(exist_ok=True)
+        return status

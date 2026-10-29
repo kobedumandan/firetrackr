@@ -83,6 +83,11 @@ def reject(version: str, db: Session = Depends(get_db), actor: Users = Depends(r
     return registry.serialize_version(_operation(db, registry.reject_version, version, actor.user_id))
 
 
+@router.post("/api/models/{version}/cancel", status_code=202)
+def cancel_retrain(version: str, db: Session = Depends(get_db), actor: Users = Depends(require_admin)):
+    return registry.serialize_version(_operation(db, registry.cancel_retrain, version, actor.user_id))
+
+
 @router.post("/api/models/{version}/promote")
 async def promote(version: str, body: PromoteRequest, actor: Users = Depends(require_admin)):
     from services.model_promoter import promote_and_reload

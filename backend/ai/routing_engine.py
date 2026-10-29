@@ -1036,6 +1036,8 @@ class GeoAIRoutingEngine:
             (self.graph.G.nodes[n]["lon"], self.graph.G.nodes[n]["lat"])
             for n in route_nodes
         ]
+        if len(coords) == 1:
+            coords *= 2  # A zero-distance response still needs parseable LineString WKT.
         wkt = "LINESTRING(" + ", ".join(f"{lon} {lat}" for lon, lat in coords) + ")"
 
         elapsed = (time.perf_counter() - t0) * 1000
@@ -1131,6 +1133,8 @@ class GeoAIRoutingEngine:
                 for i in range(len(coords) - 1)
             ))
             avg_score = float(np.mean([node_scores_map.get(n, 0.5) for n in route_nodes]))
+            if len(coords) == 1:
+                coords *= 2  # Source and incident may snap to the same road node.
             return {
                 "route_nodes":           route_nodes,
                 "eta_seconds":           round(float(sum(times.values()))),

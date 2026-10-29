@@ -7,6 +7,7 @@ import PerformanceIcon from './AnalysisIcon'
 import { fetchResponsePerformance, fetchResponseDispatches, fetchResponseDispatch, exportResponsePerformance, fetchResponseOperations, fetchResponseIncidents, exportResponseIncidents } from '../api'
 import { STAGES, dateTime, duration, parseRouteWkt } from '../utils/operationalTimes'
 import ResponseAnalysisModal from './ResponseAnalysisModal'
+import ResponderRouteHistory from './ResponderRouteHistory'
 import OperationalTrendChart from './OperationalTrendChart'
 import { MAP_CENTER, tileLayersFor } from '../data/mapConfig'
 import '../styles/ResponsePerformance.css'
@@ -109,6 +110,7 @@ function DispatchDetail({ id, theme, onClose, onOpenIncident }) {
   const [result, setResult] = useState(null)
   const [revisionId, setRevisionId] = useState('')
   const [retry, setRetry] = useState(0)
+  const [showPlans, setShowPlans] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
     fetchResponseDispatch(id, controller.signal).then(data => setResult({ data }), err => { if (err.name !== 'AbortError') setResult({ error: err.message }) })
@@ -128,10 +130,13 @@ function DispatchDetail({ id, theme, onClose, onOpenIncident }) {
       <dl>{[['Report received', data.report_received_at], ['Dispatched', data.dispatch_at], ['Acknowledged', data.acknowledged_at], ['Departed', data.departed_at], ['Arrived', data.arrived_at]].map(([label, at]) => <div key={label}><dt>{label}</dt><dd>{dateTime(at)}</dd></div>)}</dl>
       <p>Acknowledgement actor: {data.acknowledged_by || 'Unknown'} · Departure actor: {data.departed_by || 'Unknown'}. Mobile action times reflect server receipt.</p>
       <div className="rp-scroll"><table><thead><tr><th>Measure</th><th>Duration</th><th>Data quality</th></tr></thead><tbody>{Object.entries(MEASURES).map(([key, label]) => <tr key={key}><td>{label}</td><td>{duration(data.metrics[key].seconds)}</td><td>{data.metrics[key].reason?.replaceAll('_', ' ') || 'Valid'}</td></tr>)}</tbody></table></div>
+      <ResponderRouteHistory fireId={data.fire_id} initialDispatchId={id} theme={theme} />
+      <details className="rt-vehicle-context" open={showPlans} onToggle={e => setShowPlans(e.currentTarget.open)}><summary>Generated route history</summary>
       <label>Planned route revision <select value={revision?.id || ''} onChange={e => setRevisionId(e.target.value)}>{data.route_revisions.map(r => <option value={r.id} key={r.id}>{dateTime(r.at)} · {r.selection_reason || 'Selection'}</option>)}</select></label>
       <p>Saved planned ETA: {duration(selected?.eta_seconds)} · Distance: {selected?.distance_meters == null ? 'Unknown' : `${(selected.distance_meters / 1000).toFixed(2)} km`} · Origin: {selected?.origin_source || 'Unknown'}. Planned geometry does not establish the route driven.</p>
       {!revision && <p>No preserved route revision exists for this legacy dispatch.</p>}
-      <div className="rp-map"><MapContainer center={MAP_CENTER} zoom={12} style={{ height: '100%' }}>{tileLayersFor(theme === 'light' ? 'street' : 'dark').map(layer => <TileLayer key={layer.url} {...layer} />)}<FitRoute points={points} />{route.length > 1 && <Polyline positions={route} pathOptions={{ color: '#ff6c3b' }} />}{data.incident.location && <CircleMarker center={data.incident.location}><Tooltip>Incident</Tooltip></CircleMarker>}</MapContainer></div>
+      {showPlans && <div className="rp-map"><MapContainer center={MAP_CENTER} zoom={12} style={{ height: '100%' }}>{tileLayersFor(theme === 'light' ? 'street' : 'dark').map(layer => <TileLayer key={layer.url} {...layer} />)}<FitRoute points={points} />{route.length > 1 && <Polyline positions={route} pathOptions={{ color: '#ff6c3b' }} />}{data.incident.location && <CircleMarker center={data.incident.location}><Tooltip>Incident</Tooltip></CircleMarker>}</MapContainer></div>}
+      </details>
     </div>}
   </AppModal>
 }

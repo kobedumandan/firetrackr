@@ -1,13 +1,13 @@
 import ConfirmModal from "./ConfirmModal";
 
 /* Sign-out confirmation, shared by the top bar and Settings → Session. */
-export default function SignOutModal({ user, onConfirm, onClose }) {
+export default function SignOutModal({ user, onConfirm, onClose, eyebrow = "SESSION" }) {
   const name = user?.first_name
     ? `${user.first_name} ${user.last_name ?? ""}`.trim()
     : null;
   return (
     <ConfirmModal
-      eyebrow="SESSION"
+      eyebrow={eyebrow}
       icon="logout"
       title="Sign out of FireTrackr?"
       details={[

@@ -105,10 +105,11 @@ const KIND_META = {
   contained:          { Icon: ContainedIcon,   accent: "emerald", label: "Fire Contained",      group: "incidents" },
   resolution:         { Icon: ResolvedIcon,    accent: "green",  label: "Resolved",             group: "incidents" },
   reportFiled:        { Icon: ReportIcon,      accent: "purple", label: "Report Filed",         group: "incidents" },
-  onScene:            { Icon: OnSceneIcon,     accent: "blue",   label: "Unit On Scene",        group: "dispatch" },
+  onScene:            { Icon: OnSceneIcon,     accent: "blue",   label: "On Scene",             group: "dispatch" },
   autoDispatchFailed: { Icon: NoUnitIcon,      accent: "red",    label: "Auto-Dispatch Failed", group: "dispatch" },
   deviceOffline:      { Icon: OfflineIcon,     accent: "slate",  label: "Device Offline",       group: "devices" },
   modelUpdates:       { Icon: ReportIcon,      accent: "blue",   label: "Model Update",         group: "models" },
+  connectionRecovery: { Icon: BellIcon,        accent: "amber",  label: "Connection Recovery",  group: "dispatch" },
 };
 
 export function kindMeta(kind) {

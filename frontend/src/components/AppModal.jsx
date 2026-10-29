@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import '../styles/AppModal.css'
+import '../styles/ConfirmModal.css'
 import { Icon } from './incidentForm'
 import { ICON_CLOSE } from './incidentFormOptions'
 
@@ -15,11 +16,14 @@ import { ICON_CLOSE } from './incidentFormOptions'
  *   dismissible – false while saving or while a nested review step owns Esc;
  *                 blocks both Esc and backdrop clicks
  *   titleId / describedBy – optional stable IDs for accessible dialog context
+ *   variant / icon – use the sign-out confirmation shell with variant="confirmation"
  */
 export default function AppModal({
   eyebrow, title, subtitle, onClose, children, width = 520, className = '', dismissible = true, manageFocus = false,
   titleId: suppliedTitleId, describedBy,
+  variant = 'default', icon,
 }) {
+  const confirmation = variant === 'confirmation'
   const generatedTitleId = useId()
   const titleId = suppliedTitleId || generatedTitleId
   const panelRef = useRef(null)
@@ -54,9 +58,9 @@ export default function AppModal({
   }, [onClose, dismissible])
 
   return createPortal(
-    <div className="apm-overlay" onMouseDown={e => dismissible && e.target === e.currentTarget && onClose()}>
+    <div className={`apm-overlay${confirmation ? ' cfm-overlay' : ''}`} onMouseDown={e => dismissible && e.target === e.currentTarget && onClose()}>
       <div
-        className={`apm-panel apm-shell ${className}`}
+        className={`apm-panel apm-shell${confirmation ? ' cfm-panel' : ''} ${className}`}
         ref={panelRef}
         style={{ width }}
         role="dialog"
@@ -64,7 +68,14 @@ export default function AppModal({
         aria-labelledby={titleId}
         aria-describedby={describedBy}
       >
-        <div className="eim-header">
+        {confirmation ? <div className="cfm-head">
+          {icon && <span className="cfm-badge" aria-hidden="true">{icon}</span>}
+          <div className="cfm-head-text">
+            {eyebrow && <div className="apm-eyebrow">{eyebrow}</div>}
+            <div id={titleId} className="cfm-title">{title}</div>
+            {subtitle && <div className="apm-subtitle">{subtitle}</div>}
+          </div>
+        </div> : <div className="eim-header">
           <div className="eim-header-main">
             {eyebrow && <div className="apm-eyebrow">{eyebrow}</div>}
             <div id={titleId} className="eim-title">{title}</div>
@@ -73,7 +84,7 @@ export default function AppModal({
           <button type="button" className="eim-close" onClick={onClose} aria-label="Close" disabled={!dismissible}>
             <Icon d={ICON_CLOSE} />
           </button>
-        </div>
+        </div>}
         {children}
       </div>
     </div>,

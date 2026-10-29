@@ -18,6 +18,7 @@ export const NOTIF_DEFAULTS = {
   deviceOffline:      true,
   autoDispatchFailed: true,
   modelUpdates:       true,
+  connectionRecovery: true,
   sound:              false,
 }
 

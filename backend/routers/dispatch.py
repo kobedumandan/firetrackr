@@ -4,6 +4,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import (
     APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile,
@@ -468,15 +469,28 @@ async def mark_contained(
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found for this dispatch.")
 
+    inc = db.query(FireIncident).filter_by(fire_id=inc.fire_id).populate_existing().with_for_update().one()
+    db.refresh(dispatch)
+    if inc.fire_status in ('closed', 'cancelled', 'canceled', 'recalled') or inc.operation_completed_at:
+        raise HTTPException(409, 'This incident no longer accepts containment actions.')
+    if dispatch.dispatch_status not in ('dispatched', 'en_route', 'on_scene'):
+        raise HTTPException(409, 'This dispatch is no longer active.')
     before = snapshot(inc)
+    now = datetime.now(timezone.utc)
     inc.fire_status = "contained"
-    record_changes(db, inc, before, user=current_user)
+    for event in record_changes(db, inc, before, user=current_user, at=now):
+        event.occurred_at = now
+        event.source = 'team_leader_action'
+        event.verified = True
+        event.dispatch_id = dispatch.dispatch_id
     db.commit()
     db.refresh(inc)
 
     data = _incident_dict(inc)
     await manager.broadcast({"type": "incident_updated", "data": data})
-    return {"fire_id": inc.fire_id, "fire_status": inc.fire_status}
+    from services.report_timing import timeline
+    return {"fire_id": inc.fire_id, "fire_status": inc.fire_status,
+            "controlled_at": timeline(db, inc)['controlled_at']}
 
 
 @router.post("/api/dispatch/{dispatch_id}/report")
@@ -487,6 +501,10 @@ async def submit_incident_report(
     casualties: str | None = Form(None),
     damage_estimate: str | None = Form(None),
     recommendations: str | None = Form(None),
+    response_kind: Literal['fire', 'medical', 'rescue', 'other'] | None = Form(None),
+    suppression_started_at: datetime | None = Form(None),
+    controlled_at: datetime | None = Form(None),
+    fire_out_at: datetime | None = Form(None),
     photos: list[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     current_user: Users = Depends(get_current_user),
@@ -536,6 +554,8 @@ async def submit_incident_report(
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found for this dispatch.")
 
+    # Serialize reports from multiple leaders and operational confirmations.
+    inc = db.query(FireIncident).filter_by(fire_id=inc.fire_id).populate_existing().with_for_update().one()
     if inc.fire_status == "closed":
         raise HTTPException(status_code=409, detail="This incident is already closed.")
     if inc.fire_status != "contained":
@@ -555,6 +575,12 @@ async def submit_incident_report(
     )
     db.add(report)
     db.flush()  # assign report_id so photo rows / filenames can reference it
+
+    from services.report_timing import record_report_timing
+    operational_timing = record_report_timing(
+        db, inc, current_user, report.report_id, response_kind=response_kind,
+        suppression_started_at=suppression_started_at, controlled_at=controlled_at, fire_out_at=fire_out_at,
+    )
 
     # Persist each photo to disk and record it. Files written here are removed if
     # the request fails before commit, so we never leave orphaned bytes behind.
@@ -631,6 +657,7 @@ async def submit_incident_report(
         "fire_status": inc.fire_status,
         "dispatch_id": dispatch.dispatch_id,
         "dispatch_status": dispatch.dispatch_status,
+        "operational_timing": operational_timing,
         "photos":      [_report_photo_url(p.file_name) for p in report.photos],
     }
 

@@ -30,6 +30,15 @@ def incident_detail(fire_id: int, db: Session = Depends(get_db), _user: Users = 
     return detail(db, inc)
 
 
+@router.get("/{fire_id}/responder-tracks")
+def responder_tracks(fire_id: int, db: Session = Depends(get_db), _user: Users = Depends(require_admin)):
+    from services.responder_tracks import incident_tracks
+    inc = db.get(FireIncident, fire_id)
+    if not inc:
+        raise HTTPException(404, "Incident not found.")
+    return incident_tracks(db, inc)
+
+
 @router.post("/{fire_id}/milestones")
 async def confirm_milestone(fire_id: int, body: OperationalMilestoneBody, db: Session = Depends(get_db),
                             user: Users = Depends(require_admin)):

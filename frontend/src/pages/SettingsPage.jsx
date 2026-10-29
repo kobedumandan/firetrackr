@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useRef, useEffect } from "react";
 import "../styles/SettingsPage.css";
 import { useSessionTimer } from "../hooks/useSessionTimer";
 import SignOutModal from "../components/SignOutModal";
+import SettingsLoading from "../components/SettingsLoading";
 import {
   changePassword,
   fetchCurrentUser,
@@ -140,7 +141,28 @@ const LOGIN_HISTORY_LIMIT = 5;
  * used by anything whose state has somewhere real to live. Omit them and it
  * falls back to local state.
  */
-function Toggle({ on, onChange, defaultOn = false }) {
+function SettingsHeading({ title, children }) {
+  return (
+    <header className="settings-page-heading">
+      <h2 className="settings-section-title">{title}</h2>
+      <p className="section-desc">{children}</p>
+    </header>
+  );
+}
+
+function SettingsBlockHeading({ Icon, title, children }) {
+  return (
+    <div className="block-header">
+      <span className="settings-card-icon" aria-hidden="true"><Icon /></span>
+      <div>
+        <h3 className="block-title">{title}</h3>
+        <p className="block-description">{children}</p>
+      </div>
+    </div>
+  );
+}
+
+function Toggle({ on, onChange, defaultOn = false, label }) {
   const [localOn, setLocalOn] = useState(defaultOn);
   const controlled = on !== undefined;
   const value = controlled ? on : localOn;
@@ -158,6 +180,7 @@ function Toggle({ on, onChange, defaultOn = false }) {
         onClick={toggle}
         role="switch"
         aria-checked={value}
+        aria-label={label}
       >
         <div className="toggle-knob" />
       </button>
@@ -243,6 +266,7 @@ function EditableRow({ label, sub, value: initialValue, onSave, type = "text" })
               ref={inputRef}
               className="inline-input"
               type={type}
+              aria-label={label}
               value={draft}
               disabled={saving}
               onChange={(e) => setDraft(e.target.value)}
@@ -304,15 +328,12 @@ function SectionProfile({ user, onAccountUpdate = () => {} }) {
 
   return (
     <>
-      <h2 className="settings-section-title">Profile</h2>
-      <div className="section-desc">
+      <SettingsHeading title="Profile">
         Your account information and identity details.
-      </div>
+      </SettingsHeading>
 
       <div className="settings-block">
-        <div className="block-header">
-          <div className="block-title">Identity</div>
-        </div>
+        <SettingsBlockHeading Icon={IcoAccount} title="Identity">Your personal details and contact information.</SettingsBlockHeading>
         <div className="avatar-block">
           <div className="big-avatar">
             {initials}
@@ -345,9 +366,7 @@ function SectionProfile({ user, onAccountUpdate = () => {} }) {
       </div>
 
       <div className="settings-block">
-        <div className="block-header">
-          <div className="block-title">Role &amp; Access</div>
-        </div>
+        <SettingsBlockHeading Icon={IcoSecurity} title="Role &amp; Access">Your assigned role and station access.</SettingsBlockHeading>
         <div className="block-row">
           <div className="row-left">
             <div className="row-label">User Role</div>
@@ -478,6 +497,7 @@ function PasswordChangeRows({ onDone, onCancel }) {
               ref={f.inputRef}
               className={`inline-input${f.invalid ? " input-invalid" : ""}`}
               type="password"
+              aria-label={f.label}
               autoComplete={
                 f.key === "current" ? "current-password" : "new-password"
               }
@@ -534,69 +554,71 @@ function LoginHistoryBlock() {
   const latest = rows?.[0] ?? null;
   const earlier = rows?.slice(1) ?? [];
 
-  // One placeholder for every row while the fetch is in flight or has failed,
-  // so a blank value is never mistaken for "no logins recorded".
+  // Failed or empty history stays distinct from a recorded sign-in.
   function cell(render) {
-    if (pending) return "Loading…";
     if (error || !latest) return "—";
     return render(latest);
   }
 
   return (
-    <div className="settings-block">
-      <div className="block-header">
-        <div className="block-title">Login History</div>
-      </div>
-      <div className="block-row">
-        <div className="row-left">
-          <div className="row-label">Last Login</div>
-          <div className={`row-sub${error ? " row-sub-error" : ""}`}>
-            {error || "Most recent successful authentication"}
-          </div>
-        </div>
-        <div className="row-right">
-          <span className="row-value highlight">
-            {cell((r) => formatLoginStamp(r.logged_in_at))}
-          </span>
-        </div>
-      </div>
-      <div className="block-row">
-        <div className="row-left">
-          <div className="row-label">Login Device</div>
-          <div className="row-sub">Browser and operating system</div>
-        </div>
-        <div className="row-right">
-          <span className="row-value">
-            {cell((r) => describeUserAgent(r.user_agent))}
-          </span>
-        </div>
-      </div>
-      <div className="block-row">
-        <div className="row-left">
-          <div className="row-label">IP Address</div>
-          <div className="row-sub">Network address at time of login</div>
-        </div>
-        <div className="row-right">
-          <span className="row-value">{cell((r) => r.ip_address ?? "—")}</span>
-        </div>
-      </div>
-
-      {earlier.length > 0 && (
+    <div className="settings-block" aria-busy={pending}>
+      <SettingsBlockHeading Icon={IcoSession} title="Login History">Recent successful sign-ins to your account.</SettingsBlockHeading>
+      {pending ? (
+        <SettingsLoading message="Loading login history…" compact />
+      ) : (
         <>
-          <div className="block-subhead">Earlier Sign-ins</div>
-          {earlier.map((r) => (
-            <div className="block-row history-row" key={r.login_id}>
-              <div className="row-left">
-                <div className="row-label">
-                  {formatLoginStamp(r.logged_in_at)}
-                </div>
-                <div className="row-sub">{describeUserAgent(r.user_agent)}</div>
-              </div>
-              <div className="row-right">
-                <span className="row-value">{r.ip_address ?? "—"}</span>
+          <div className="block-row">
+            <div className="row-left">
+              <div className="row-label">Last Login</div>
+              <div className={`row-sub${error ? " row-sub-error" : ""}`}>
+                {error || "Most recent successful authentication"}
               </div>
             </div>
-          ))}
+            <div className="row-right">
+              <span className="row-value highlight">
+                {cell((r) => formatLoginStamp(r.logged_in_at))}
+              </span>
+            </div>
+          </div>
+          <div className="block-row">
+            <div className="row-left">
+              <div className="row-label">Login Device</div>
+              <div className="row-sub">Browser and operating system</div>
+            </div>
+            <div className="row-right">
+              <span className="row-value">
+                {cell((r) => describeUserAgent(r.user_agent))}
+              </span>
+            </div>
+          </div>
+          <div className="block-row">
+            <div className="row-left">
+              <div className="row-label">IP Address</div>
+              <div className="row-sub">Network address at time of login</div>
+            </div>
+            <div className="row-right">
+              <span className="row-value">{cell((r) => r.ip_address ?? "—")}</span>
+            </div>
+          </div>
+
+          {earlier.length > 0 && (
+            <>
+              <div className="block-subhead">Earlier Sign-ins</div>
+              {earlier.map((r) => (
+                <div className="block-row history-row" key={r.login_id}>
+                  <div className="row-left">
+                    <div className="row-label">
+                      {formatLoginStamp(r.logged_in_at)}
+                    </div>
+                    <div className="row-sub">{describeUserAgent(r.user_agent)}</div>
+                  </div>
+                  <div className="row-right">
+                    <span className="row-value">{r.ip_address ?? "—"}</span>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </>
       )}
     </div>
@@ -621,15 +643,12 @@ function SectionSecurity({ user, onAccountUpdate = () => {} }) {
 
   return (
     <>
-      <h2 className="settings-section-title">Security</h2>
-      <div className="section-desc">
+      <SettingsHeading title="Security">
         Manage your password and login credentials.
-      </div>
+      </SettingsHeading>
 
       <div className="settings-block">
-        <div className="block-header">
-          <div className="block-title">Credentials</div>
-        </div>
+        <SettingsBlockHeading Icon={IcoSecurity} title="Credentials">Keep your sign-in details up to date.</SettingsBlockHeading>
         <EditableRow
           label="Email Address"
           sub="Used for system login and alerts"
@@ -687,15 +706,12 @@ function SectionSession({ onLogout }) {
 
   return (
     <>
-      <h2 className="settings-section-title">Session</h2>
-      <div className="section-desc">
+      <SettingsHeading title="Session">
         Current login session details and activity.
-      </div>
+      </SettingsHeading>
 
       <div className="settings-block">
-        <div className="block-header">
-          <div className="block-title">Active Session</div>
-        </div>
+        <SettingsBlockHeading Icon={IcoSession} title="Active Session">Your current session and its expiration.</SettingsBlockHeading>
         <div className="block-row">
           <div className="row-left">
             <div className="row-label">Session Status</div>
@@ -744,9 +760,7 @@ function SectionSession({ onLogout }) {
       </div>
 
       <div className="danger-block">
-        <div className="block-header">
-          <div className="block-title">End Session</div>
-        </div>
+        <SettingsBlockHeading Icon={IcoSession} title="End Session">Sign out when you have finished using the dashboard.</SettingsBlockHeading>
         <div className="block-row">
           <div className="row-left">
             <div className="row-label">Sign Out</div>
@@ -775,15 +789,12 @@ function SectionAppearance({
 }) {
   return (
     <>
-      <h2 className="settings-section-title">Appearance</h2>
-      <div className="section-desc">
+      <SettingsHeading title="Appearance">
         Customize how the FireTrackr interface looks.
-      </div>
+      </SettingsHeading>
 
       <div className="settings-block">
-        <div className="block-header">
-          <div className="block-title">Theme</div>
-        </div>
+        <SettingsBlockHeading Icon={IcoAppearance} title="Theme">Choose the appearance that works best for you.</SettingsBlockHeading>
         <div className="block-row">
           <div className="row-left">
             <div className="row-label">Color Mode</div>
@@ -793,8 +804,9 @@ function SectionAppearance({
           </div>
           <div className="row-right">
             <div className="theme-options">
-              <div
+              <button type="button"
                 className={`theme-opt${theme === "dark" ? " selected" : ""}`}
+                aria-pressed={theme === "dark"}
                 onClick={() => theme !== "dark" && onThemeToggle()}
               >
                 <div
@@ -803,9 +815,10 @@ function SectionAppearance({
                   }`}
                 />
                 <span className="theme-name">Dark</span>
-              </div>
-              <div
+              </button>
+              <button type="button"
                 className={`theme-opt${theme === "light" ? " selected" : ""}`}
+                aria-pressed={theme === "light"}
                 onClick={() => theme !== "light" && onThemeToggle()}
               >
                 <div
@@ -814,16 +827,14 @@ function SectionAppearance({
                   }`}
                 />
                 <span className="theme-name">Light</span>
-              </div>
+              </button>
             </div>
           </div>
         </div>
       </div>
 
       <div className="settings-block">
-        <div className="block-header">
-          <div className="block-title">Interface</div>
-        </div>
+        <SettingsBlockHeading Icon={IcoAppearance} title="Interface">Adjust navigation and motion to suit your workflow.</SettingsBlockHeading>
         <div className="block-row">
           <div className="row-left">
             <div className="row-label">Compact Sidebar</div>
@@ -832,7 +843,7 @@ function SectionAppearance({
             </div>
           </div>
           <div className="row-right">
-            <Toggle on={compactNav} onChange={onCompactNavChange} />
+            <Toggle label="Compact Sidebar" on={compactNav} onChange={onCompactNavChange} />
           </div>
         </div>
         <div className="block-row">
@@ -841,7 +852,7 @@ function SectionAppearance({
             <div className="row-sub">Enable UI motion and transitions</div>
           </div>
           <div className="row-right">
-            <Toggle on={animations} onChange={onAnimationsChange} />
+            <Toggle label="Animations" on={animations} onChange={onAnimationsChange} />
           </div>
         </div>
       </div>
@@ -860,22 +871,20 @@ function SectionAppearance({
      meant nobody being en route to a logged fire showed up nowhere on the
      dashboard. It gets its own row. */
 function SectionNotifications({ prefs, onPrefChange, isAdmin }) {
-  const bind = (key) => ({
+  const bind = (key, label) => ({
+    label,
     on: !!prefs[key],
     onChange: (v) => onPrefChange(key, v),
   });
 
   return (
     <>
-      <h2 className="settings-section-title">Notifications</h2>
-      <div className="section-desc">
+      <SettingsHeading title="Notifications">
         Control how and when you receive system alerts.
-      </div>
+      </SettingsHeading>
 
       <div className="settings-block">
-        <div className="block-header">
-          <div className="block-title">Incident Alerts</div>
-        </div>
+        <SettingsBlockHeading Icon={IcoNotifications} title="Incident Alerts">Choose which incident updates you receive.</SettingsBlockHeading>
         <div className="block-row">
           <div className="row-left">
             <div className="row-label">New Incident Reports</div>
@@ -884,7 +893,7 @@ function SectionNotifications({ prefs, onPrefChange, isAdmin }) {
             </div>
           </div>
           <div className="row-right">
-            <Toggle {...bind("newIncident")} />
+            <Toggle {...bind("newIncident", "New Incident Reports")} />
           </div>
         </div>
         <div className="block-row">
@@ -893,7 +902,7 @@ function SectionNotifications({ prefs, onPrefChange, isAdmin }) {
             <div className="row-sub">Notify on alarm level upgrades</div>
           </div>
           <div className="row-right">
-            <Toggle {...bind("escalation")} />
+            <Toggle {...bind("escalation", "Alarm Escalations")} />
           </div>
         </div>
         <div className="block-row">
@@ -904,7 +913,7 @@ function SectionNotifications({ prefs, onPrefChange, isAdmin }) {
             </div>
           </div>
           <div className="row-right">
-            <Toggle {...bind("contained")} />
+            <Toggle {...bind("contained", "Fire Contained")} />
           </div>
         </div>
         <div className="block-row">
@@ -915,7 +924,7 @@ function SectionNotifications({ prefs, onPrefChange, isAdmin }) {
             </div>
           </div>
           <div className="row-right">
-            <Toggle {...bind("reportFiled")} />
+            <Toggle {...bind("reportFiled", "Incident Reports")} />
           </div>
         </div>
         <div className="block-row">
@@ -924,24 +933,22 @@ function SectionNotifications({ prefs, onPrefChange, isAdmin }) {
             <div className="row-sub">Alert when an incident is closed</div>
           </div>
           <div className="row-right">
-            <Toggle {...bind("resolution")} />
+            <Toggle {...bind("resolution", "Incident Resolution")} />
           </div>
         </div>
       </div>
 
       <div className="settings-block">
-        <div className="block-header">
-          <div className="block-title">Personnel &amp; Dispatch</div>
-        </div>
+        <SettingsBlockHeading Icon={IcoNotifications} title="Personnel &amp; Dispatch">Stay informed about field activity and dispatch.</SettingsBlockHeading>
         <div className="block-row">
           <div className="row-left">
-            <div className="row-label">Unit On Scene</div>
+            <div className="row-label">Personnel & Unit On Scene</div>
             <div className="row-sub">
-              Alert when a unit marks arrival at the scene
+              Alert when personnel or a unit confirms arrival at the scene
             </div>
           </div>
           <div className="row-right">
-            <Toggle {...bind("onScene")} />
+            <Toggle {...bind("onScene", "Personnel & Unit On Scene")} />
           </div>
         </div>
         <div className="block-row">
@@ -952,7 +959,7 @@ function SectionNotifications({ prefs, onPrefChange, isAdmin }) {
             </div>
           </div>
           <div className="row-right">
-            <Toggle {...bind("autoDispatchFailed")} />
+            <Toggle {...bind("autoDispatchFailed", "Auto-Dispatch Failures")} />
           </div>
         </div>
         <div className="block-row">
@@ -963,18 +970,20 @@ function SectionNotifications({ prefs, onPrefChange, isAdmin }) {
             </div>
           </div>
           <div className="row-right">
-            <Toggle {...bind("deviceOffline")} />
+            <Toggle {...bind("deviceOffline", "IoT Device Offline")} />
           </div>
         </div>
       </div>
 
       <div className="settings-block">
-        <div className="block-header">
-          <div className="block-title">Delivery</div>
+        <SettingsBlockHeading Icon={IcoNotifications} title="Delivery">Manage model updates and alert sounds.</SettingsBlockHeading>
+        <div className="block-row">
+          <div className="row-left"><div className="row-label">Connection recovery</div><div className="row-sub">Notify when missed alerts or current status cannot be fully recovered after reconnecting</div></div>
+          <div className="row-right"><Toggle {...bind("connectionRecovery", "Connection recovery")} /></div>
         </div>
         {isAdmin && <div className="block-row">
           <div className="row-left"><div className="row-label">Model updates</div><div className="row-sub">Notify when training finishes or the active model changes</div></div>
-          <div className="row-right"><Toggle {...bind("modelUpdates")} /></div>
+          <div className="row-right"><Toggle {...bind("modelUpdates", "Model updates")} /></div>
         </div>}
         <div className="block-row">
           <div className="row-left">
@@ -986,7 +995,7 @@ function SectionNotifications({ prefs, onPrefChange, isAdmin }) {
             </div>
           </div>
           <div className="row-right">
-            <Toggle {...bind("sound")} />
+            <Toggle {...bind("sound", "Alert Sound")} />
           </div>
         </div>
       </div>
@@ -1025,16 +1034,13 @@ const MAP_LAYER_ROWS = [
 function SectionMapDisplay({ prefs, onPrefChange }) {
   return (
     <>
-      <h2 className="settings-section-title">Map Display</h2>
-      <div className="section-desc">
+      <SettingsHeading title="Map Display">
         Configure what is shown on the GIS command map. The Heat Map and
         Barangay view modes always show their own layer.
-      </div>
+      </SettingsHeading>
 
       <div className="settings-block">
-        <div className="block-header">
-          <div className="block-title">Map Layers</div>
-        </div>
+        <SettingsBlockHeading Icon={IcoMapDisplay} title="Map Layers">Choose the information visible on your command map.</SettingsBlockHeading>
         {MAP_LAYER_ROWS.map((row) => (
           <div className="block-row" key={row.key}>
             <div className="row-left">
@@ -1043,6 +1049,7 @@ function SectionMapDisplay({ prefs, onPrefChange }) {
             </div>
             <div className="row-right">
               <Toggle
+                label={row.label}
                 on={!!prefs[row.key]}
                 onChange={(v) => onPrefChange(row.key, v)}
               />
@@ -1057,15 +1064,12 @@ function SectionMapDisplay({ prefs, onPrefChange }) {
 function SectionAbout() {
   return (
     <>
-      <h2 className="settings-section-title">About</h2>
-      <div className="section-desc">
+      <SettingsHeading title="About">
         System information and version details.
-      </div>
+      </SettingsHeading>
 
       <div className="settings-block">
-        <div className="block-header">
-          <div className="block-title">FireTrackr Platform</div>
-        </div>
+        <SettingsBlockHeading Icon={IcoAbout} title="FireTrackr Platform">Application details and system information.</SettingsBlockHeading>
         {[
           {
             label: "System Name",
@@ -1147,6 +1151,7 @@ export default function SettingsPage({
 }) {
   const [activeId, setActiveId] = useState("profile");
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const contentRef = useRef(null);
 
   // The cached profile in localStorage is whatever sign-in returned, so it goes
   // stale when an admin edits the record — and it predates any field added
@@ -1203,7 +1208,7 @@ export default function SettingsPage({
       case "about":
         return <SectionAbout />;
       case "model":
-        return user?.role === "admin" ? <Suspense fallback={<p role="status">Loading model settings…</p>}><ModelSettings /></Suspense> : null;
+        return user?.role === "admin" ? <Suspense fallback={<SettingsLoading message="Loading model settings…" description="Getting the latest model status and version history." />}><ModelSettings theme={theme} /></Suspense> : null;
       default:
         return null;
     }
@@ -1212,7 +1217,7 @@ export default function SettingsPage({
   return (
     <div className="settings-page">
       <div className="settings-body">
-        <div className="settings-sidebar">
+        <nav className="settings-sidebar" aria-label="Settings sections">
           {SIDEBAR_ITEMS.map(({ section, label, items }) => (
             <div key={section}>
               <div className="sidebar-section-label">{label}</div>
@@ -1222,7 +1227,10 @@ export default function SettingsPage({
                   className={`settings-sidebar-item${
                     activeId === item.id ? " active" : ""
                   }`}
-                  onClick={() => setActiveId(item.id)}
+                  onClick={() => {
+                    setActiveId(item.id);
+                    if (contentRef.current) contentRef.current.scrollTop = 0;
+                  }}
                   aria-current={activeId === item.id ? "page" : undefined}
                 >
                   <item.Icon className="sidebar-item-icon" />
@@ -1233,13 +1241,14 @@ export default function SettingsPage({
               {section === "system" ? null : <hr className="sidebar-divider" />}
             </div>
           ))}
-        </div>
+        </nav>
 
-        <div className="settings-content">{renderContent()}</div>
+        <div className="settings-content" ref={contentRef}><div className="settings-section">{renderContent()}</div></div>
       </div>
 
       {confirmLogout && (
         <SignOutModal
+          eyebrow={null}
           user={user}
           onConfirm={onLogout}
           onClose={() => setConfirmLogout(false)}
