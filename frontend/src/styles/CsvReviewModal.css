@@ -1,4 +1,7 @@
 .csv-review-panel { display: flex; flex-direction: column; max-height: 90dvh; overflow: hidden; }
+.csv-review-views { display: flex; flex-shrink: 0; flex-wrap: wrap; gap: 6px; padding: 12px 20px; border-bottom: 1px solid var(--border-dim); }
+.csv-review-views button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel); color: var(--text-secondary); font: 500 11px var(--font-condensed); cursor: pointer; }
+.csv-review-views button[aria-pressed="true"] { background: var(--accent-fire-dim); border-color: var(--accent-fire); color: var(--text-primary); }
 .csv-review-body { min-height: 0; overflow: auto; padding: 20px; background: var(--surface-sunken); }
 .csv-review-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 16px 20px; border-top: 1px solid var(--border-dim); color: var(--text-secondary); font-size: 12px; }
 .csv-review-footer > div { display: flex; gap: 8px; }

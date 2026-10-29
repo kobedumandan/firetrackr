@@ -422,15 +422,17 @@ export default function RightSidebar({
   const [routeSwitchError, setRouteSwitchError] = useState(null);
 
   if (constraintEditing) {
-    return <div className="right-sidebar-dock right-sidebar-dock--collapsed">
+    return <div className="right-sidebar-dock right-sidebar-dock--collapsed" data-view-mode={viewMode}>
       {viewModeButtons}
-      <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+      <div className="command-map-view-tools">
+        <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+      </div>
     </div>;
   }
 
   if (collapsed) {
     return (
-        <div className="right-sidebar-dock right-sidebar-dock--collapsed ci-dock">
+        <div className="right-sidebar-dock right-sidebar-dock--collapsed ci-dock" data-view-mode={viewMode}>
         <div className="right-sidebar-dock-top">
         <button
           className="right-sidebar-float-btn"
@@ -443,14 +445,16 @@ export default function RightSidebar({
         </button>
         {viewModeButtons}
         </div>
-        <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+        <div className="command-map-view-tools">
+          <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+        </div>
       </div>
     );
   }
 
   return (
     <>
-      <div className="right-sidebar-dock ci-dock">
+      <div className="right-sidebar-dock ci-dock" data-view-mode={viewMode}>
       <aside className="sidebar-right ci-sidebar" aria-label="Incident view">
         <div className="sidebar-tabs">
           <div className="ci-panel-heading"><span className="ci-eyebrow">Command</span><h2 className="sidebar-section-header">Incident view</h2></div>
@@ -855,7 +859,9 @@ export default function RightSidebar({
         )}
       </aside>
       {viewModeButtons}
-      <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+      <div className="command-map-view-tools">
+        <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+      </div>
       </div>
 
       {showDispatch && incident && (

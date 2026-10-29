@@ -7,14 +7,16 @@ import PerformanceIcon from './AnalysisIcon'
 import { fetchResponsePerformance, fetchResponseDispatches, fetchResponseDispatch, exportResponsePerformance, fetchResponseOperations, fetchResponseIncidents, exportResponseIncidents } from '../api'
 import { STAGES, dateTime, duration, parseRouteWkt } from '../utils/operationalTimes'
 import ResponseAnalysisModal from './ResponseAnalysisModal'
+import { StatusPill } from './incidentUi'
 import ResponderRouteHistory from './ResponderRouteHistory'
 import OperationalTrendChart from './OperationalTrendChart'
+import DurationTrendChart from './DurationTrendChart'
 import { MAP_CENTER, tileLayersFor } from '../data/mapConfig'
 import '../styles/ResponsePerformance.css'
 import '../styles/OperationalTimePage.css'
 import '../styles/ResponseOperations.css'
 
-const COLORS = ['#ed8059', '#55b4ad', '#81a4e8', '#c49bd3', '#c7aa62', '#c98697']
+const COLORS = ['var(--duration-green, #00b84a)', '#55b4ad', '#81a4e8', '#c49bd3', '#c7aa62', '#c98697']
 const MEASURES = { response: 'After dispatch', handling: 'Dispatch handling', acknowledgement: 'Acknowledgement', turnout: 'Turnout', travel: 'Travel' }
 function TeamFilter({ teams, selected, onChange }) {
   const [open, setOpen] = useState(false)
@@ -76,24 +78,12 @@ function Quality({ stat, compact = false }) {
 function TeamTrend({ monthly, onMonth, selectedMonth, loading }) {
   const teams = monthly[0]?.teams || []
   const hasValues = monthly.some(month => month.teams.some(team => team.mean_seconds != null))
-  const highest = Math.max(60, ...monthly.flatMap(m => m.teams.map(t => t.mean_seconds || 0))) * 1.15
-  const x = i => 50 + i * 850 / Math.max(1, monthly.length - 1)
-  const y = v => 175 - v / highest * 145
   return <section className="rp-card rp-trends"><div className="rp-section-heading"><div><h2>Monthly team response after dispatch</h2><p>Mean time from dispatch to arrival. Select a month to inspect its dispatches.</p></div><span className="rp-tag">Minutes · PHT</span></div>
-    {loading ? <div className="rp-chart-skeleton kpi-sk" aria-hidden="true" /> : hasValues ? <div className="rp-chart"><svg viewBox="0 0 950 215" role="img" aria-label="Monthly mean response by team">
-      {[0, .25, .5, .75, 1].map(f => <g key={f}><line x1="50" x2="900" y1={y(highest * f)} y2={y(highest * f)} stroke="currentColor" opacity=".15" strokeDasharray="3 5" /><text x="38" y={y(highest * f) + 4} textAnchor="end">{(highest * f / 60).toFixed(1)}</text></g>)}
-      {teams.map((team, ti) => {
-        const segments = []; let segment = []
-        monthly.forEach((month, i) => { const value = month.teams.find(t => t.team_id === team.team_id)?.mean_seconds
-          if (value == null) { if (segment.length) segments.push(segment); segment = [] } else segment.push(`${x(i)},${y(value)}`)
-        }); if (segment.length) segments.push(segment)
-        return <g key={team.team_id}>{segments.map((s, i) => <polyline key={i} points={s.join(' ')} fill="none" stroke={COLORS[ti % COLORS.length]} strokeWidth="2" />)}
-          {monthly.map((month, i) => { const stat = month.teams.find(t => t.team_id === team.team_id)
-            return stat?.mean_seconds == null ? null : <circle key={month.month} cx={x(i)} cy={y(stat.mean_seconds)} r="5" fill={COLORS[ti % COLORS.length]}><title>{team.team_name}: {duration(stat.mean_seconds)} · n={stat.valid} · {month.month}</title></circle>
-          })}</g>
-      })}
-      {monthly.map((month, i) => i % Math.max(1, Math.ceil(monthly.length / 12)) === 0 && <text key={month.month} x={x(i)} y="204" textAnchor="middle">{month.month}</text>)}
-    </svg></div> : <div className="rp-empty rp-chart-empty"><PerformanceIcon name="chart" /><h3>No response times to chart</h3><p>Try another date range or record kind. Dispatches need a recorded arrival to appear here.</p></div>}
+    {loading ? <div className="rp-chart-skeleton kpi-sk" aria-hidden="true" /> : hasValues ? <div className="rp-chart"><DurationTrendChart label="Monthly mean response by team"
+      points={monthly.map(month => ({ label: month.month, values: Object.fromEntries(month.teams.map(team => [team.team_id, team.mean_seconds])), counts: Object.fromEntries(month.teams.map(team => [team.team_id, team.valid])) }))}
+      series={teams.map((team, i) => ({ key: team.team_id, label: team.team_name || `Team ${team.team_id}`, color: COLORS[i % COLORS.length] }))}
+      selectedIndex={monthly.findIndex(month => month.month === selectedMonth)} onSelect={index => onMonth(monthly[index].month)}
+    /></div> : <div className="rp-empty rp-chart-empty"><PerformanceIcon name="chart" /><h3>No response times to chart</h3><p>Try another date range or record kind. Dispatches need a recorded arrival to appear here.</p></div>}
     <div className="rp-legend">{teams.map((t, i) => <span key={t.team_id}><i style={{ background: COLORS[i % COLORS.length] }} />{t.team_name || `Team ${t.team_id}`}</span>)}</div>
     <div className="rp-chart-footer"><details className="rp-disclosure"><summary>Chart data and sample counts</summary><div className="rp-scroll"><table><thead><tr><th>Month</th>{teams.map(t => <th key={t.team_id}>{t.team_name}</th>)}</tr></thead><tbody>{monthly.map(m => <tr key={m.month}><td><button aria-pressed={selectedMonth === m.month} onClick={() => onMonth(m.month)}>{m.month}</button></td>{m.teams.map(t => <td key={t.team_id}>{duration(t.mean_seconds)} · n={t.valid}</td>)}</tr>)}</tbody></table></div></details>
     <div className="rp-months" aria-label="Filter dispatches by month">{monthly.map(m => <button key={m.month} aria-pressed={selectedMonth === m.month} onClick={() => onMonth(m.month)}>{m.month}</button>)}</div></div>
@@ -150,8 +140,7 @@ function LifecyclePanel({ data, loading, demo }) {
   const total = STAGES.reduce((sum, stage) => sum + (data?.breakdown?.seconds[stage.key] || 0), 0)
   return <>
     <div className={`ro-overview${demo ? ' is-demo' : ''}`}>{metrics.map(({ key, label, description }) => <section className="ro-overview-card" key={key} aria-label={label}>
-      <div className="ro-metric-heading"><span className="ro-metric-icon"><PerformanceIcon name={key === 'cta' ? 'response' : 'acknowledgement'} /></span><h2>{label}</h2><span className="ro-unit-label">Per incident</span></div>
-      <p className="ro-metric-definition">{description}</p>
+      <div className="ro-metric-heading"><span className="ro-metric-icon"><PerformanceIcon name={key === 'cta' ? 'response' : 'acknowledgement'} /></span><div className="ro-metric-copy"><h2>{label}</h2><p className="ro-metric-definition">{description}</p></div><span className="ro-unit-label">Per incident</span></div>
       {loading ? <span className="rp-value-skeleton kpi-sk" /> : <strong className={`rp-overall${data?.summary[key]?.mean_seconds == null ? ' is-empty' : ''}`}>{duration(data?.summary[key]?.mean_seconds)}</strong>}
       <span className="ro-mean-caption">Mean duration<span>{loading ? 'Loading measurements' : `${data?.summary[key]?.valid || 0} measured incidents`}</span></span>
       <Quality stat={data?.summary[key]} />
@@ -188,6 +177,22 @@ function LifecyclePanel({ data, loading, demo }) {
   </>
 }
 
+function ReceiptDateTime({ value }) {
+  if (!value) return 'No data'
+  const date = new Date(value)
+  const options = { timeZone: 'Asia/Manila' }
+  return <time className="ro-receipt-time" dateTime={value}>
+    <span>{date.toLocaleDateString('en-PH', { ...options, year: 'numeric', month: 'short', day: 'numeric' })}</span>
+    <span>{date.toLocaleTimeString('en-PH', { ...options, hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span>
+  </time>
+}
+
+function responseKindLabel(kind) {
+  if (!kind) return 'Unclassified'
+  const label = kind.replaceAll('_', ' ').toLowerCase()
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
 function IncidentRecords({ query, revision, theme, onOpenDispatch, demo }) {
   const [page, setPage] = useState(1)
   const [result, setResult] = useState(null)
@@ -196,17 +201,18 @@ function IncidentRecords({ query, revision, theme, onOpenDispatch, demo }) {
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState(null)
   const [retry, setRetry] = useState(0)
-  const key = `${query}:${page}:${revision}:${retry}`
+  const key = `${query}:${page}`
   const data = result?.key === key ? result.data : null
   const error = result?.key === key ? result.error : null
   const loading = !data && !error
   useEffect(() => {
     const controller = new AbortController()
-    fetchResponseIncidents(`${query}&page=${page}`, controller.signal).then(data => setResult({ key, data }), error => {
-      if (error.name !== 'AbortError') setResult({ key, error: error.message })
+    let alive = true
+    fetchResponseIncidents(`${query}&page=${page}`, controller.signal).then(data => { if (alive) setResult({ key, data }) }, error => {
+      if (alive && error.name !== 'AbortError') setResult(previous => ({ ...(previous?.key === key ? previous : {}), key, error: error.message }))
     })
-    return () => controller.abort()
-  }, [query, page, key])
+    return () => { alive = false; controller.abort() }
+  }, [query, page, key, revision, retry])
   async function download() {
     setExporting(true); setExportError(null)
     try { setCsv(await exportResponseIncidents(query)) }
@@ -214,25 +220,38 @@ function IncidentRecords({ query, revision, theme, onOpenDispatch, demo }) {
     finally { setExporting(false) }
   }
   const currentPage = data?.page || page
+  const totalPages = data?.total_pages || 1
+  const pageSize = data?.page_size || 10
+  const total = data?.total || 0
+  const pageNumbers = totalPages <= 7 ? Array.from({ length: totalPages }, (_, i) => i + 1)
+    : currentPage <= 4 ? [1, 2, 3, 4, 5, '…', totalPages]
+      : currentPage >= totalPages - 3 ? [1, '…', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
+        : [1, '…', currentPage - 1, currentPage, currentPage + 1, '…', totalPages]
   return <section className="rp-card rp-observations ro-incident-records" aria-label="Incident records">
     <div className="rp-section-heading"><div><div className="rp-heading-title"><span className="ro-table-icon"><PerformanceIcon name="handling" /></span><h2>Incident records</h2><span className="rp-count">{data?.total || 0}</span></div><p>Inspect milestones, responding units and route evidence for each incident.</p></div>
-      <button disabled={loading || !!error || exporting} onClick={download}><PerformanceIcon name="download" />{exporting ? 'Preparing…' : 'Review incident CSV'}</button></div>
+      <button className="rp-export" disabled={loading || !!error || exporting} onClick={download}><PerformanceIcon name="download" />{exporting ? 'Preparing…' : 'Review incident CSV'}</button></div>
     {(error || exportError) && <p role="alert" className="rp-error">{error || exportError}{error && <button onClick={() => setRetry(n => n + 1)}>Retry incidents</button>}</p>}
-    <div className="rp-scroll"><table><thead><tr>{['Incident', 'Report received · PHT', 'Location / response', 'Dispatches / trucks', 'Call-to-first-arrival', 'Suppression', 'Overall operation'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>
-      {loading ? [0, 1, 2].map(n => <tr key={n} aria-hidden="true">{Array.from({ length: 7 }, (_, i) => <td key={i}><span className="rp-cell-skeleton kpi-sk" /></td>)}</tr>) : data?.records.map(record => <tr key={record.fire_id}>
-        <td><button className="rp-record-link" onClick={() => setSelected(record.fire_id)}>INC-{record.fire_id}<PerformanceIcon name="chevron" /></button><small className="ro-record-status" data-status={record.status}>{record.status || 'Unknown status'}</small></td>
-        <td>{dateTime(record.synthetic_timeline?.report_received_at || record.reported_at || record.occurred_at)}{!record.reported_at && <small>{demo ? 'Synthesized receipt' : 'Occurrence date · receipt unknown'}</small>}</td>
-        <td>{record.location || record.barangay || 'Location unknown'}<small>{record.response_kind || 'Unclassified'}</small></td>
-        <td><span className="ro-unit-count">{record.dispatch_count} {record.dispatch_count === 1 ? 'dispatch' : 'dispatches'}<small>{record.unit_count} {record.unit_count === 1 ? 'truck' : 'trucks'}</small></span></td>
+    <div className="rp-scroll"><table><thead><tr>{['Incident', 'Report received', 'Location / response', 'Dispatches / trucks', 'Call-to-first-arrival', 'Suppression', 'Overall operation', 'Actions'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>
+      {loading ? [0, 1, 2].map(n => <tr key={n} aria-hidden="true">{Array.from({ length: 8 }, (_, i) => <td key={i}><span className="rp-cell-skeleton kpi-sk" /></td>)}</tr>) : data?.records.map(record => <tr key={record.fire_id}>
+        <td><div className="ro-record-incident">INC-{record.fire_id}<StatusPill status={record.status || 'Unknown status'} /></div></td>
+        <td><ReceiptDateTime value={record.synthetic_timeline?.report_received_at || record.reported_at || record.occurred_at} />{!record.reported_at && <small>{demo ? 'Synthesized receipt' : <>Occurrence date <span className="ro-label-separator" aria-hidden="true">|</span> receipt unknown</>}</small>}</td>
+        <td>{record.location || record.barangay || 'Location unknown'}<small>{responseKindLabel(record.response_kind)}</small></td>
+        <td><span className="ro-unit-count">{record.dispatch_count} {record.dispatch_count === 1 ? 'Dispatch' : 'Dispatches'}<small>{record.unit_count} {record.unit_count === 1 ? 'Truck' : 'Trucks'}</small></span></td>
         {['cta', 'suppression', 'operation'].map(metric => <td key={metric} className={`rp-duration${record.durations[metric] == null ? ' ro-missing' : ''}`}>{metric === 'suppression' && record.response_kind && record.response_kind !== 'fire' ? 'N/A' : duration(record.durations[metric])}
           {record.metrics?.[metric]?.reason && <small>{record.metrics[metric].reason.replaceAll('_', ' ')}</small>}</td>)}
+        <td><button type="button" className="inc-btn-view" aria-label={`View response analysis for INC-${record.fire_id}`} onClick={() => setSelected(record.fire_id)}>View</button></td>
       </tr>)}
     </tbody></table></div>
     {!loading && !error && !data?.records.length && <div className="rp-empty"><h3>No incident records match these filters</h3><p>Try a wider date range or another record kind.</p></div>}
-    <nav className="rp-pagination" aria-label="Incident pages"><span>{data?.total || 0} incidents · Page {currentPage} of {data?.total_pages || 1}</span><div>
-      <button disabled={loading || currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous incidents</button>
-      <button disabled={loading || !!error || currentPage >= (data?.total_pages || 1)} onClick={() => setPage(currentPage + 1)}>Next incidents</button>
-    </div></nav>
+    {!loading && !error && total > 0 && <nav className="inc-pagination" aria-label="Incident pages">
+      <span className="inc-page-info">{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, total)} of {total}</span>
+      <div className="inc-page-controls">
+        <button type="button" className="inc-page-btn next-prev-btn" aria-label="Previous incidents" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>‹</button>
+        {pageNumbers.map((n, i) => n === '…' ? <span key={`ellipsis-${i}`} className="inc-page-ellipsis">…</span>
+          : <button type="button" key={n} className={`inc-page-btn${currentPage === n ? ' active' : ''}`} aria-label={`Incident page ${n}`} aria-current={currentPage === n ? 'page' : undefined} onClick={() => setPage(n)}>{n}</button>)}
+        <button type="button" className="inc-page-btn next-prev-btn" aria-label="Next incidents" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>›</button>
+      </div>
+    </nav>}
     {selected != null && <ResponseAnalysisModal key={selected} fireId={selected} theme={theme} onClose={() => setSelected(null)} onOpenDispatch={id => { setSelected(null); onOpenDispatch(id) }} />}
     {csv != null && <CsvReviewModal csv={csv} fileName="response-operations-incidents.csv" title="Incident lifecycle CSV" onClose={() => setCsv(null)} />}
   </section>
@@ -261,7 +280,9 @@ export default function ResponsePerformanceView({ theme, onOpenIncident }) {
   const exportQuery = tableParams.toString()
   tableParams.set('page', page)
   const tableQuery = tableParams.toString()
-  const key = `${query}:${tableQuery}:${revision}`
+  // Refreshes update the current view in place instead of clearing its cards,
+  // charts and tables whenever GPS-related operational evidence changes.
+  const key = `${query}:${tableQuery}`
   const data = result?.key === key ? result.data : null
   const operations = result?.key === key ? result.operations : null
   const rows = result?.key === key ? result.rows : null
@@ -288,9 +309,12 @@ export default function ResponsePerformanceView({ theme, onOpenIncident }) {
   }
   useEffect(() => {
     const controller = new AbortController()
+    let alive = true
     Promise.all([demo ? Promise.resolve({}) : fetchResponsePerformance(query, controller.signal), demo ? Promise.resolve({ records: [] }) : fetchResponseDispatches(tableQuery, controller.signal), fetchResponseOperations(query, controller.signal)])
-      .then(([data, rows, operations]) => setResult({ key, data, rows, operations }), err => { if (err.name !== 'AbortError') setResult({ key, error: err.message }) })
-    return () => controller.abort()
+      .then(([data, rows, operations]) => { if (alive) setResult({ key, data, rows, operations }) }, err => {
+        if (alive && err.name !== 'AbortError') setResult(previous => ({ ...(previous?.key === key ? previous : {}), key, error: err.message }))
+      })
+    return () => { alive = false; controller.abort() }
   }, [query, tableQuery, revision, key, demo])
   useEffect(() => {
     const refresh = () => setRevision(n => n + 1)
@@ -309,7 +333,7 @@ export default function ResponsePerformanceView({ theme, onOpenIncident }) {
   }
   return <main className="rp-view" aria-busy={loading}><div className="ro-workspace">
     <header className="rp-page-heading"><div><span className="ro-eyebrow">Incident lifecycle &amp; team analysis</span><h1>Response &amp; Operations</h1><p>From the first call to the final clearance.</p></div>
-      <div className="ro-heading-actions"><span className="rp-timezone"><PerformanceIcon name="response" />Asia/Manila · PHT</span><button className="rp-refresh" onClick={() => setRevision(n => n + 1)} disabled={loading}><PerformanceIcon name="refresh" />{loading ? 'Updating…' : 'Refresh'}</button></div>
+      <div className="ro-heading-actions"><button className="rp-refresh" onClick={() => setRevision(n => n + 1)} disabled={loading}><PerformanceIcon name="refresh" />{loading ? 'Updating…' : 'Refresh'}</button></div>
     </header>
     <section className="rp-filter-panel" aria-label="Response filters">
       <div className="rp-filter-title"><span><PerformanceIcon name="filter" />Analysis window</span><button className="ro-reset-filters" onClick={() => { setFilters({ ...initialDates(), period: 'custom', source: 'recorded', kind: 'operational', teams: [], station: '', barangay: '', severity: '' }); setPage(1); setMonth('') }}>Reset filters</button></div>
@@ -327,11 +351,11 @@ export default function ResponsePerformanceView({ theme, onOpenIncident }) {
         {!demo && <label>Severity<select value={filters.severity} onChange={e => update('severity', e.target.value)}><option value="">All severities</option>{['Minor', 'Moderate', 'Critical'].map(s => <option key={s}>{s}</option>)}</select></label>}
       </div></details>}
       {!demo && activeRefinements.length > 0 && <div className="ro-filter-chips" aria-label="Active refinements">{activeRefinements.map(item => <button key={item.key} onClick={() => update(item.key, item.value)} aria-label={`Remove ${item.label} filter`}>{item.label}<span aria-hidden="true">×</span></button>)}</div>}
-      <div className="ro-filter-footer"><span id="rp-date-help">Dates in PHT · end date excluded</span><span><PerformanceIcon name="info" />Team filters apply to dispatch comparisons; incident totals include all crews.</span></div>
+      <span id="rp-date-help" className="rp-sr-only">Dates in PHT · end date excluded</span>
     </section>
     {error && <div className="rp-error" role="alert"><PerformanceIcon name="info" /><div><strong>Could not load response observations</strong><p>{error}</p></div><button onClick={() => setRevision(n => n + 1)}>Retry</button></div>}
     {loading && <span className="rp-sr-only" role="status">Loading response observations…</span>}
-    {!error && <>
+    {(!error || data) && <>
       {demo && <aside className="ro-demo-banner"><PerformanceIcon name="info" /><div><strong>Synthesized BFP history</strong><p>Timings are simulated from historical incident dates. These figures do not measure actual BFP response performance.</p></div></aside>}
       <LifecyclePanel data={operations} loading={loading} demo={demo} />
       {!demo && <details className="ro-team-analysis">

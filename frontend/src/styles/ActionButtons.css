@@ -84,3 +84,42 @@
   outline: 2px solid var(--accent-fire-focus);
   outline-offset: 1px;
 }
+
+/* Compact sizing is opt-in for export, filter-reset, logging and refresh actions.
+   Command and table action controls retain their component sizing. */
+:root {
+  --button-height: 30px;
+  --button-padding-inline: 8px;
+}
+
+body:not(:has(.app-content[data-page="Command"]))
+:is(
+  .table-export-btn,
+  .rp-export,
+  .rp-refresh, .op-refresh, .ota-refresh, .model-refresh-btn,
+  .mo-heading-actions .mo-button,
+  .plan-recompute,
+  .op-export-actions > button,
+  .csv-review-download,
+  .xpm-btn-icon,
+  .ro-reset-filters,
+  .op-filter-heading .op-text-button,
+  .op-report-empty > button,
+  .inc-btn-log,
+  button[form="lim-form"],
+  button[form="nim-form"],
+  [data-compact-action="reset-filter"]
+):not(
+  table *,
+  [class*="-row-actions"] *,
+  .act-btn, .act-icon-btn
+) {
+  box-sizing: border-box;
+  height: var(--button-height) !important;
+  min-height: 0 !important;
+  padding: 0 var(--button-padding-inline) !important;
+}
+
+:is(.ro-reset-filters, .op-filter-heading .op-text-button, [data-compact-action="reset-filter"]) {
+  --button-height: 24px;
+}

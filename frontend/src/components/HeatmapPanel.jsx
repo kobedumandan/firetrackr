@@ -34,8 +34,11 @@ export default function HeatmapPanel({ range, onRangeChange, count, status, onRe
         <div className="heatmap-gradient" style={{ background: `linear-gradient(to right, ${HEAT_COLORS.join(',')})` }} />
         <div><span>Lower concentration</span><span>Higher</span></div>
       </div>
-      <p className="constraint-help">Severity-weighted fire history, smoothed within {HEAT_RADIUS_METRES} m. Colors are relative to this selection.</p>
-      <p className="constraint-help">Imported history includes estimated address and representative area pins. Open a pin for its location specification; shared area pins can create apparent hotspots.</p>
+      <details className="heatmap-info">
+        <summary>About this heatmap</summary>
+        <p className="constraint-help">Severity-weighted fire history, smoothed within {HEAT_RADIUS_METRES} m. Colors are relative to this selection.</p>
+        <p className="constraint-help">Imported history includes estimated address and representative area pins. Open a pin for its location specification; shared area pins can create apparent hotspots.</p>
+      </details>
       <div className="heatmap-status" role={invalid || status === 'error' ? 'alert' : 'status'}>
         {invalid ? 'Choose an end date on or after the start date.' : status === 'loading' ? 'Updating fire history...' : status === 'error' ? 'Fire history could not load.' : count ? 'Historical concentration, not predicted fire risk.' : 'No closed incidents match this region and date range.'}
       </div>

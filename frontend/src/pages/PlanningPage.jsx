@@ -8,6 +8,7 @@ import { useTheme } from "../hooks/useTheme";
 import KpiCard, { KPI_EMPTY } from "../components/KpiCard";
 import CsvReviewModal from "../components/CsvReviewModal";
 import AnalysisIcon from "../components/AnalysisIcon";
+import useSplitPane from "../hooks/useSplitPane";
 import {
   fetchCoverageIsochrones,
   fetchCoverageGaps,
@@ -304,6 +305,9 @@ export default function PlanningPage() {
   const [selected, setSelected] = useState(null);
   const [showBarangays, setShowBarangays] = useState(false);
   const [csvReview, setCsvReview] = useState(null);
+  const { width: coverageWidth, handleProps: resizeHandle } = useSplitPane({
+    storageKey: "planning.coverageWidth", initial: 560, min: 440, minMain: 420, gutter: 10,
+  });
   // Best-covered first, so the list reads covered → partial → gap top to bottom.
   const [sort, setSort] = useState({ key: "covered_pct", dir: "desc" });
   // Picks the basemap out of TILE_OPTIONS; re-renders the layer on a flip.
@@ -503,7 +507,7 @@ export default function PlanningPage() {
           <div><span className="plan-eyebrow">Station reachability</span><h1>Coverage Planning</h1><p>Explore station reachability and identify barangays with coverage gaps.</p></div>
           <div className="plan-header-actions">
             <button
-              className="plan-btn"
+              className="plan-btn plan-recompute"
               onClick={handleRefresh}
               disabled={refreshing || loading}
               title="Recompute coverage from the current stations and road constraints"
@@ -513,7 +517,7 @@ export default function PlanningPage() {
               </span>
               {refreshing ? "Recomputing…" : "Recompute"}
             </button>
-            <button className="plan-btn is-primary" onClick={exportCsv} disabled={!visibleRows?.length}>
+            <button className="plan-btn is-primary table-export-btn" onClick={exportCsv} disabled={!visibleRows?.length}>
               <ExportIcon />
               Export CSV
             </button>
@@ -521,9 +525,6 @@ export default function PlanningPage() {
         </header>
         {error && <div className="plan-error" role="alert"><AnalysisIcon name="info" /><div><strong>Could not load coverage</strong><p>{error}</p></div><button className="plan-btn" disabled={refreshing} onClick={handleRefresh}>Retry</button></div>}
 
-        <section className="plan-controls" aria-label="Coverage settings">
-        <div className="plan-section-row">
-          <div className="plan-control-copy"><span className="plan-control-icon"><AnalysisIcon name="coverage" /></span><div><h2>Response-time budget</h2><p>Compare barangay coverage at a selected road travel time.</p></div></div>
           {/* The band drives the KPIs, the gaps table and the CSV export, so it
               sits with them rather than in the page header. */}
           <div className="plan-seg" role="group" aria-label="Response-time band">
@@ -538,9 +539,6 @@ export default function PlanningPage() {
               </button>
             ))}
           </div>
-        </div>
-        <div className="plan-controls-footer"><span><AnalysisIcon name="info" />The selected budget applies to the summary, table and CSV. The map shows all three bands.</span><span>{stationCount == null ? "Loading stations…" : `${stationCount} station${stationCount === 1 ? '' : 's'}`} · Current road network</span></div>
-        </section>
 
         <div className="kpi-row plan-kpi-row">
           <KpiCard
@@ -581,11 +579,11 @@ export default function PlanningPage() {
           />
         </div>
 
-        <div className="plan-grid">
+        <div className="plan-grid" style={{ '--plan-coverage-width': `${coverageWidth}px` }}>
           {/* Coverage map */}
-          <div className="plan-card plan-map-card">
+          <div className="plan-card plan-map-card" id="planning-map-panel">
             <div className="plan-card-head">
-              <div><h2 className="plan-card-title">Station reachability map</h2><p className="plan-card-description">Estimated 3, 5 and 8 minute road travel areas.</p></div>
+              <h2 className="plan-card-title">Station reachability map</h2>
               <div className="plan-head-right">
                 <div className="plan-map-legend">
                   {bands.map((f) => (
@@ -658,10 +656,12 @@ export default function PlanningPage() {
             </div>
           </div>
 
+          <div className="split-resizer" {...resizeHandle} aria-label="Resize map and barangay coverage" aria-controls="planning-map-panel planning-coverage-panel" />
+
           {/* Coverage gaps table */}
-          <div className="plan-card plan-gaps-card">
+          <div className="plan-card plan-gaps-card" id="planning-coverage-panel">
             <div className="plan-card-head">
-              <div><div className="plan-table-title"><h2 className="plan-card-title">Barangay coverage</h2><span className="plan-count">{gapsLoading ? "Loading…" : `${visibleRows?.length || 0} / ${rows?.length || 0}`}</span></div><p className="plan-card-description">Area reachable within {minutes} minutes · select a row to locate it.</p></div>
+              <div className="plan-table-title"><h2 className="plan-card-title">Barangay coverage</h2><span className="plan-count">{gapsLoading ? "Loading…" : `${visibleRows?.length || 0} / ${rows?.length || 0}`}</span></div>
             </div>
             <div className="plan-table-toolbar">
               <div className="plan-filters">

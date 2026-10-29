@@ -499,7 +499,7 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
     <div className="tea-state">
       <Sym name="search_off" />
       <span>No teams match these filters.</span>
-      <button type="button" className="tea-link" onClick={clearFilters}>Clear filters</button>
+      <button type="button" className="tea-link" data-compact-action="reset-filter" onClick={clearFilters}>Clear filters</button>
     </div>
   ) : null;
 

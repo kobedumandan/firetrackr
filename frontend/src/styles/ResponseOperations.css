@@ -10,30 +10,25 @@
 .rp-page-heading p { margin: 0; max-width: 72ch; font-size: 11px; }
 .ro-eyebrow { display: block; margin-bottom: 7px; color: var(--rp-muted); font: 9px var(--font-mono); text-transform: uppercase; letter-spacing: 1.3px; }
 .ro-heading-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 11px; flex-shrink: 0; }
-.ro-heading-actions .rp-timezone { display: inline-flex; align-items: center; gap: 6px; width: auto; font-size: 9px; }
-.ro-heading-actions .rp-timezone svg { width: 12px; height: 12px; }
 .rp-view .rp-refresh { min-height: 34px; background: var(--bg-panel); }
-.rp-view .rp-filter-panel { padding: 16px 18px 0; margin-bottom: 22px; border-radius: 12px; }
+.rp-view .rp-filter-panel { padding: 16px 18px; margin-bottom: 22px; border-radius: 12px; }
 .rp-view .rp-filter-title { margin-bottom: 16px; }
 .rp-view .ro-reset-filters { padding: 2px 0; border: none; background: transparent; color: var(--rp-muted); font-size: 10px; }
 .rp-view .ro-reset-filters:hover { background: transparent; color: var(--accent-fire); }
 .rp-view .rp-filters { grid-template-columns: 1.15fr 1.55fr 1fr 1fr .95fr; gap: 14px; }
-.rp-view .rp-filters :is(select,input:not([type="checkbox"])) { height: 38px; padding-inline: 11px; border-radius: 7px; background: var(--ro-soft); font-size: 11px; }
+.rp-view .rp-filters :is(select,input:not([type="checkbox"])) { border-radius: 6px; background: var(--ro-soft); font-size: 11px; }
 .rp-view .rp-filters input:disabled { opacity: .5; }
-.rp-view .rp-filters label { gap: 7px; }
+.rp-view .rp-filters label { gap: 5px; }
 .ro-refinements { margin-top: 15px; border-top: 1px solid var(--border-dim); }
-.ro-refinements > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 43px; color: var(--rp-muted); font-size: 10px; cursor: pointer; list-style: none; }
+.ro-refinements > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; color: var(--rp-muted); font-size: 10px; cursor: pointer; list-style: none; }
 .ro-refinements > summary::-webkit-details-marker { display: none; }
 .ro-refinements > summary > span { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .ro-refinements summary svg { width: 13px; height: 13px; }
 .ro-refinements[open] > summary > svg { transform: rotate(90deg); }
-.rp-view .ro-refinement-fields { grid-template-columns: repeat(4,minmax(0,1fr)); padding: 2px 0 18px; }
-.rp-view .rp-team-trigger { height: 38px; background: var(--ro-soft); border-radius: 7px; }
+.rp-view .ro-refinement-fields { grid-template-columns: repeat(4,minmax(0,1fr)); padding: 14px 0 0; }
+.rp-view .rp-team-trigger { background: var(--ro-soft); border-radius: 6px; }
 .rp-view .rp-team-options { z-index: 3; }
-.ro-filter-footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin: 0 -18px; padding: 11px 18px; border-top: 1px solid var(--border-dim); border-radius: 0 0 12px 12px; background: var(--ro-soft); color: var(--rp-muted); font-size: 9px; line-height: 1.6; }
-.ro-filter-footer > span:last-child { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 65ch; }
-.ro-filter-footer svg { flex-shrink: 0; width: 12px; height: 12px; margin-top: 1px; }
-.ro-filter-chips { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 0 13px; }
+.ro-filter-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
 .rp-view .ro-filter-chips button { padding: 4px 8px; border-color: color-mix(in srgb,var(--accent-fire) 20%,var(--border)); background: var(--ro-accent); color: var(--accent-fire); font-size: 10px; }
 .ro-filter-chips button > span { margin-left: 6px; font-size: 13px; }
 .ro-demo-banner { display: flex; align-items: flex-start; gap: 12px; padding: 15px 18px; margin-bottom: 20px; border: 1px solid var(--border-dim); border-radius: 9px; background: var(--accent-amber-dim); }
@@ -47,11 +42,12 @@
 .rp-view .ro-overview-card { padding: 22px 24px; min-width: 0; }
 .ro-overview-card + .ro-overview-card { border-left: 1px solid var(--border-dim); }
 .ro-metric-heading { display: flex; align-items: center; gap: 9px; }
+.ro-metric-copy { flex: 1; min-width: 0; }
 .ro-metric-heading h2 { font-size: 12px; font-weight: 500; }
-.ro-metric-icon { display: grid; place-items: center; width: 29px; height: 29px; flex-shrink: 0; border-radius: 7px; background: var(--ro-accent); color: var(--accent-fire); }
-.ro-metric-icon svg { width: 16px; height: 16px; }
+.ro-metric-icon { display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; border-radius: 9px; background: var(--ro-accent); color: var(--accent-fire); }
+.ro-metric-icon svg { width: 22px; height: 22px; }
 .ro-unit-label { margin-left: auto; color: var(--rp-muted); font-size: 9px; white-space: nowrap; }
-.ro-overview-card .ro-metric-definition { min-height: 18px; margin-top: 9px; font-size: 10px; }
+.rp-view .ro-overview-card .ro-metric-definition { margin-top: 3px; color: color-mix(in srgb, var(--text-primary) 52%, var(--bg-panel)); font-size: 10px; }
 .rp-view .ro-overview-card .rp-overall { margin-top: 17px; font-size: 43px; font-weight: 500; letter-spacing: -1.8px; }
 .ro-mean-caption { display: flex; justify-content: space-between; gap: 10px; margin-top: 9px; color: var(--rp-muted); font-size: 10px; }
 .ro-mean-caption > span { font-size: 9px; }
@@ -101,14 +97,19 @@
 
 /* Charts and the common-cohort distribution share a compact analysis row. */
 .ro-analysis-grid { display: grid; grid-template-columns: minmax(0,1.9fr) minmax(270px,1fr); gap: 18px; margin-bottom: 22px; }
+/* Match the transparent line-chart surface on the Metrics overview. */
+.rp-view :is(.ota-trends, .rp-trends) { min-width: 0; padding: 20px; border-color: transparent; border-radius: 12px; background: transparent; }
+.rp-view :is(.ota-trends, .rp-trends) :is(.ota-section-head, .rp-section-heading) { align-items: flex-start; gap: 18px; margin-bottom: 16px; }
+.rp-view :is(.ota-trends, .rp-trends) h2 { font-size: 13px; font-weight: 600; letter-spacing: -.15px; }
+.rp-view :is(.ota-trends, .rp-trends) :is(.ota-section-head, .rp-section-heading) p { font: 10px/1.65 var(--font-condensed); }
+.rp-view :is(.ota-chart-scroll, .rp-chart) { min-width: 0; margin-top: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 .rp-view .ro-analysis-grid .ota-trends { min-width: 0; padding: 20px; margin: 0; border-radius: 12px; }
 .rp-view .ota-section-head { align-items: center; gap: 14px; }
 .rp-view .ota-section-head h2 { font-size: 13px; }
 .rp-view .ota-section-head p { font-size: 10px; }
 .rp-view .ota-trend-filter { display: flex; align-items: center; gap: 8px; font-size: 9px; color: var(--rp-muted); }
 .rp-view .ota-trend-filter select { max-width: 160px; padding: 7px 9px; background: var(--ro-soft); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; font: 10px var(--font-condensed); }
-.rp-view .ota-chart-scroll { margin-top: 16px; }
-.rp-view .ota-chart-scroll svg { min-width: 480px; max-height: 260px; }
+.rp-view :is(.ota-chart-scroll, .rp-chart) svg { min-width: 620px; max-height: 300px; }
 .rp-view .ota-chart-footer { align-items: center; margin-top: 12px; }
 .rp-view .ota-legend { gap: 8px 12px; font-size: 9px; }
 .rp-view .ota-chart-data { font-size: 9px; }
@@ -145,7 +146,7 @@
 .ro-team-content { padding: 20px; border-top: 1px solid var(--border-dim); }
 .ro-team-content > .rp-kpis { margin-top: 16px; }
 .ro-team-content .rp-metric-card { padding: 13px; border: 1px solid var(--border-dim); border-radius: 8px; background: var(--ro-soft); }
-.ro-team-content .rp-trends { margin-top: 20px; border-radius: 9px; }
+.ro-team-content .rp-trends { margin-top: 20px; }
 .rp-view .ro-team-content .rp-observations { margin-bottom: 0; border-radius: 9px; }
 
 /* Bounded tables keep navigation and the incident identifier in view. */
@@ -166,10 +167,10 @@
 .rp-view .rp-observations .rp-duration { font-size: 11px; font-weight: 500; }
 .rp-view .rp-observations .rp-duration small { white-space: normal; max-width: 23ch; font-size: 9px; font-weight: 400; }
 .rp-view .ro-missing { color: var(--rp-muted); }
-.rp-view .ro-record-status { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; }
-.ro-record-status::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--rp-muted); }
-.ro-record-status[data-status="closed"]::before { background: var(--accent-emerald); }
-.ro-record-status[data-status="cancelled"]::before,.ro-record-status[data-status="recalled"]::before { background: var(--accent-amber); }
+.ro-record-incident { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.ro-receipt-time { display: flex; flex-direction: column; gap: 4px; white-space: nowrap; }
+.ro-label-separator { opacity: .55; padding-inline: 2px; }
+.ro-incident-records .inc-pagination { flex-wrap: wrap; gap: 10px; }
 .ro-unit-count { font-size: 10px; }
 .ro-unit-count small { font-size: 9px; }
 .rp-view .rp-pagination { padding: 12px 20px; background: var(--ro-soft); font-size: 9px; }
@@ -200,18 +201,16 @@
   .rp-view .ro-overview-card { padding: 18px; }
   .rp-view .ro-overview-card .rp-overall { font-size: 34px; }
   .ro-mean-caption { flex-direction: column; gap: 4px; }
-  .rp-view .ro-overview-card .ro-metric-definition { min-height: 34px; }
 }
 @container (max-width: 560px) {
+  .rp-view :is(.ota-trends, .rp-trends) { padding: 17px; }
+  .rp-view .ro-analysis-grid .ota-trends { padding: 17px; }
   .rp-view .rp-page-heading { margin-bottom: 20px; }
   .rp-page-heading h1 { font-size: 21px; }
-  .ro-heading-actions .rp-timezone { font-size: 8px; }
   .rp-view .rp-filter-panel { padding-inline: 14px; }
   .rp-view .rp-filters,.rp-view .ro-refinement-fields { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 13px 10px; }
-  .ro-filter-footer { margin-inline: -14px; padding-inline: 14px; flex-direction: column; gap: 5px; }
   .rp-view .ro-overview { grid-template-columns: 1fr; }
   .ro-overview-card + .ro-overview-card { border-left: 0; border-top: 1px solid var(--border-dim); }
-  .rp-view .ro-overview-card .ro-metric-definition { min-height: 0; }
   .ro-mean-caption { flex-direction: row; }
   .ro-stages-panel { padding: 18px 16px 13px; }
   .rp-view .ro-stage-kpis .kpi-card-value { font-size: 25px; }

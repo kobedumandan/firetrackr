@@ -24,14 +24,14 @@
 .rp-view p { margin: 5px 0 0; color: var(--rp-muted); line-height: 1.65; }
 .rp-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .rp-timezone { flex-shrink: 0; font: 10px var(--font-mono); color: var(--rp-muted); }
-.rp-view button:not(.kpi-card-action), .rp-dialog button:not(.apm-close) {
+.rp-view button:not(.kpi-card-action, .inc-btn-view, .inc-page-btn), .rp-dialog button:not(.apm-close) {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border);
   border-radius: 7px; padding: 8px 12px; background: var(--bg-panel); color: var(--text-primary);
   cursor: pointer; font: 500 11px/1.4 var(--font-condensed); transition: background .15s, border-color .15s, color .15s;
 }
-.rp-view button:not(.kpi-card-action):hover:not(:disabled), .rp-dialog button:not(.apm-close):hover { background: var(--bg-hover); border-color: var(--rp-muted, var(--text-secondary)); }
-.rp-view button:not(.kpi-card-action):active:not(:disabled) { transform: translateY(1px); }
-.rp-view button:disabled { opacity: .4; cursor: default; }
+.rp-view button:not(.kpi-card-action, .inc-btn-view, .inc-page-btn):hover:not(:disabled), .rp-dialog button:not(.apm-close):hover { background: var(--bg-hover); border-color: var(--rp-muted, var(--text-secondary)); }
+.rp-view button:not(.kpi-card-action, .inc-btn-view, .inc-page-btn):active:not(:disabled) { transform: translateY(1px); }
+.rp-view button:disabled:not(.inc-page-btn) { opacity: .4; cursor: default; }
 .rp-view :is(button:not(.kpi-card-action), input, select, summary):focus-visible, .rp-detail :is(button, select):focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 3px; }
 .rp-view button svg { flex-shrink: 0; width: 15px; height: 15px; }
 

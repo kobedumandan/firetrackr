@@ -17,4 +17,6 @@
 .heatmap-legend > div:last-child { display: flex; justify-content: space-between; margin-top: 5px; color: var(--text-secondary); font-size: 8px; }
 .heatmap-status { font-size: 9px; line-height: 1.5; color: var(--text-secondary); }
 .heatmap-status[role="alert"] { color: var(--accent-fire); }
-.heatmap-panel button:focus-visible, .heatmap-panel input:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 2px; }
+.heatmap-info summary { padding: 5px 0; color: var(--text-secondary); font-size: 9px; cursor: pointer; }
+.heatmap-info .constraint-help { text-align: justify; }
+.heatmap-panel button:focus-visible, .heatmap-panel input:focus-visible, .heatmap-info summary:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 2px; }

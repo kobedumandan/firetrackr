@@ -679,7 +679,7 @@ export default function StationsPage({ onShowOnMap, initialStationId = null }) {
             <div className="sta-list-state">
               <Sym name="search_off" />
               <span>No stations match these filters.</span>
-              <button type="button" className="sta-link" onClick={() => { setSearch(""); setStatusFilter(""); setActiveTab("all"); }}>
+              <button type="button" className="sta-link" data-compact-action="reset-filter" onClick={() => { setSearch(""); setStatusFilter(""); setActiveTab("all"); }}>
                 Clear filters
               </button>
             </div>

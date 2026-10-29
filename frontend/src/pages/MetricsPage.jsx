@@ -7,6 +7,7 @@ import "../styles/MetricsOverview.css";
 import { fetchMetricsSummary, fetchBarangays, invalidateOperationalTimes } from "../api";
 import AnalysisIcon from "../components/AnalysisIcon";
 import KpiCard, { KPI_EMPTY } from "../components/KpiCard";
+import IncidentTrendChart from "../components/IncidentTrendChart";
 import { useTheme } from "../hooks/useTheme";
 import { MAP_CENTER, tileLayersFor } from "../data/mapConfig";
 function readCssVar(name, fallback) {
@@ -126,29 +127,45 @@ function MapIcon() {
 }
 
 function DonutChart({ data, total }) {
+  const [activeIndex, setActiveIndex] = useState(null);
   if (!total) return <div className="m-empty">No incidents in this period</div>;
   const radius = 52;
-  const stroke = 16.8;
+  const stroke = 10;
   const gap = 3.2;
   const circ = 2 * Math.PI * radius;
   const outer = radius + stroke / 2;
   const viewExtent = outer + 8;
   const viewSize = viewExtent * 2;
+  const active = data[activeIndex];
+  const activeAngle = active
+    ? ((data.slice(0, activeIndex).reduce((sum, item) => sum + item.value, 0) + active.value / 2) / total) * 2 * Math.PI - Math.PI / 2
+    : 0;
   return (
+    <div className="m-donut-chart">
     <svg
       viewBox={`${-viewExtent} ${-viewExtent} ${viewSize} ${viewSize}`}
       className="m-donut"
-      role="img"
+      role="group"
       aria-label={`Alarm levels for ${total.toLocaleString()} incidents`}
     >
       <g transform="rotate(-90)">
         {data.map((d, i) => {
+          if (!d.value) return null;
           const slice = (d.value / total) * circ;
           const offset = data.slice(0, i).reduce((sum, item) => sum + item.value / total * circ, 0);
           const len = Math.max(slice - gap, 0);
           const seg = (
             <circle
               key={i}
+              className={`m-donut-segment${activeIndex === i ? " is-active" : ""}${active && activeIndex !== i ? " is-muted" : ""}`}
+              tabIndex={0}
+              role="img"
+              aria-label={`${d.label}: ${d.value.toLocaleString()} incident${d.value === 1 ? "" : "s"}`}
+              onMouseEnter={() => setActiveIndex(i)}
+              onMouseLeave={() => setActiveIndex(null)}
+              onFocus={() => setActiveIndex(i)}
+              onBlur={() => setActiveIndex(null)}
+              onKeyDown={(event) => { if (event.key === "Escape") setActiveIndex(null); }}
               r={radius}
               cx="0"
               cy="0"
@@ -157,7 +174,7 @@ function DonutChart({ data, total }) {
               strokeWidth={stroke}
               strokeDasharray={`${len} ${circ - len}`}
               strokeDashoffset={-offset}
-            ><title>{d.label}: {d.value} incidents</title></circle>
+            />
           );
           return seg;
         })}
@@ -165,89 +182,18 @@ function DonutChart({ data, total }) {
       <text x="0" y="-2" textAnchor="middle" dominantBaseline="middle" className="m-donut-total">{total.toLocaleString()}</text>
       <text x="0" y="17" textAnchor="middle" className="m-donut-cap">Incidents</text>
     </svg>
-  );
-}
-
-function LineChart({ points, labels, labelTicks, height = 210, width = 680 }) {
-  if (!points.length) return <div className="m-empty">No monthly data</div>;
-  const padL = 42,
-    padR = 14,
-    padT = 14,
-    padB = 30;
-  const w = width - padL - padR;
-  const h = height - padT - padB;
-  const highest = Math.max(...points, 1);
-  const rawStep = highest / 4;
-  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
-  const normalized = rawStep / magnitude;
-  const niceStep = Math.max(1, (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10) * magnitude);
-  const max = niceStep * 4;
-  const sx = (i) => padL + (i * w) / Math.max(points.length - 1, 1);
-  const sy = (v) => padT + h - (v / max) * h;
-
-  const n = points.length;
-  const path = points.map((value, index) => `${index ? "L" : "M"}${sx(index)},${sy(value)}`).join(" ");
-  const area = `${path} L${sx(n - 1)},${padT + h} L${sx(0)},${padT + h} Z`;
-  const gridSteps = [0, 0.25, 0.5, 0.75, 1];
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="m-line"
-      role="img"
-      aria-label="Monthly incident trend"
+    {active && <div
+      className="m-donut-tooltip"
+      role="tooltip"
+      style={{
+        left: `${50 + Math.cos(activeAngle) * radius / viewSize * 100}%`,
+        top: `${50 + Math.sin(activeAngle) * radius / viewSize * 100}%`,
+      }}
     >
-      <defs>
-        <linearGradient id="incidentLineFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="var(--accent-fire)" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="var(--accent-fire)" stopOpacity="0.025" />
-        </linearGradient>
-      </defs>
-      {gridSteps.map((step) => {
-        const y = padT + h * (1 - step);
-        return (
-          <g key={step}>
-          <line
-            x1={padL}
-            x2={width - padR}
-            y1={y}
-            y2={y}
-            className="m-line-grid"
-          />
-            <text x={padL - 10} y={y + 3} textAnchor="end" className="m-line-ytick">
-              {Math.round(max * step)}
-            </text>
-          </g>
-        );
-      })}
-      <path d={area} fill="url(#incidentLineFill)" />
-      <path
-        d={path}
-        fill="none"
-        stroke="var(--accent-fire)"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {points.map((value, index) => (
-        <circle key={index} cx={sx(index)} cy={sy(value)} r="3.5" className="m-line-point" tabIndex="0" aria-label={`${labels[index]}: ${value} incidents`}>
-          <title>{`${labels[index]}: ${value} incident${value === 1 ? "" : "s"}`}</title>
-        </circle>
-      ))}
-      {(labelTicks
-        ? labelTicks
-        : labels.map((text, i) => ({ text, index: i }))
-      ).map((t, i) => (
-        <text
-          key={i}
-          x={sx(t.index)}
-          y={height - 8}
-          textAnchor="middle"
-          className="m-line-xtick"
-        >
-          {t.text}
-        </text>
-      ))}
-    </svg>
+      <strong>{active.label}</strong>
+      <span>{active.value.toLocaleString()} incident{active.value === 1 ? "" : "s"}</span>
+    </div>}
+    </div>
   );
 }
 
@@ -358,7 +304,7 @@ export default function MetricsPage({ onOpenAnalysis }) {
       <header className="m-header"><div className="m-title-row"><div><span className="m-title">Metrics</span><UnfoldIcon /></div></div></header>
       <div className="m-body">
         <div className="m-workspace">
-        <header className="mo-view-heading"><div><span className="mo-eyebrow">Incident activity</span><h1>Overview</h1><p>Incident activity, response times and reported fire patterns.</p></div><div className="mo-heading-actions"><span className="mo-timezone"><AnalysisIcon name="response" />Asia/Manila · PHT</span><div><button className="mo-button" disabled={loading} onClick={invalidateOperationalTimes}><AnalysisIcon name="refresh" />{loading ? "Updating…" : "Refresh"}</button>{onOpenAnalysis && <button className="m-analysis-link mo-button is-primary" onClick={onOpenAnalysis}>Open Analysis<AnalysisIcon name="chevron" /></button>}</div></div></header>
+        <header className="mo-view-heading"><div><span className="mo-eyebrow">Incident activity</span><h1>Overview</h1><p>Incident activity, response times and reported fire patterns.</p></div><div className="mo-heading-actions"><div><button className="mo-button" disabled={loading} onClick={invalidateOperationalTimes}><AnalysisIcon name="refresh" />{loading ? "Updating…" : "Refresh"}</button>{onOpenAnalysis && <button className="m-analysis-link mo-button is-primary" onClick={onOpenAnalysis}>Open Analysis<AnalysisIcon name="chevron" /></button>}</div></div></header>
         <section className="mo-period-panel" aria-label="Metrics reporting period">
         <div className="m-section-row">
           <div className="mo-period-copy"><span className="mo-control-icon"><AnalysisIcon name="chart" /></span><div><h2>Reporting period</h2><p>Review recorded activity across a selected window.</p></div></div>
@@ -376,7 +322,6 @@ export default function MetricsPage({ onOpenAnalysis }) {
             ))}
           </div>
         </div>
-        <div className="mo-period-footer"><span>{activePeriod.description}</span><span><AnalysisIcon name="info" />Period filters apply to summary cards and breakdowns. The monthly trend shows {period === "all" ? "all recorded months" : "the last 12 months"}.</span></div>
         </section>
         {error && <div className="mo-error" role="alert"><AnalysisIcon name="info" /><div><strong>Could not load metrics</strong><p>{error}</p></div><button className="mo-button" onClick={invalidateOperationalTimes}>Retry</button></div>}
         {!error && <>
@@ -463,14 +408,14 @@ export default function MetricsPage({ onOpenAnalysis }) {
             <div className="m-line-head">
               <div>
                 <h2 className="m-card-title">Monthly incident activity</h2>
-                <div className="m-card-sub">{chartScope} · incidents by occurrence date</div>
+                <div className="m-card-sub">{chartScope} | incidents by occurrence date</div>
               </div>
               <div className="m-line-total">
                 <strong>{chartTotal.toLocaleString()}</strong>
                 <span>incidents plotted</span>
               </div>
             </div>
-            <div className="mo-line-chart" role="region" tabIndex="0" aria-label="Monthly incident chart"><LineChart points={linePoints} labels={monthNames} labelTicks={monthNames.map((text, index) => ({ text, index })).filter((_, i) => i % Math.max(1, Math.ceil(monthNames.length / 12)) === 0)} /></div>
+            <div className="mo-line-chart" role="region" tabIndex="0" aria-label="Monthly incident chart"><IncidentTrendChart points={linePoints} labels={monthNames} labelTicks={monthNames.map((text, index) => ({ text, index })).filter((_, i) => i % Math.max(1, Math.ceil(monthNames.length / 12)) === 0)} /></div>
             {monthNames.length > 0 && <details className="mo-chart-data"><summary>Chart data and counts<AnalysisIcon name="chevron" /></summary><div className="mo-chart-table"><table><thead><tr><th>Month</th><th>Incidents</th></tr></thead><tbody>{(summary.monthly || []).map((month, index) => <tr key={`${month.month}-${index}`}><td>{month.month}</td><td>{month.count}</td></tr>)}</tbody></table></div></details>}
           </div>
 
