@@ -92,6 +92,7 @@ def _team_dict(t: ResponseTeam) -> dict:
         "shift_name":        t.shift.shift_name if t.shift else "—",
         "truck_id":          t.truck_id,
         "truck_platenum":    t.truck.truck_platenum if t.truck else None,
+        "has_active_dispatch": any(d.dispatch_status in ('dispatched', 'en_route', 'on_scene') for d in t.dispatches),
         "member_count": len(t.members),
         "members":      members,
         "created_at":   t.team_created_at.isoformat() if t.team_created_at else None,

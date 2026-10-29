@@ -62,7 +62,7 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
 
   // Station or shift changes can make the picked truck invalid; clear it.
   function setSlot(field, val) {
-    setForm(f => ({ ...f, [field]: val, truck_id: '' }))
+    setForm(f => ({ ...f, [field]: val, truck_id: truckLocked ? f.truck_id : '' }))
     setError('')
   }
 
@@ -99,6 +99,8 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
   const shiftId   = toId(form.shift_id)
   const stationId = toId(form.station_id)
   const truckOptions = assignableTrucks(trucks, teams, { stationId, shiftId, selfTeamId: team.team_id })
+  const currentTeam = teams.find(t => t.team_id === team.team_id) || team
+  const truckLocked = currentTeam.has_active_dispatch ?? ['active', 'dispatched', 'en_route', 'on_scene'].includes(currentTeam.team_status)
   const shiftOptions = [{ value: '', label: 'None' }, ...shifts.map(s => ({ value: String(s.shift_id), label: s.shift_name }))]
   // The backend refuses a shift change while the team has members.
   const shiftLocked = members.length > 0
@@ -227,7 +229,7 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
                   </select>
                 </Field>
                 <Field label="Truck" changed={isChanged('truck_id')}>
-                  <select value={form.truck_id} onChange={e => set('truck_id', e.target.value)} disabled={stationId === null}>
+                  {truckLocked ? <LockedNote><strong>{team.truck_platenum || truckName(initial.truck_id) || 'No truck assigned'}</strong>. Truck assignment is locked until this team's dispatch ends.</LockedNote> : <select value={form.truck_id} onChange={e => set('truck_id', e.target.value)} disabled={stationId === null}>
                     <option value="">
                       {stationId === null
                         ? 'Pick a station first'
@@ -236,7 +238,7 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
                     {truckOptions.map(t => (
                       <option key={t.truck_id} value={t.truck_id}>{t.truck_platenum}</option>
                     ))}
-                  </select>
+                  </select>}
                 </Field>
               </div>
             </section>

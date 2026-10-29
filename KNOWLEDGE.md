@@ -17,6 +17,19 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### Team truck assignment during dispatch (2026-10-30)
+
+- Edit Team locks the truck field while the team has a `dispatched`, `en_route`
+  or `on_scene` dispatch. Team responses include `has_active_dispatch` so this
+  does not depend on the team's editable status label.
+- `PATCH /api/teams/{team_id}` rejects assigning, replacing or removing a truck
+  during an active dispatch with HTTP 409. An unchanged truck and other team
+  edits remain allowed. The team row is locked while checking and saving,
+  matching dispatch creation's team reservation lock. Completed, canceled and
+  recalled dispatches do not block later truck changes.
+- Active-dispatch truck hot-swapping is not supported; team edits do not rewrite
+  the dispatch's truck assignment or its response history.
+
 ### Fire-report operational timing (2026-10-26)
 
 - The assigned team leader can record actual suppression-start and fire-out times
