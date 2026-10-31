@@ -4,10 +4,12 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "../styles/MetricsPage.css";
 import "../styles/MetricsOverview.css";
+import "../styles/MethodNote.css";
 import { fetchMetricsSummary, fetchBarangays, invalidateOperationalTimes } from "../api";
 import AnalysisIcon from "../components/AnalysisIcon";
 import KpiCard, { KPI_EMPTY } from "../components/KpiCard";
 import IncidentTrendChart from "../components/IncidentTrendChart";
+import MetricsExportModal from "../components/MetricsExportModal";
 import { useTheme } from "../hooks/useTheme";
 import { MAP_CENTER, tileLayersFor } from "../data/mapConfig";
 function readCssVar(name, fallback) {
@@ -215,12 +217,20 @@ function BarangayBar({ name, value, max, color }) {
 
 export default function MetricsPage({ onOpenAnalysis }) {
   const [period, setPeriod] = useState("all");
+  const [exportSnapshot, setExportSnapshot] = useState(null);
   const [revision, setRevision] = useState(0);
   const [result, setResult] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState("");
+  const [monthResult, setMonthResult] = useState(null);
   const resultKey = `${period}:${revision}`;
   const summary = result?.key === resultKey ? result.data : null;
   const error = result?.key === resultKey ? result.error : null;
   const loading = !summary && !error;
+  const monthResultKey = `${resultKey}:${selectedMonth}`;
+  const monthReady = monthResult?.key === monthResultKey;
+  const breakdown = selectedMonth ? (monthReady ? monthResult.data : null) : summary;
+  const breakdownLoading = selectedMonth ? !monthReady : loading;
+  const breakdownError = selectedMonth && monthReady ? monthResult.error : null;
   const [barangays, setBarangays] = useState(null);
   const [boundaryError, setBoundaryError] = useState(null);
   // Re-resolved whenever the theme flips — a [] dep here would freeze the
@@ -237,7 +247,7 @@ export default function MetricsPage({ onOpenAnalysis }) {
 
 
   // Real per-barangay incident counts (keyed by brgy_name) from the summary.
-  const byBarangay = useMemo(() => summary?.by_barangay ?? {}, [summary]);
+  const byBarangay = useMemo(() => breakdown?.by_barangay ?? {}, [breakdown]);
 
   useEffect(() => {
     let alive = true;
@@ -249,6 +259,15 @@ export default function MetricsPage({ onOpenAnalysis }) {
       .catch((err) => { if (alive) setResult({ key: resultKey, error: err.message }); });
     return () => { alive = false; };
   }, [period, revision, resultKey]);
+
+  useEffect(() => {
+    if (!selectedMonth) return;
+    let alive = true;
+    fetchMetricsSummary(period, selectedMonth)
+      .then(data => { if (alive) setMonthResult({ key: monthResultKey, data }); })
+      .catch(failure => { if (alive) setMonthResult({ key: monthResultKey, error: failure.message }); });
+    return () => { alive = false; };
+  }, [period, selectedMonth, revision, monthResultKey]);
 
   useEffect(() => {
     const refresh = () => setRevision(value => value + 1);
@@ -270,19 +289,50 @@ export default function MetricsPage({ onOpenAnalysis }) {
   const deltas = summary?.deltas ?? {};
   const avgResponse = summary?.recorded_response_minutes;
 
-  const donutData = Object.entries(summary?.alarm_levels || {}).map(([label, value], index) => ({
+  const donutData = Object.entries(breakdown?.alarm_levels || {}).map(([label, value], index) => ({
     label, value, color: label === "Not recorded" ? ALARM_COLORS.at(-1) : ALARM_COLORS[index % ALARM_COLORS.length],
   }));
   const donutTotal = donutData.reduce((a, b) => a + b.value, 0);
-  const causes = summary?.top_causes || [];
+  const causes = (breakdown?.top_causes || []).slice(0, 10);
   const maxCause = Math.max(1, ...causes.map(c => c.count));
 
   // The API supplies monthly context independently of shorter period filters.
   const monthNames = (summary?.monthly ?? []).map((p) => p.month);
+  const monthLabels = (summary?.monthly ?? []).map(month => month.month_key
+    ? new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'long', year: 'numeric' }).format(new Date(`${month.month_key}-01T00:00:00+08:00`))
+    : month.month);
+  const causesByMonth = (summary?.monthly ?? []).map(month => month.top_causes ?? []);
   const linePoints = (summary?.monthly ?? []).map((p) => p.count);
   const chartTotal = linePoints.reduce((sum, count) => sum + count, 0);
   const activePeriod = PERIODS.find((p) => p.key === period);
   const chartScope = period === "all" ? "All recorded months" : "Last 12 months";
+  const selectedMonthIndex = (summary?.monthly ?? []).findIndex(month => month.month_key === selectedMonth);
+  const selectedMonthLabel = selectedMonth
+    ? new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'long', year: 'numeric' }).format(new Date(`${selectedMonth}-01T00:00:00+08:00`))
+    : '';
+  const breakdownScope = selectedMonthLabel || activePeriod.description;
+  const breakdownMessage = breakdownLoading ? 'Loading selected month…' : breakdownError ? `Could not load selected month: ${breakdownError}` : null;
+
+  function selectMonth(index) {
+    const month = summary?.monthly?.[index]?.month_key;
+    if (month) setSelectedMonth(month);
+  }
+
+  function openExport() {
+    setExportSnapshot({
+      summary: selectedMonth ? {
+        ...summary,
+        alarm_levels: breakdown.alarm_levels,
+        by_barangay: breakdown.by_barangay,
+        top_causes: breakdown.top_causes,
+        breakdown_unresolved_barangay_count: breakdown.unresolved_barangay_count ?? 0,
+      } : summary,
+      barangays,
+      period: activePeriod,
+      breakdownPeriod: selectedMonthLabel || undefined,
+      generatedAt: new Date().toISOString(),
+    });
+  }
 
   const buckets = useMemo(
     () => buildBuckets(Math.max(0, ...Object.values(byBarangay))),
@@ -290,8 +340,8 @@ export default function MetricsPage({ onOpenAnalysis }) {
   );
 
   const topBarangays = Object.entries(byBarangay)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 10)
       .map(([name, value]) => ({
         name,
         value,
@@ -304,7 +354,7 @@ export default function MetricsPage({ onOpenAnalysis }) {
       <header className="m-header"><div className="m-title-row"><div><span className="m-title">Metrics</span><UnfoldIcon /></div></div></header>
       <div className="m-body">
         <div className="m-workspace">
-        <header className="mo-view-heading"><div><span className="mo-eyebrow">Incident activity</span><h1>Overview</h1><p>Incident activity, response times and reported fire patterns.</p></div><div className="mo-heading-actions"><div><button className="mo-button" disabled={loading} onClick={invalidateOperationalTimes}><AnalysisIcon name="refresh" />{loading ? "Updating…" : "Refresh"}</button>{onOpenAnalysis && <button className="m-analysis-link mo-button is-primary" onClick={onOpenAnalysis}>Open Analysis<AnalysisIcon name="chevron" /></button>}</div></div></header>
+        <header className="mo-view-heading"><div><span className="mo-eyebrow">Incident activity</span><h1>Overview</h1><p>Incident activity, response times and reported fire patterns.</p></div><div className="mo-heading-actions"><div><button className="mo-button" disabled={loading} onClick={invalidateOperationalTimes}><AnalysisIcon name="refresh" />{loading ? "Updating…" : "Refresh"}</button><button className="mo-button" disabled={loading || !!error || breakdownLoading || !!breakdownError} onClick={openExport}><AnalysisIcon name="download" />Export</button>{onOpenAnalysis && <button className="m-analysis-link mo-button is-primary" onClick={onOpenAnalysis}>Open Analysis<AnalysisIcon name="chevron" /></button>}</div></div></header>
         <section className="mo-period-panel" aria-label="Metrics reporting period">
         <div className="m-section-row">
           <div className="mo-period-copy"><span className="mo-control-icon"><AnalysisIcon name="chart" /></span><div><h2>Reporting period</h2><p>Review recorded activity across a selected window.</p></div></div>
@@ -313,7 +363,7 @@ export default function MetricsPage({ onOpenAnalysis }) {
               <button
                 key={p.key}
                 className={`m-period-btn${period === p.key ? " active" : ""}`}
-                onClick={() => setPeriod(p.key)}
+                onClick={() => { setPeriod(p.key); setSelectedMonth(''); }}
                 aria-pressed={period === p.key}
                 aria-label={p.description}
               >
@@ -330,6 +380,7 @@ export default function MetricsPage({ onOpenAnalysis }) {
             icon={<PhoneIcon />}
             label="Recorded incidents"
             value={total.toLocaleString()}
+            sub="Incidents in the selected reporting period"
             loading={loading}
             trend={trendOf(deltas.total)}
             accent="fire"
@@ -341,7 +392,7 @@ export default function MetricsPage({ onOpenAnalysis }) {
             actionLabel="Average Response Time: open Analysis, Response & Operations"
             value={avgResponse != null ? `${avgResponse.toFixed(1)} min` : KPI_EMPTY}
             loading={loading}
-            sub={avgResponse != null ? `Report receipt → first arrival${summary?.recorded_response_quality?.valid != null ? ` · n=${summary.recorded_response_quality.valid}` : ''}` : "No eligible arrivals recorded"}
+            sub={avgResponse != null ? <>Report receipt → first arrival{summary?.recorded_response_quality?.valid != null && <><span className="mo-pipe" aria-hidden="true"> | </span>{summary.recorded_response_quality.valid.toLocaleString()} Dispatches</>}</> : "No eligible arrivals recorded"}
             trend={trendOf(summary?.recorded_response_change)}
             accent="blue"
           /></div>
@@ -349,7 +400,7 @@ export default function MetricsPage({ onOpenAnalysis }) {
             icon={<AlertIcon />}
             label="Critical incidents"
             value={total > 0 && summary?.unknown_severity_count === total ? KPI_EMPTY : (severity.Critical ?? 0).toLocaleString()}
-            sub={summary?.unknown_severity_count > 0 ? `${summary.unknown_severity_count} records have no reported severity` : undefined}
+            sub={summary?.unknown_severity_count > 0 ? `${summary.unknown_severity_count} records have no reported severity` : "Incidents with critical severity"}
             loading={loading}
             trend={trendOf(deltas.critical)}
             accent="amber"
@@ -358,6 +409,7 @@ export default function MetricsPage({ onOpenAnalysis }) {
             icon={<MapIcon />}
             label="Contained / closed"
             value={contained.toLocaleString()}
+            sub="Incidents marked contained or closed"
             loading={loading}
             trend={trendOf(deltas.contained)}
             accent="green"
@@ -367,14 +419,14 @@ export default function MetricsPage({ onOpenAnalysis }) {
         {!loading && (summary.historical_import_count > 0 || summary.synthetic_alarm_count > 0 || summary.approximate_location_count > 0) && <aside className="mo-source-note"><AnalysisIcon name="info" /><p><strong>Record context</strong>{summary.historical_import_count > 0 && <span>{summary.historical_import_count} imported historical incidents</span>}{summary.synthetic_alarm_count > 0 && <span>{summary.synthetic_alarm_count} assumed alarm levels</span>}{summary.approximate_location_count > 0 && <span>{summary.approximate_location_count} estimated locations</span>}</p></aside>}
         {loading ? <div className="mo-chart-skeletons" aria-label="Loading metric charts">{[0, 1, 2, 3].map(n => <div className="m-card" key={n}><span className="kpi-sk mo-skeleton-title" /><span className="kpi-sk mo-skeleton-chart" /></div>)}</div> : <>
         <div className="m-grid">
-          <div className="m-card m-card-donut">
+          <div className="m-card m-card-donut" aria-busy={breakdownLoading}>
             <div className="m-card-head">
               <h2 className="m-card-title">Alarm levels</h2>
               <div className="m-card-sub">
-                {activePeriod.description}
+                {breakdownScope}
               </div>
             </div>
-            <div className="m-donut-wrap">
+            {breakdownMessage ? <div className="m-empty" role={breakdownError ? 'alert' : 'status'}>{breakdownMessage}</div> : <div className="m-donut-wrap">
               <DonutChart data={donutData} total={donutTotal} />
               <div className="m-legend-table">
                 <div className="m-legend-thead">
@@ -401,32 +453,32 @@ export default function MetricsPage({ onOpenAnalysis }) {
                   );
                 })}
               </div>
-            </div>
+            </div>}
           </div>
 
           <div className="m-card m-card-line">
             <div className="m-line-head">
               <div>
                 <h2 className="m-card-title">Monthly incident activity</h2>
-                <div className="m-card-sub">{chartScope} | incidents by occurrence date</div>
+                <div className="m-card-sub">{chartScope}<span className="mo-pipe" aria-hidden="true"> | </span>Incidents by occurrence date</div>
               </div>
               <div className="m-line-total">
                 <strong>{chartTotal.toLocaleString()}</strong>
-                <span>incidents plotted</span>
+                <span>Incidents Plotted</span>
               </div>
             </div>
-            <div className="mo-line-chart" role="region" tabIndex="0" aria-label="Monthly incident chart"><IncidentTrendChart points={linePoints} labels={monthNames} labelTicks={monthNames.map((text, index) => ({ text, index })).filter((_, i) => i % Math.max(1, Math.ceil(monthNames.length / 12)) === 0)} /></div>
-            {monthNames.length > 0 && <details className="mo-chart-data"><summary>Chart data and counts<AnalysisIcon name="chevron" /></summary><div className="mo-chart-table"><table><thead><tr><th>Month</th><th>Incidents</th></tr></thead><tbody>{(summary.monthly || []).map((month, index) => <tr key={`${month.month}-${index}`}><td>{month.month}</td><td>{month.count}</td></tr>)}</tbody></table></div></details>}
+            <div className="mo-line-chart" role="region" tabIndex="0" aria-label="Monthly incident chart"><IncidentTrendChart points={linePoints} labels={monthNames} monthLabels={monthLabels} causesByMonth={causesByMonth} selectedIndex={selectedMonthIndex} onSelect={selectMonth} onClose={() => setSelectedMonth('')} labelTicks={monthNames.map((text, index) => ({ text, index })).filter((_, i) => i % Math.max(1, Math.ceil(monthNames.length / 12)) === 0)} /></div>
+            {selectedMonth && <div className="mo-month-filter"><span>Breakdowns for <strong>{selectedMonthLabel}</strong></span><button type="button" className="mo-button" aria-label="Clear selected month" onClick={() => setSelectedMonth('')}>Clear month</button></div>}
           </div>
 
           <div className="m-bottom-grid">
-          <div className="m-card m-card-bars">
+          <div className="m-card m-card-bars" aria-busy={breakdownLoading}>
             <div className="m-card-head">
               <h2 className="m-card-title">Incidents by barangay</h2>
-              <div className="m-card-sub">Top 8</div>
+              <div className="m-card-sub">{breakdownScope}<span className="mo-pipe" aria-hidden="true"> | </span>Top 10</div>
             </div>
-            {summary?.unresolved_barangay_count > 0 && <p className="mo-location-note">{summary.unresolved_barangay_count} incident{summary.unresolved_barangay_count === 1 ? ' has' : 's have'} an unresolved barangay and {summary.unresolved_barangay_count === 1 ? 'is' : 'are'} excluded from this map.</p>}
-            <div className="m-brgy-split">
+            {breakdown?.unresolved_barangay_count > 0 && <p className="mo-location-note">{breakdown.unresolved_barangay_count} incident{breakdown.unresolved_barangay_count === 1 ? ' has' : 's have'} an unresolved barangay and {breakdown.unresolved_barangay_count === 1 ? 'is' : 'are'} excluded from this map.</p>}
+            {breakdownMessage ? <div className="m-empty" role={breakdownError ? 'alert' : 'status'}>{breakdownMessage}</div> : <div className="m-brgy-split">
               <div className="m-brgy-map-col">
                 <div className="m-brgy-map-wrap">
                   {boundaryError ? <div className="mo-map-placeholder"><AnalysisIcon name="coverage" /><strong>{boundaryError}</strong><p>Refresh to try loading the map again.</p></div> : <MapContainer
@@ -499,21 +551,27 @@ export default function MetricsPage({ onOpenAnalysis }) {
                   </div>
                 )}
               </div>
-            </div>
+            </div>}
           </div>
-          <section className="m-card m-card-causes" aria-label="Top 10 reported fire causes">
-            <div className="m-card-head"><h2 className="m-card-title">Top reported fire causes</h2><div className="m-card-sub">Top 10</div></div>
-            <p className="m-card-sub">Source cause labels, one count per incident</p>
-            <div className="m-bar-list">{causes.map(c => <BarangayBar key={c.cause} name={c.cause} value={c.count} max={maxCause} color="var(--accent-fire)" />)}</div>
-            {!causes.length && <div className="m-empty">No cause data in this period</div>}
+          <section className="m-card m-card-causes" aria-label="Top 10 reported fire causes" aria-busy={breakdownLoading}>
+            <div className="m-card-head"><h2 className="m-card-title">Top reported fire causes</h2><div className="m-card-sub">{breakdownScope}<span className="mo-pipe" aria-hidden="true"> | </span>Top 10</div></div>
+            {breakdownMessage ? <div className="m-empty" role={breakdownError ? 'alert' : 'status'}>{breakdownMessage}</div> : <>
+              <div className="m-bar-list">{causes.map(c => <BarangayBar key={c.cause} name={c.cause} value={c.count} max={maxCause} color="var(--accent-fire)" />)}</div>
+              {!causes.length && <div className="m-empty">No cause data in this period</div>}
+            </>}
+            <p className="mo-data-note">Source cause labels, one count per incident</p>
           </section>
           </div>
         </div>
-        <details className="mo-method"><summary><AnalysisIcon name="info" />How to read this overview<AnalysisIcon name="chevron" /></summary><div><p>Incident totals, alarm levels, area counts and causes use the selected occurrence-date window. The monthly chart uses all recorded months for All dates, and the last twelve months for other periods. Each incident contributes once to a cause or barangay count.</p><p>Response time uses verified report receipt to the first eligible arrival, with its own receipt-date cohort and available measurements. Unknown severity, missing arrivals and unresolved barangays stay explicit. Open Analysis to review response quality and individual incidents.</p></div></details>
+        <details className="mo-method"><summary><AnalysisIcon name="info" />How to read this overview<AnalysisIcon name="chevron" /></summary><div className="mo-method-content">
+          <section><div className="mo-method-heading"><span><AnalysisIcon name="chart" /></span><h3>Incident activity & rankings</h3></div><p>Incident totals use the selected occurrence-date window. Select a chart month to filter alarm levels, barangays and causes to that calendar month. Each incident contributes once to a cause or barangay count. Rankings show up to ten entries.</p><div className="mo-method-assumptions"><h4>Monthly chart scope</h4><p>All dates shows all recorded months. Other periods show the last twelve months, independently of the selected incident window. Clear the month to restore reporting-period breakdowns.</p></div></section>
+          <section><div className="mo-method-heading"><span><AnalysisIcon name="response" /></span><h3>Response time & record quality</h3></div><p>Response time measures verified report receipt to the first eligible arrival, using its own receipt-date cohort and available measurements.</p><div className="mo-method-assumptions"><h4>Missing & historical records</h4><p>Unknown severity, missing arrivals and unresolved barangays stay explicit. Historical imports may include assumed alarm levels and estimated locations. Open Analysis to review response quality and individual incidents.</p></div></section>
+        </div></details>
         </>}
         </>}
         </div>
       </div>
+      {exportSnapshot && <MetricsExportModal snapshot={exportSnapshot} onClose={() => setExportSnapshot(null)} />}
     </main>
   );
 }

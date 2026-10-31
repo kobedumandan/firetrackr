@@ -1,0 +1,5 @@
+/* Reuse the incident export UI; only metrics-specific additions belong here. */
+.mex-modal .mex-formats { grid-template-columns: repeat(2, 1fr); }
+.mex-modal .xpm-badge-pptx { background: var(--accent-fire); }
+.mex-modal .mex-check:has(input:disabled) { opacity: .5; cursor: default; }
+.mex-modal .mex-check input:disabled { cursor: default; }

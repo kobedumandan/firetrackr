@@ -512,12 +512,14 @@ export async function fetchGnnConstraints() {
 }
 
 // ── Metrics summary (real dashboard aggregates) ─────────────────────────────
-export async function fetchMetricsSummary(period = '1m') {
-  const key = `metrics-summary-${period}`
+export async function fetchMetricsSummary(period = '1m', month = '') {
+  const key = `metrics-summary-${period}${month ? `-${month}` : ''}`
   const cached = _cacheGet(key)
   if (cached) return cached
 
-  const res = await apiFetch(`/api/metrics/summary?period=${period}`)
+  const params = new URLSearchParams({ period })
+  if (month) params.set('month', month)
+  const res = await apiFetch(`/api/metrics/summary?${params}`)
   if (!res.ok) throw new Error(`Failed to fetch metrics summary (${res.status})`)
   const data = await res.json()
   _cacheSet(key, data)
