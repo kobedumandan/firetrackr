@@ -2,10 +2,11 @@
 GPS stream that drives deviation detection."""
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from config import _REROUTE_INLINE
+import state
+from config import DEVIATION_MAX_ACCURACY_M, _REROUTE_INLINE
 from database import get_db
 from models import (
     CurrentLocation, DispatchRecord, FireIncident, LocationLog, Personnel, PushToken, ResponseTeamMember,
@@ -19,7 +20,7 @@ from services.dispatch import (
     _sync_truck,
 )
 from services.push import push_message, send_expo_push
-from services.routing import _check_deviation, _recompute_deviation_routing_bg
+from services.routing import check_location_deviation, _recompute_deviation_routing_bg
 from services.tracking_policy import policy as tracking_policy
 from services.personnel_navigation import navigation_for, save_navigation
 from services.personnel_arrival import arrival_for, personnel_status
@@ -43,6 +44,33 @@ def _require_personnel(user: Users):
     if user.user_role != "personnel" or not user.personnel:
         raise HTTPException(status_code=403, detail="Only personnel accounts can use this endpoint.")
     return user.personnel
+
+
+@router.get("/api/mobile/road-snap")
+def mobile_road_snap(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    current_user: Users = Depends(get_current_user),
+):
+    """Match the map marker to a nearby routing road, independently of its plan.
+
+    Return the matched segment so the phone can project newer fixes locally
+    between requests. This read-only display match never replaces GPS evidence
+    or changes the route/deviation state.
+    """
+    _require_personnel(current_user)
+    engine = state.routing_engine
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Routing engine unavailable.")
+    hit = engine.graph.snap_point(lat, lon, radius_km=0.06)
+    if hit is None:
+        return {"snapped": None}
+    a, b = (engine.graph.G.nodes[hit[key]] for key in ("u", "v"))
+    return {"snapped": {
+        **hit,
+        "segment": [[float(a["lon"]), float(a["lat"])],
+                    [float(b["lon"]), float(b["lat"])]],
+    }}
 
 
 def _valid_expo_token(token: str) -> bool:
@@ -315,6 +343,9 @@ def location_update(
         background_tasks.add_task(manager.broadcast, {"type": "operational_times_updated", "data": {"fire_id": dispatch.fire_id}})
 
     existing = db.get(CurrentLocation, per_id)
+    previous_fix = (float(existing.latitude), float(existing.longitude), existing.recorded_at) if (
+        existing and existing.source == 'mobile_app'
+    ) else None
     refresh_driver_plan = False
     expected_route_id = dispatch.route_id if dispatch else None
     if dispatch and _is_manning_truck(dispatch, per_id):
@@ -324,8 +355,10 @@ def location_update(
             previous_at = previous_at.replace(tzinfo=timezone.utc)
         driver_resumed = previous_at is None or previous_at < now-timedelta(minutes=2) or (
             dispatch.dispatch_at is not None and previous_at < dispatch.dispatch_at)
-        refresh_driver_plan = bool(selected_route and (
-            selected_route.route_origin_source != 'driver_location' or driver_resumed))
+        refresh_driver_plan = bool(
+            body.accuracy_m is not None and body.accuracy_m <= DEVIATION_MAX_ACCURACY_M
+            and selected_route and (selected_route.route_origin_source != 'driver_location' or driver_resumed)
+        )
     position_changed = False
     routing_tasks = []
     if _race_condition_winner(existing, "mobile_app", recorded_at, now):
@@ -363,10 +396,11 @@ def location_update(
         # is reflected on the mobile side at the next status poll.
         previous_navigation = navigation_for(dispatch, per_id)
         was_deviated = previous_navigation.get('is_deviated', False)
-        is_deviated, _ = _check_deviation(
-            db, dispatch, body.latitude, body.longitude, compute_connector=False, was_deviated=was_deviated
-        ) if dispatch else (False, None)
-        manning = is_deviated and _is_manning_truck(dispatch, per_id)
+        is_deviated = check_location_deviation(
+            db, dispatch, per_id, body.latitude, body.longitude, recorded_at,
+            body.accuracy_m, previous_fix, was_deviated=was_deviated
+        ) if dispatch else False
+        manning = is_deviated is True and _is_manning_truck(dispatch, per_id)
 
         schedule_routing = False
         if is_deviated and not was_deviated:
@@ -375,7 +409,7 @@ def location_update(
             schedule_routing = True
         elif is_deviated and was_deviated:
             schedule_routing = True   # refresh connector / rebuild from new position
-        elif dispatch and not is_deviated and was_deviated:
+        elif dispatch and is_deviated is False and was_deviated:
             save_navigation(db, dispatch, per_id, expected_route_id=expected_route_id, is_deviated=False)
 
         if schedule_routing and not refresh_driver_plan:
