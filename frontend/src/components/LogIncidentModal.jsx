@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
-import ReportReceiptFields from './ReportReceiptFields'
+import { useState, useEffect, useRef } from 'react'
+import AppModal from './AppModal'
+import { IntakeSection, IntakeDisclosure, IntakeReceipt } from './IncidentIntakeSection'
 import { manilaInput } from '../utils/operationalTimes'
 import { fetchTeams } from '../api'
 import {
   SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES,
-  ICON_CLOSE, ICON_TRUCK, ICON_PLUS,
+  ICON_CLOSE, ICON_TRUCK, ICON_PLUS, ICON_PIN, ICON_WARN, ICON_HISTORY,
 } from './incidentFormOptions'
 import {
   Icon, Field, SectionHead, Segmented, StatusSteps, CasualtyPicker, LockedNote,
@@ -29,12 +30,6 @@ const EMPTY = {
   fire_remarks:          '',
 }
 
-// "YYYY-MM-DDTHH:mm" in local time, the format <input type="datetime-local"> uses.
-function localInputValue(d) {
-  const pad = n => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
 const REPORT_MODES = [
   { value: 'live', label: 'Live report' },
   { value: 'past', label: 'Past incident' },
@@ -47,6 +42,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
   const [mapError, setMapError] = useState(null)
   const [error, setError]       = useState(null)
   const [saving, setSaving]     = useState(false)
+  const submitting = useRef(false)
   // Live reports always start Pending; a past incident (logbook backfill, a call
   // handled offline) picks its own status and records when it happened.
   const [mode, setMode]             = useState('live')
@@ -60,19 +56,12 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
   const [unitSelect, setUnitSelect] = useState('')
 
   useEffect(() => {
+    if (mode !== 'past') return
     fetchTeams().then(setAllTeams).catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    function onKey(e) {
-      if (e.key === 'Escape' && !saving) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, saving])
+  }, [mode])
 
   const isPast         = mode === 'past'
-  const nowLocal       = localInputValue(new Date())
+  const nowLocal       = manilaInput().slice(0, 16)
   const futureTime     = isPast && occurredAt !== '' && occurredAt > nowLocal
   const showUnits      = form.fire_status !== 'pending'
   const showCasualties = form.fire_status === 'contained' || form.fire_status === 'closed'
@@ -92,6 +81,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
   }
 
   function handleModeChange(value) {
+    if (value === mode) return
     setError(null)
     setMode(value)
     setReceivedAt(value === 'past' ? '' : manilaInput())
@@ -124,6 +114,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (submitting.current) return
     if (!hasPin) {
       setError('Pick the incident location on the map.')
       return
@@ -140,6 +131,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
       setError("Incident time can't be in the future.")
       return
     }
+    submitting.current = true
     setSaving(true)
     try {
       await onSubmit({
@@ -152,35 +144,39 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
         fire_units_assigned: showUnits ? units.length : 0,
         fire_casualties:     showCasualties ? form.fire_casualties : 'None',
         fire_remarks:        showRemarks ? form.fire_remarks : '',
-        ...(isPast ? { fire_incident_datetime: new Date(occurredAt).toISOString() } : {}),
+        ...(isPast ? { fire_incident_datetime: new Date(`${occurredAt}+08:00`).toISOString() } : {}),
       })
     } catch (ex) {
-      setError(ex.message)
+      setError(ex.message || 'Failed to log incident')
       setSaving(false)
+      submitting.current = false
     }
   }
 
   return (
-    <div className="apm-overlay" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
-      <div className="apm-panel eim-panel lim-panel-split" role="dialog" aria-modal="true" aria-labelledby="lim-title">
-
-        <div className="eim-header">
-          <div className="eim-header-main">
-            <div className="apm-eyebrow">{isPast ? 'PAST INCIDENT' : 'NEW INCIDENT'}</div>
-            <div id="lim-title" className="eim-title">{form.fire_location_name.trim() || (isPast ? 'Record a past incident' : 'Log a new incident')}</div>
-          </div>
-          <button className="eim-close" onClick={onClose} aria-label="Close" disabled={saving}>
-            <Icon d={ICON_CLOSE} />
-          </button>
-        </div>
+    <AppModal
+      eyebrow={isPast ? 'PAST INCIDENT' : 'NEW INCIDENT'}
+      title={isPast ? 'Record a past incident' : 'Log a new incident'}
+      subtitle={isPast ? 'Record the location, assessment and known outcome.' : 'Pin the location, confirm the assessment and log the report.'}
+      onClose={onClose}
+      width={1160}
+      className="eim-panel lim-panel-split intake-panel"
+      dismissible={!saving}
+      manageFocus
+    >
+        <fieldset className="intake-fields intake-mode" disabled={saving} aria-label="Report type">
+          <Segmented label="Report type" options={REPORT_MODES} value={mode} onChange={handleModeChange} />
+          <span className="intake-mode-note">{isPast ? 'For logbook entries and incidents handled offline.' : 'Starts as Pending. Dispatch a crew after logging.'}</span>
+        </fieldset>
 
         <div className="lim-layout">
           {/* ── Left rail: map picker ── */}
-          <aside className="lim-rail-map" aria-label="Incident location">
+          <aside className="lim-rail-map intake-location" aria-label="Incident location" inert={saving}>
+            <IntakeSection icon={ICON_PIN} title="Location" desc="Pin the incident, then name the area">
             <MapPicker
               lat={form.fire_latitude}
               lng={form.fire_longitude}
-              onChange={(lat, lng) => setForm(prev => ({ ...prev, fire_latitude: lat, fire_longitude: lng }))}
+              onChange={(lat, lng) => { setError(null); setForm(prev => ({ ...prev, fire_latitude: lat, fire_longitude: lng })) }}
               onBoundsError={setMapError}
             />
             <PinStatus
@@ -189,70 +185,55 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
               error={mapError}
               emptyText="No pin yet. Click inside the boundary to mark the incident."
             />
-          </aside>
-
-        {/* ── Right rail: details ── */}
-        <form id="lim-form" className="eim-body lim-rail-form" onSubmit={handleSubmit}>
-          <ReportReceiptFields receivedAt={receivedAt} kind={responseKind} onReceipt={setReceivedAt} onKind={setResponseKind} recordKind={recordKind} onRecordKind={setRecordKind} />
-
-          {/* ── Report type ── */}
-          <section className="eim-section">
-            <SectionHead
-              title="Report type"
-              desc={isPast ? 'Already handled; recorded for the history.' : 'A fire happening now.'}
-            />
-            <Segmented label="Report type" options={REPORT_MODES} value={mode} onChange={handleModeChange} />
-            {isPast ? (
-              <Field label="When did it happen?" required className="lim-when">
-                <input
-                  type="datetime-local"
-                  value={occurredAt}
-                  max={nowLocal}
-                  onChange={e => { setError(null); setOccurredAt(e.target.value) }}
-                  aria-invalid={futureTime}
-                />
-              </Field>
-            ) : (
-              <div className="lim-live-note">
-                Starts as <strong>Pending</strong> and is timestamped now. Dispatching a crew moves it forward.
-              </div>
-            )}
-          </section>
-
-          {/* ── Location ── */}
-          <section className="eim-section">
-            <SectionHead title="Location" desc="Name the area you pinned on the map." />
             <div className="eim-row">
               <Field label="Area / Barangay" required>
                 <input
-                  placeholder="e.g. Brgy. Kakar, Panabo"
+                  placeholder="e.g. Brgy. San Francisco, Panabo"
+                  aria-label="Area / Barangay"
+                  form="lim-form"
+                  required
                   value={form.fire_location_name}
                   onChange={e => set('fire_location_name', e.target.value)}
+                  data-autofocus
                 />
               </Field>
-              <Field label="Street address">
+              <Field label="Street / landmark">
                 <input
-                  placeholder="e.g. 12 Rizal St."
+                  placeholder="e.g. Rizal St., near the church"
+                  aria-label="Street / landmark"
+                  form="lim-form"
                   value={form.fire_address}
                   onChange={e => set('fire_address', e.target.value)}
                 />
               </Field>
             </div>
-          </section>
+            </IntakeSection>
+          </aside>
 
-          {/* ── Status (past incidents only; live reports start Pending) ── */}
+        {/* ── Right rail: details ── */}
+        <form id="lim-form" className="eim-body lim-rail-form" onSubmit={handleSubmit} aria-busy={saving}>
+          <fieldset className="intake-fields" disabled={saving}>
           {isPast && (
-            <section className="eim-section">
-              <SectionHead title="Status" desc="How far the incident got." />
+            <IntakeSection icon={ICON_HISTORY} title="Incident history" desc="Use Philippine time">
+              <Field label="When did it happen? · Philippine time" required>
+                <input
+                  type="datetime-local"
+                  aria-label="Incident time in Philippine time"
+                  value={occurredAt}
+                  max={nowLocal}
+                  onChange={e => { setError(null); setOccurredAt(e.target.value) }}
+                  aria-invalid={futureTime}
+                />
+                {futureTime && <span className="frm-field-err">Incident time can't be in the future.</span>}
+              </Field>
               <StatusSteps value={form.fire_status} onChange={handleStatusChange} />
-            </section>
+            </IntakeSection>
           )}
 
           {/* ── Assessment ── */}
-          <section className="eim-section">
-            <SectionHead title="Assessment" desc="How serious the fire looks from the report." />
+          <IntakeSection icon={ICON_WARN} title="Assessment" desc="Confirm the initial report">
             <Field label="Dispatch type">
-              <select value={form.fire_dispatch_type} onChange={e => set('fire_dispatch_type', e.target.value)}>
+              <select aria-label="Dispatch type" value={form.fire_dispatch_type} onChange={e => set('fire_dispatch_type', e.target.value)}>
                 {DISPATCH_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
               </select>
             </Field>
@@ -264,12 +245,14 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
                 <Segmented label="Alarm level" options={ALARMS.map(a => ({ value: a, label: a.replace(' Alarm', '') }))} value={form.fire_alarm_level} onChange={v => set('fire_alarm_level', v)} />
               </Field>
               <Field label="Structure type">
-                <select value={form.fire_structure_type} onChange={e => set('fire_structure_type', e.target.value)}>
+                <select aria-label="Structure type" value={form.fire_structure_type} onChange={e => set('fire_structure_type', e.target.value)}>
                   {STRUCTURES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </Field>
             </div>
-          </section>
+          </IntakeSection>
+
+          {!isPast && <div className="intake-status-note"><span className="eim-chip">Pending</span><span>Log the report, then assign a crew from the incident panel.</span></div>}
 
           {isPast && (<>
           {/* ── Units ── */}
@@ -340,43 +323,47 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
           </>)}
 
           {/* ── Reporter ── */}
-          <section className="eim-section">
-            <SectionHead title="Reporter" desc="Who called it in." />
+          <IntakeDisclosure title="Reporter details" summary={[form.fire_reporter_name, form.fire_reporter_contact].filter(Boolean).join(' · ') || 'Optional · add the caller and contact number'}>
             <div className="eim-row">
               <Field label="Reported by">
                 <input
                   placeholder="e.g. BFP Hotline · 911"
                   value={form.fire_reporter_name}
                   onChange={e => set('fire_reporter_name', e.target.value)}
+                  aria-label="Reported by"
                 />
               </Field>
               <Field label="Contact number">
                 <input
+                  type="tel"
+                  inputMode="tel"
                   placeholder="e.g. 09XX-XXX-XXXX"
                   value={form.fire_reporter_contact}
                   onChange={e => set('fire_reporter_contact', e.target.value)}
+                  aria-label="Contact number"
                 />
               </Field>
             </div>
-          </section>
-
-          {error && <div className="apm-error">{error}</div>}
+          </IntakeDisclosure>
+          <IntakeReceipt key={mode} defaultOpen={isPast} receivedAt={receivedAt} kind={responseKind} onReceipt={setReceivedAt} onKind={setResponseKind} recordKind={recordKind} onRecordKind={setRecordKind} />
+          </fieldset>
         </form>
         </div>
 
+        {error && <div className="apm-error intake-error" role="alert">{error}</div>}
+
         <div className="eim-footer">
-          <span className={`eim-changes ${missing.length ? '' : 'ready'}`}>
-            {missing.length ? `Still needed: ${missing.join(' and ')}` : 'Ready to log'}
+          <span className={`eim-changes ${missing.length || futureTime ? '' : 'ready'}`} role="status">
+            {futureTime ? 'Incident time is in the future' : missing.length ? `Still needed: ${missing.join(' and ')}` : 'Ready to log'}
           </span>
           <div className="eim-footer-actions">
             <button type="button" className="apm-btn-cancel" onClick={onClose} disabled={saving}>Cancel</button>
-            <button type="submit" form="lim-form" className="apm-btn-submit" disabled={saving || missing.length > 0}>
-              {saving ? <span className="apm-spinner" /> : isPast ? 'Record incident' : 'Log incident'}
+            <button type="submit" form="lim-form" className="apm-btn-submit" disabled={saving || missing.length > 0 || futureTime}>
+              {saving ? <><span className="apm-spinner" /> Logging…</> : isPast ? 'Record incident' : 'Log incident'}
             </button>
           </div>
         </div>
 
-      </div>
-    </div>
+    </AppModal>
   )
 }

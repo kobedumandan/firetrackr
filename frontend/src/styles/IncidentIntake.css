@@ -1,0 +1,307 @@
+/* Incident intake uses the shared eim form, surface and theme primitives. */
+.eim-panel.intake-panel {
+  max-height: calc(100dvh - 60px);
+}
+.intake-panel > .eim-header,
+.intake-panel > .eim-footer,
+.intake-mode {
+  flex-shrink: 0;
+}
+.intake-panel .intake-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-dim) transparent;
+}
+.intake-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.intake-panel .eim-section {
+  padding: 20px 0 16px;
+}
+.intake-panel .eim-section-head {
+  margin-bottom: 16px;
+}
+.intake-panel .apm-field {
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.intake-panel .eim-row {
+  column-gap: 16px;
+  margin-bottom: 16px;
+}
+.intake-panel .eim-row > .apm-field,
+.intake-panel .receipt-section .apm-field,
+.intake-panel :is(.eim-section, .intake-disclosure-body) > :is(.apm-field, .eim-row, .lim-unit-add):last-child {
+  margin-bottom: 0;
+}
+.intake-panel .nim-pin {
+  margin-bottom: 16px;
+}
+.intake-panel .nim-mobile {
+  margin-top: 0;
+}
+.intake-panel .intake-section .eim-section-head {
+  align-items: center;
+}
+.intake-panel .intake-section .eim-section-head h3 {
+  align-items: center;
+  gap: 8px;
+  line-height: 1;
+}
+.intake-section-title {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+}
+.intake-panel .eim-section-head p {
+  text-transform: none;
+}
+.intake-help-separator {
+  display: inline-block;
+  margin: 0 6px;
+  color: var(--text-tertiary);
+  opacity: 0.65;
+}
+.intake-step {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-raise);
+  color: var(--text-secondary);
+}
+.intake-step .eim-icon {
+  width: 14px;
+  height: 14px;
+}
+.intake-panel .apm-field,
+.intake-panel .eim-row > * {
+  min-width: 0;
+}
+.eim-panel.intake-panel .apm-field label {
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+.intake-panel .apm-field :is(input, textarea)::placeholder {
+  color: color-mix(in srgb, var(--text-primary) 27%, transparent);
+  opacity: 1;
+}
+:root[data-theme="light"] .intake-panel .apm-field :is(input, textarea)::placeholder {
+  color: color-mix(in srgb, var(--text-primary) 44%, transparent);
+}
+.intake-panel :is(.eim-seg[aria-label="Alarm level"], select[aria-label="Structure type"]) {
+  width: 100%;
+  height: 32px;
+}
+.intake-panel .eim-seg[aria-label="Alarm level"] {
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+}
+.intake-panel .eim-seg[aria-label="Alarm level"] .eim-seg-btn {
+  padding: 4px 10px 3px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.3;
+}
+/* Resource badge tone classes must not tint unselected severity choices. */
+.intake-panel .eim-seg[aria-label="Severity"] .eim-seg-btn {
+  color: var(--text-secondary);
+  background: transparent;
+  box-shadow: none;
+}
+.intake-panel .eim-seg[aria-label="Severity"] .eim-seg-btn:hover:not(.active):not(:active) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.intake-panel .eim-seg[aria-label="Severity"] .eim-seg-btn:is(.active, :active:not(:disabled)) {
+  color: rgb(var(--tone-rgb));
+  background: rgba(var(--tone-rgb), 0.14);
+  box-shadow: inset 0 0 0 1px rgba(var(--tone-rgb), 0.35);
+}
+.intake-panel input[type="datetime-local"] {
+  color-scheme: dark;
+  font-variant-numeric: tabular-nums;
+}
+:root[data-theme="light"] .intake-panel input[type="datetime-local"] {
+  color-scheme: light;
+}
+.intake-panel :is(button, summary):focus-visible {
+  outline: 2px solid var(--accent-fire-focus);
+  outline-offset: 2px;
+}
+.intake-disclosure {
+  border-top: 1px solid var(--border-dim);
+}
+.intake-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.intake-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.intake-disclosure-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.intake-disclosure-title {
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.intake-disclosure-summary {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.intake-disclosure > summary > .eim-icon {
+  color: var(--text-secondary);
+  transform: rotate(90deg);
+  transition: transform 0.15s;
+}
+.intake-disclosure[open] > summary > .eim-icon {
+  transform: rotate(-90deg);
+}
+.intake-disclosure[open] > summary .intake-disclosure-summary {
+  display: none;
+}
+.intake-disclosure[open] > summary {
+  padding-bottom: 12px;
+}
+.intake-disclosure-body {
+  padding: 4px 0 16px;
+}
+.intake-panel .intake-disclosure-body > .eim-section {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.intake-mode {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--surface-raise);
+}
+.intake-mode > .eim-seg {
+  flex: 0 0 250px;
+}
+.intake-mode-note {
+  font-size: 10.8px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.intake-panel .lim-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+  overflow: hidden;
+}
+.intake-panel .intake-location {
+  padding: 16px 20px 12px;
+  border-right: 1px solid var(--border-dim);
+}
+.intake-location > .intake-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+}
+.intake-location .lim-map {
+  min-height: 180px;
+  margin-bottom: 10px;
+}
+.intake-location .eim-coords {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+.intake-location .eim-row {
+  margin-top: 16px;
+}
+.intake-panel .intake-status-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-dim);
+  border-radius: 9px;
+  background: var(--surface-raise);
+  color: var(--text-secondary);
+  font-size: 10.8px;
+  line-height: 1.5;
+}
+.intake-status-note strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.intake-panel .nim-toggle {
+  margin-bottom: 0;
+}
+.intake-panel .intake-error {
+  margin: 0 20px 12px;
+  flex-shrink: 0;
+}
+.intake-panel .eim-footer {
+  margin-top: auto;
+}
+@media (max-width: 960px) {
+  .eim-panel.intake-panel.lim-panel-split {
+    height: auto;
+  }
+  .intake-panel .lim-layout {
+    overflow-y: auto;
+  }
+  .intake-panel .intake-location {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-dim);
+  }
+  .intake-location .lim-map {
+    flex: none;
+  }
+}
+@media (max-width: 560px) {
+  .intake-panel .intake-section .eim-section-head {
+    align-items: flex-start;
+  }
+  .intake-mode {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .intake-mode > .eim-seg {
+    flex-basis: auto;
+  }
+  .intake-panel .eim-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .intake-panel .eim-footer {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .intake-panel .eim-footer-actions > button {
+    flex: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .intake-disclosure > summary > .eim-icon {
+    transition: none;
+  }
+}

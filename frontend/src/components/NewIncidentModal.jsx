@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
-import ReportReceiptFields from './ReportReceiptFields'
+import { useRef, useState } from 'react'
+import AppModal from './AppModal'
+import { IntakeSection, IntakeDisclosure, IntakeReceipt } from './IncidentIntakeSection'
 import { manilaInput } from '../utils/operationalTimes'
 import '../styles/AppModal.css'
-import { SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES, ICON_CLOSE, ICON_PIN, ICON_BOLT } from './incidentFormOptions'
-import { Icon, Field, SectionHead, Segmented } from './incidentForm'
+import { SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES, ICON_PIN, ICON_BOLT, ICON_WARN } from './incidentFormOptions'
+import { Icon, Field, Segmented } from './incidentForm'
 
 const CHANNELS = ['911 Call', 'BFP Hotline', 'SMS Report', 'Walk-in', 'Dispatcher']
 
@@ -19,7 +20,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
   const [form, setForm] = useState(() => ({
     locationName: '',
     address:      '',
-    severity:     'Moderate',
+    severity:     'Minor',
     alarm:        '1st Alarm',
     structure:    'Residential',
     dispatchType: 'Firefighting Operations',
@@ -33,12 +34,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
   }))
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState(null)
-
-  useEffect(() => {
-    const onKey = e => { if (e.key === 'Escape' && !saving) onCancel() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel, saving])
+  const submitting = useRef(false)
 
   function set(field, val) { setForm(f => ({ ...f, [field]: val })); setError(null) }
 
@@ -47,7 +43,8 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (missing.length) return
+    if (missing.length || submitting.current) return
+    submitting.current = true
     setSaving(true)
     try {
       await onSubmit({
@@ -70,29 +67,26 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
     } catch (err) {
       setError(err.message || 'Failed to log incident')
       setSaving(false)
+      submitting.current = false
     }
   }
 
   return (
-    <div className="apm-overlay" onMouseDown={e => e.target === e.currentTarget && !saving && onCancel()}>
-      <div className="apm-panel eim-panel nim-panel" role="dialog" aria-modal="true" aria-labelledby="nim-title">
-
-        <div className="eim-header">
-          <div className="eim-header-main">
-            <div className="apm-eyebrow">NEW INCIDENT</div>
-            <div id="nim-title" className="eim-title">{form.locationName.trim() || 'Log a new incident'}</div>
-          </div>
-          <button className="eim-close" onClick={onCancel} aria-label="Close" disabled={saving}>
-            <Icon d={ICON_CLOSE} />
-          </button>
-        </div>
-
-        <form id="nim-form" className="eim-body" onSubmit={handleSubmit}>
-          <ReportReceiptFields receivedAt={form.receivedAt} kind={form.responseKind} onReceipt={v => set('receivedAt', v)} onKind={v => set('responseKind', v)} recordKind={form.recordKind} onRecordKind={v => set('recordKind', v)} />
+    <AppModal
+      eyebrow="NEW INCIDENT"
+      title="Log a new incident"
+      subtitle="Confirm the location and assessment, then choose how to dispatch."
+      onClose={onCancel}
+      width={680}
+      className="eim-panel intake-panel"
+      dismissible={!saving}
+      manageFocus
+    >
+        <form id="nim-form" className="eim-body intake-scroll" onSubmit={handleSubmit} aria-busy={saving}>
+          <fieldset className="intake-fields" disabled={saving}>
 
           {/* ── Location ── */}
-          <section className="eim-section">
-            <SectionHead title="Location" desc={fromReporter ? 'Pinned from the reporter\'s phone.' : 'Name the spot you pinned.'} />
+          <IntakeSection icon={ICON_PIN} title="Location" desc={fromReporter ? 'Pinned from the reporter\'s phone.' : 'Pin placed | Add the area name'}>
             <div className="eim-coords pinned nim-pin">
               <Icon d={ICON_PIN} />
               <span className="eim-coords-val">{location[0].toFixed(5)}, {location[1].toFixed(5)}</span>
@@ -114,7 +108,9 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
                   placeholder="e.g. Brgy. San Francisco, Panabo"
                   value={form.locationName}
                   onChange={e => set('locationName', e.target.value)}
-                  autoFocus
+                  aria-label="Area / Barangay"
+                  required
+                  data-autofocus
                 />
               </Field>
               <Field label="Street / landmark">
@@ -122,16 +118,16 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
                   placeholder="e.g. 123 Rizal St., near the church"
                   value={form.address}
                   onChange={e => set('address', e.target.value)}
+                  aria-label="Street / landmark"
                 />
               </Field>
             </div>
-          </section>
+          </IntakeSection>
 
           {/* ── Assessment ── */}
-          <section className="eim-section">
-            <SectionHead title="Assessment" desc="How serious the fire looks from the report." />
+          <IntakeSection icon={ICON_WARN} title="Assessment" desc="Confirm the initial report">
             <Field label="Dispatch type">
-              <select value={form.dispatchType} onChange={e => set('dispatchType', e.target.value)}>
+              <select aria-label="Dispatch type" value={form.dispatchType} onChange={e => set('dispatchType', e.target.value)}>
                 {DISPATCH_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
               </select>
             </Field>
@@ -148,16 +144,37 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
                 />
               </Field>
               <Field label="Structure type">
-                <select value={form.structure} onChange={e => set('structure', e.target.value)}>
+                <select aria-label="Structure type" value={form.structure} onChange={e => set('structure', e.target.value)}>
                   {STRUCTURES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </Field>
             </div>
-          </section>
+          </IntakeSection>
+
+          <IntakeSection icon={ICON_BOLT} title="Dispatch" desc="Choose what happens when you log">
+            <label className={`nim-toggle ${form.autoDispatch ? 'on' : ''}`}>
+              <span className="nim-toggle-icon"><Icon d={ICON_BOLT} /></span>
+              <span className="nim-toggle-text">
+                <span className="nim-toggle-title">Auto-dispatch an available team</span>
+                <span className="nim-toggle-desc">
+                  {form.autoDispatch
+                    ? 'Automatically assign an available team after logging.'
+                    : 'Save as Pending, then dispatch from the incident panel.'}
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label="Auto-dispatch an available team"
+                className="nim-switch"
+                checked={form.autoDispatch}
+                onChange={e => set('autoDispatch', e.target.checked)}
+              />
+            </label>
+          </IntakeSection>
 
           {/* ── Reporter ── */}
-          <section className="eim-section">
-            <SectionHead title="Reporter" desc="How the report came in." />
+          <IntakeDisclosure title="Reporter details" summary={[form.reporter, form.mobile].filter(Boolean).join(' · ') || 'Optional · add a channel and contact number'} defaultOpen={fromReporter || Boolean(initial?.mobile)}>
             <Field label="Reported via">
               <div className="eim-chips" role="radiogroup" aria-label="Reported via">
                 {CHANNELS.map(c => (
@@ -181,49 +198,28 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
                 placeholder="e.g. 09XX-XXX-XXXX"
                 value={form.mobile}
                 onChange={e => set('mobile', e.target.value)}
+                aria-label="Reporter mobile number"
               />
             </Field>
-          </section>
-
-          {/* ── Dispatch ── */}
-          <section className="eim-section">
-            <SectionHead title="Dispatch" />
-            <label className={`nim-toggle ${form.autoDispatch ? 'on' : ''}`}>
-              <span className="nim-toggle-icon"><Icon d={ICON_BOLT} /></span>
-              <span className="nim-toggle-text">
-                <span className="nim-toggle-title">Auto-dispatch the nearest team</span>
-                <span className="nim-toggle-desc">
-                  {form.autoDispatch
-                    ? 'The closest available crew is sent as soon as you log this.'
-                    : 'Logged as Pending. Dispatch a crew yourself from the incident panel.'}
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                className="nim-switch"
-                checked={form.autoDispatch}
-                onChange={e => set('autoDispatch', e.target.checked)}
-              />
-            </label>
-          </section>
-
-          {error && <div className="apm-error">{error}</div>}
+          </IntakeDisclosure>
+          <IntakeReceipt receivedAt={form.receivedAt} kind={form.responseKind} onReceipt={v => set('receivedAt', v)} onKind={v => set('responseKind', v)} recordKind={form.recordKind} onRecordKind={v => set('recordKind', v)} />
+          </fieldset>
         </form>
 
+        {error && <div className="apm-error intake-error" role="alert">{error}</div>}
+
         <div className="eim-footer">
-          <span className={`eim-changes ${missing.length ? '' : 'ready'}`}>
+          <span className={`eim-changes ${missing.length ? '' : 'ready'}`} role="status">
             {missing.length ? `Still needed: ${missing.join(' and ')}` : 'Ready to log'}
           </span>
           <div className="eim-footer-actions">
             <button type="button" className="apm-btn-cancel" onClick={onCancel} disabled={saving}>Cancel</button>
             <button type="submit" form="nim-form" className="apm-btn-submit" disabled={saving || missing.length > 0}>
-              {saving ? <span className="apm-spinner" /> : form.autoDispatch ? 'Log & dispatch' : 'Log incident'}
+              {saving ? <><span className="apm-spinner" /> Logging…</> : form.autoDispatch ? 'Log & dispatch' : 'Log incident'}
             </button>
           </div>
         </div>
 
-      </div>
-    </div>
+    </AppModal>
   )
 }
