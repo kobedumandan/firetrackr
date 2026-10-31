@@ -326,20 +326,20 @@
   padding: 10px 14px;
   text-align: left;
   font-family: var(--font-condensed);
-  font-size: 8.8px;
+  font-size: 7.8px;
   font-weight: 600;
-  letter-spacing: -0.1px;
+  letter-spacing: 0.1px;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   border-bottom: 1px solid var(--border-dim);
   cursor: pointer;
   white-space: nowrap;
   transition: color 0.15s;
   user-select: none;
 }
-.per-table th:hover { color: var(--text-primary); }
+.per-table th:hover { color: var(--text-secondary); }
 .per-table th.per-th-static { cursor: default; }
-.per-table th.per-th-static:hover { color: var(--text-secondary); }
+.per-table th.per-th-static:hover { color: var(--text-primary); }
 .per-table th.sort-active { color: var(--accent-fire); }
 .per-sort-arrow { margin-left: 4px; opacity: 0.5; }
 .per-table th.sort-active .per-sort-arrow { opacity: 1; }

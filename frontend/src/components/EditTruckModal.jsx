@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import AppModal from './AppModal'
+import '../styles/EditFormModal.css'
 import { fetchStations, updateTruck } from '../api'
 import { TRUCK_STATUSES, statusMeta } from './resourceFormOptions'
 import { Field, SectionHead, Segmented, FormStatus, ReviewChanges } from './incidentForm'
@@ -73,13 +74,13 @@ export default function EditTruckModal({ truck, onClose, onSubmit }) {
         subtitle={stationName(initial.station_id) || 'No home station'}
         onClose={onClose}
         width={520}
-        className="eim-panel"
+        className="eim-panel edit-form-modal"
         dismissible={!saving && !reviewing}
       >
         <form onSubmit={handleSubmit}>
           <div className="eim-body">
             <section className="eim-section">
-              <SectionHead title="Truck" desc="Plate number and home station." />
+              <SectionHead title="Truck" desc="Plate number and home station" />
               <div className="eim-row">
                 <Field label="Plate number" required changed={isChanged('truck_platenum')}>
                   <input
@@ -103,9 +104,9 @@ export default function EditTruckModal({ truck, onClose, onSubmit }) {
             </section>
 
             <section className="eim-section">
-              <SectionHead title="Status" desc="Whether it can be sent out." changed={isChanged('truck_status')} />
+              <SectionHead title="Status" desc="Whether it can be sent out" changed={isChanged('truck_status')} />
               <Segmented label="Status" options={TRUCK_STATUSES} value={form.truck_status} onChange={v => set('truck_status', v)} />
-              <div className="frm-hint">{statusMeta(TRUCK_STATUSES, form.truck_status).hint}</div>
+              <div className="frm-hint">{statusMeta(TRUCK_STATUSES, form.truck_status).hint.replace(/\.$/, '')}</div>
             </section>
 
             {error && !reviewing && <div className="apm-error">{error}</div>}

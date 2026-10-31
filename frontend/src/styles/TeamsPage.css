@@ -341,8 +341,14 @@
 .tea-stack {
   display: inline-flex;
   align-items: center;
+  isolation: isolate;
 }
-.tea-stack .tea-av.xs { border-radius: 50%; }
+.tea-stack .tea-av.xs {
+  position: relative;
+  border-radius: 50%;
+  /* An opaque base prevents the circles and initials behind from showing through. */
+  background: linear-gradient(var(--chip-muted-bg), var(--chip-muted-bg)), var(--bg-base);
+}
 .tea-stack .tea-av.xs + .tea-av.xs { margin-left: -5px; }
 .tea-stack-more {
   margin-left: 5px;

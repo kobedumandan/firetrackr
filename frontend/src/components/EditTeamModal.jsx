@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import AppModal from './AppModal'
+import '../styles/EditFormModal.css'
 import {
   fetchStations, fetchPersonnel, fetchShifts, fetchTrucks, fetchTeams,
   updateTeam, addTeamMember, updateTeamMember, removeTeamMember,
@@ -172,22 +173,28 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
   ]
 
   const releasingTruck = isChanged('truck_id') && initial.truck_id && !changes.truck_id
+  const subtitle = [initial.team_code, stationName(initial.station_id), shiftName(initial.shift_id)].filter(Boolean)
 
   return (
     <>
       <AppModal
         eyebrow="EDIT TEAM"
         title={trimmed.team_name || 'Untitled team'}
-        subtitle={[initial.team_code, stationName(initial.station_id), shiftName(initial.shift_id)].filter(Boolean).join(' · ') || null}
+        subtitle={subtitle.length > 0 ? subtitle.map((part, index) => (
+          <span key={index}>
+            {index > 0 && <span className="edit-form-separator" aria-hidden="true"> | </span>}
+            {part}
+          </span>
+        )) : null}
         onClose={onClose}
         width={620}
-        className="eim-panel"
+        className="eim-panel edit-form-modal"
         dismissible={!saving && !reviewing}
       >
         <form onSubmit={handleSubmit}>
           <div className="eim-body">
             <section className="eim-section">
-              <SectionHead title="Team" desc="What dispatchers will see it as." />
+              <SectionHead title="Team" desc="What dispatchers will see it as" />
               <div className="eim-row">
                 <Field label="Team name" required changed={isChanged('team_name')}>
                   <input
@@ -209,11 +216,11 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
             </section>
 
             <section className="eim-section">
-              <SectionHead title="Assignment" desc="Where and when it works, and what it rides." />
+              <SectionHead title="Assignment" desc="Where and when it works, and what it rides" />
               <Field label="Shift" changed={isChanged('shift_id')}>
                 {shiftLocked ? (
                   <LockedNote>
-                    <strong>{shiftName(form.shift_id) || 'No shift'}</strong>. Remove every member to change the shift.
+                    <strong>{shiftName(form.shift_id) || 'No shift'}</strong>. Remove every member to change the shift
                   </LockedNote>
                 ) : (
                   <Segmented label="Shift" options={shiftOptions} value={form.shift_id} onChange={v => setSlot('shift_id', v)} />
@@ -229,7 +236,7 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
                   </select>
                 </Field>
                 <Field label="Truck" changed={isChanged('truck_id')}>
-                  {truckLocked ? <LockedNote><strong>{team.truck_platenum || truckName(initial.truck_id) || 'No truck assigned'}</strong>. Truck assignment is locked until this team's dispatch ends.</LockedNote> : <select value={form.truck_id} onChange={e => set('truck_id', e.target.value)} disabled={stationId === null}>
+                  {truckLocked ? <LockedNote><strong>{team.truck_platenum || truckName(initial.truck_id) || 'No truck assigned'}</strong>. Truck assignment is locked until this team's dispatch ends</LockedNote> : <select value={form.truck_id} onChange={e => set('truck_id', e.target.value)} disabled={stationId === null}>
                     <option value="">
                       {stationId === null
                         ? 'Pick a station first'
@@ -244,15 +251,21 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
             </section>
 
             <section className="eim-section">
-              <SectionHead title="Status" desc="Whether it can take dispatches." changed={isChanged('team_status')} />
+              <SectionHead title="Status" desc="Whether it can take dispatches" changed={isChanged('team_status')} />
               <Segmented label="Status" options={TEAM_STATUSES} value={form.team_status} onChange={v => set('team_status', v)} />
-              <div className="frm-hint">{statusMeta(TEAM_STATUSES, form.team_status).hint}</div>
+              <div className="frm-hint">{statusMeta(TEAM_STATUSES, form.team_status).hint.replace(/\.$/, '')}</div>
             </section>
 
             <section className="eim-section">
               <SectionHead
                 title="Members"
-                desc={`${members.length} ${members.length === 1 ? 'person' : 'people'}${shiftId !== null ? ` · ${shiftName(form.shift_id)} only` : ''}`}
+                desc={<>
+                  {members.length} {members.length === 1 ? 'person' : 'people'}
+                  {shiftId !== null && <>
+                    <span className="edit-form-separator" aria-hidden="true"> | </span>
+                    {shiftName(form.shift_id)} only
+                  </>}
+                </>}
                 changed={memberChangeCount > 0}
               />
               {members.length > 0 ? (
@@ -287,7 +300,7 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
                   })}
                 </ul>
               ) : (
-                <div className="frm-empty">No members yet. Add people on this team&apos;s shift below.</div>
+                <div className="frm-empty">No members yet. Add people on this team&apos;s shift below</div>
               )}
 
               <div className="lim-unit-add frm-member-add">

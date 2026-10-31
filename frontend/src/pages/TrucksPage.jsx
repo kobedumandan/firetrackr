@@ -7,6 +7,8 @@ import ConfirmModal from "../components/ConfirmModal";
 import { formatReported } from "../components/incidentUi";
 import { fetchTrucks, createTruck, deleteTruck } from "../api";
 import useSplitPane from "../hooks/useSplitPane";
+import ExportRegisterModal from "../components/ExportRegisterModal";
+import { createResourceExport } from "../utils/resourceExport";
 
 const STATUS_OPTIONS = ["available", "dispatched", "maintenance", "unavailable"];
 const STATUS_TABS = ["all", ...STATUS_OPTIONS];
@@ -169,7 +171,7 @@ function TruckDetail({ t, onEdit, onDelete, onShowOnMap }) {
               </div>
               <div className="trk-hero-name">{t.truck_platenum}</div>
               <div className="trk-hero-code">
-                {truckCode(t.truck_id)} · {t.station_name || "Unassigned"}
+                {truckCode(t.truck_id)}<span className="trk-meta-separator" aria-hidden="true"> | </span>{t.station_name || "Unassigned"}
               </div>
             </div>
           </div>
@@ -271,6 +273,7 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [exportPreview, setExportPreview] = useState(null);
   const { width: detailWidth, handleProps: resizeHandle } = useSplitPane({ storageKey: "trucks.detailWidth", minMain: 632 });
 
   // refreshKey is bumped by App when a dispatch completes, so a close that
@@ -334,6 +337,17 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
     }
   }
 
+  function openExport() {
+    setExportPreview(createResourceExport("trucks",
+      ["Code", "Plate number", "Station", "Status", "Latitude", "Longitude", "Last updated"],
+      filtered.map((t) => [truckCode(t.truck_id), t.truck_platenum, t.station_name, TAB_LABELS[t.truck_status] ?? t.truck_status, t.truck_latitude, t.truck_longitude, t.truck_last_updated]),
+      {
+        filters: [["Status", TAB_LABELS[filterStatus] ?? "All"], ["Station", stationFilter || "All"], ...(search.trim() ? [["Search", search.trim()]] : [])],
+        sort: `${({ truck_platenum: "Plate number", truck_status: "Status", station_name: "Station", truck_last_updated: "Last updated" })[sortCol] ?? sortCol} (${sortDir === 1 ? "ascending" : "descending"})`,
+      },
+    ));
+  }
+
   function arrow(col) {
     if (sortCol !== col) return "↕";
     return sortDir === 1 ? "↑" : "↓";
@@ -373,7 +387,7 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
               <UnfoldIcon />
             </div>
             <div className="trk-header-actions">
-              <button className="trk-btn-secondary table-export-btn">
+              <button type="button" className="trk-btn-secondary table-export-btn" onClick={openExport} disabled={loading || filtered.length === 0}>
                 <ExportIcon />
                 Export
               </button>
@@ -743,6 +757,7 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
         </div>
       </div>
 
+      {exportPreview && <ExportRegisterModal resource={exportPreview} onClose={() => setExportPreview(null)} />}
       {showAdd && (
         <AddTruckModal
           onClose={() => setShowAdd(false)}

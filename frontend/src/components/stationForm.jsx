@@ -8,9 +8,11 @@ import { Field, SectionHead, Segmented, FieldError } from './incidentForm'
  * isChanged   – optional (field) => bool for the edited-field dots
  * mainStations – [{ id: 'STA-001', name }] candidates for the parent station
  * contactError – validation message for the contact number
+ * editing     – omit ending periods from help text in the edit modal
  */
-export function StationDetailsSections({ form, set, isChanged = () => false, mainStations, contactError, autoFocus }) {
+export function StationDetailsSections({ form, set, isChanged = () => false, mainStations, contactError, autoFocus, editing = false }) {
   const isSub = form.station_type === 'sub'
+  const helpText = text => editing ? text.replace(/\.$/, '') : text
 
   function setType(value) {
     set('station_type', value)
@@ -20,7 +22,7 @@ export function StationDetailsSections({ form, set, isChanged = () => false, mai
   return (
     <>
       <section className="eim-section">
-        <SectionHead title="Station" desc="Its name and where it sits in the command chain." />
+        <SectionHead title="Station" desc={helpText('Its name and where it sits in the command chain.')} />
         <Field label="Station name" required changed={isChanged('station_name')}>
           <input
             placeholder="e.g. Station 4 · Gredu"
@@ -51,7 +53,7 @@ export function StationDetailsSections({ form, set, isChanged = () => false, mai
       </section>
 
       <section className="eim-section">
-        <SectionHead title="Address" desc="Shown to dispatchers and on reports." />
+        <SectionHead title="Address" desc={helpText('Shown to dispatchers and on reports.')} />
         <div className="eim-row">
           <Field label="Street address" required changed={isChanged('station_address')}>
             <input
@@ -71,7 +73,7 @@ export function StationDetailsSections({ form, set, isChanged = () => false, mai
       </section>
 
       <section className="eim-section">
-        <SectionHead title="Contact & status" desc="How to reach it, and whether it's in service." />
+        <SectionHead title="Contact & status" desc={helpText("How to reach it, and whether it's in service.")} />
         <Field label="Contact number" required className="frm-half" changed={isChanged('station_contact')}>
           <input
             type="tel"
@@ -86,7 +88,7 @@ export function StationDetailsSections({ form, set, isChanged = () => false, mai
         <Field label="Status" changed={isChanged('station_status')}>
           <Segmented label="Status" options={STATION_STATUSES} value={form.station_status} onChange={v => set('station_status', v)} />
         </Field>
-        <div className="frm-hint">{statusMeta(STATION_STATUSES, form.station_status).hint}</div>
+        <div className="frm-hint">{helpText(statusMeta(STATION_STATUSES, form.station_status).hint)}</div>
       </section>
     </>
   )

@@ -20,7 +20,7 @@ const FOOTER_H = 22
 /** @returns {jsPDF} */
 export function registerToPdf(doc, { paper = 'a4', orientation = 'landscape' } = {}) {
   const pdf = new jsPDF({ unit: 'pt', format: paper, orientation })
-  pdf.setProperties({ title: doc.title, subject: 'Incident register', creator: 'FireTrackr' })
+  pdf.setProperties({ title: doc.title, subject: doc.subject ?? 'Incident register', creator: 'FireTrackr' })
   const W = pdf.internal.pageSize.getWidth()
   const H = pdf.internal.pageSize.getHeight()
   const CW = W - 2 * M
