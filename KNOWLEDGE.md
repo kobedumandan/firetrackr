@@ -17,6 +17,55 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### Metrics month selection (2026-11-01)
+
+- Clicking a month in Monthly incident activity filters Alarm levels, Incidents
+  by barangay (including the map), and Top reported fire causes to that calendar
+  month in Philippine time. Hover and focus inspect values without filtering;
+  clicking or Enter/Space selects and pins the tooltip. The tooltip uses the
+  Operational Times chart style with the full month/year, a plain incident count,
+  and up to five reported causes. Months without recorded causes omit the causes
+  section. The close button appears only for a selected month. Its close button,
+  Escape or Clear month restores reporting-period
+  breakdowns; selecting the same month keeps it pinned. Changing the reporting period clears
+  the month selection. Overview KPIs and the chart history retain their own
+  reporting-period scopes.
+- `GET /api/metrics/summary` accepts optional `month=YYYY-MM` for the breakdowns.
+  Monthly rows include stable `month_key` values so months from different years
+  remain distinct, plus `top_causes` for tooltips without extra hover requests.
+  These monthly cause rankings exclude the synthetic `Not recorded` label;
+  overview rankings continue to show unknown causes explicitly.
+  Selected-month requests and errors cannot replace a newer
+  selection. PDF/PowerPoint exports use the visible breakdowns and label their
+  month separately from the overview period.
+- Metrics and Analysis methodology disclosures share `MethodNote.css`; report
+  fire-operation fields show dimmed dashes when their values are unknown.
+
+### Administrator after-action reports (2026-10-31)
+
+- Incident Details shows Add report or Edit report for contained and closed
+  incidents. The dedicated modal contains cause, casualties, damage estimate,
+  incident remarks, narrative and recommendations. General Edit Incident no
+  longer edits or clears casualty/remarks fields when changing status.
+- Administrator-only `PUT /api/incidents/{fire_id}/report` creates a missing
+  report or updates the latest report identified by `report_id`. A stale or
+  mismatched report ID returns 409. Narrative is required; existing photos,
+  operational times, submission time and original leader attribution survive
+  corrections. Report changes and the editing administrator are audited in
+  incident events. New reports identify their administrator author directly.
+- Filing on a contained incident closes it and releases every responding team
+  and truck using the normal closure path. Saving a closed incident does not
+  manufacture operation timestamps. Report casualty summaries and incident
+  outcome fields are saved together. The dashboard refreshes reports and
+  incident rows after local saves and report WebSocket events.
+- Report reads include `closed_at` from the recorded closure event so a report
+  added later does not move the incident's closure time. Unknown closure stays
+  unknown for administrator recovery reports.
+- Apply migration `0032_admin_incident_reports.py` before using this workflow:
+  it adds the optional administrator author reference, permits reports without
+  a personnel author, and expands incident casualty summaries to 255 characters.
+  Existing leader-report submission and photo viewing remain supported.
+
 ### Team truck assignment during dispatch (2026-10-30)
 
 - Edit Team locks the truck field while the team has a `dispatched`, `en_route`
@@ -151,10 +200,24 @@ Plans and docstrings are cross-checked against handlers and callers.
   metadata on the existing personnel-location poll and WebSocket payload.
   It reads the existing assignment, without changing dispatch, GPS or routing
   behavior. Stationary manning changes appear on the next 10-second location poll.
+- Pin detail cards stay open through GPS and content refreshes. Projected maps
+  re-anchor the same popup after marker/content updates, and the photorealistic
+  renderer retains its marker and hover card for position-only changes. Manual
+  close, clicking elsewhere, selecting another pin and removing the pin retain
+  their normal dismissal behavior.
 - The selected main route's traveled/remaining display follows only the confirmed
   manning driver's valid, non-stale fix. Personnel ahead of the truck do not trim
   it. Without an unambiguous truck fix, the full main route remains visible;
   individual personnel branches continue to display independently.
+- Updated 2026-10-31: completed road segments no longer leave a faint dashed
+  history on the command map. The truck keeps its own remaining route; a bright
+  amber personnel approach covers any shared segment behind it that a fresh,
+  still-approaching responder needs. Multiple followers share the segment from
+  the rearmost position to the truck, and an off-route branch that merges behind
+  the truck keeps its shared continuation visible too. Arrived/stale responders
+  and hidden personnel layers do not retain these segments. Both web renderers
+  consume the same route overlays. Web pins use received GPS positions without
+  interpolation or dead reckoning; the native client's prediction is separate.
 
 ### Moving-truck route changes (2026-10-25)
 
@@ -190,7 +253,12 @@ Plans and docstrings are cross-checked against handlers and callers.
   has been removed for non-drivers.
 - Automatic manning-driver deviation routing uses the same exact-position road
   routing as manual route refresh, preserving the selected objective where available.
-  Deviation retains the existing 280m trigger and 50m rejoin thresholds.
+  Automatic deviation uses a 25 m trigger and a 10 m rejoin threshold. Entry
+  requires two consecutive accepted mobile fixes outside 25 m, no more than
+  30 seconds apart, both reporting accuracy of 25 m or better. Missing or poor
+  accuracy preserves navigation state and cannot schedule automatic correction.
+  Initial/returning driver refresh also requires reported accuracy of 25 m or
+  better; explicit navigation requests retain their existing single-fix behavior.
 
 ### Separate personnel movement simulator (2026-10-25)
 
@@ -226,7 +294,21 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ### Command incident panel interface (2026-10-25)
 
+- Updated 2026-10-30: heatmap, road-obstruction and GAT-constraint tool panels
+  remain expanded while their view is active. They share the camera controls'
+  page-base surface, rounded border, spacing and orange view-heading icons.
+  Panel bodies scroll on short screens; obstruction placement/cancel/removal,
+  constraint editing, and heatmap preset/refresh controls retain their callbacks.
+  Each heading has a CAMERA-style badge (HEATMAP, ROADS or GAT). Constraint
+  helper text and obstruction section/help copy are removed. Heatmap uses
+  All time / Last 30 days / Last 365 days presets without custom date inputs;
+  its summary card shows the selected period and closed-incident count, with
+  explicit loading/unavailable values instead of showing zeros during failures.
 - Incident View retains its 290px dock and one full-width response action per row.
+  Its height is capped at 520px (60% of the viewport height on shorter screens)
+  and does not grow when heatmap or constraints changes the dock's available space.
+  Tab content scrolls within the card. The redundant Report timestamps disclosure
+  is removed; receipt time remains in the header and incident time in the Timeline.
   A clearer summary, labeled keyboard-accessible tabs, grouped report details and
   notes, and expandable team rosters replace the flat detail list. Team cards show
   station, truck, dispatch status and the team leader; rosters describe current
@@ -240,6 +322,23 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ### Metrics overview interface (2026-10-25)
 
+- Updated 2026-10-30: barangay rankings show the top ten. Cause-count context
+  appears below the ranking, and expandable methodology uses two sections for
+  incident windows and response/data quality. Export PDF opens a focus-managed
+  preview of the actual downloadable landscape PDF, using an immutable summary
+  snapshot. Slides include KPIs, alarm levels, all monthly counts (twelve per
+  slide), top-ten barangays and causes, period scope and missing-data context.
+  Export settings now offer PDF or PPTX, title/filename/preparer/accent, individual
+  section and visual toggles, value labels, optional supporting tables and preview
+  zoom. Visuals include monthly lines, an alarm donut with counts/percentages,
+  a projected GeoJSON barangay choropleth and cause bars. Missing boundaries fall
+  back to rankings. PPTX embeds the same rendered preview images as widescreen
+  slides (charts are not editable objects). PDF/PPTX generation and preview rendering
+  load on demand; no new API is required.
+  The metrics export modal reuses the incident export's `eim-panel`/`xpm-*`
+  shell, zoom toolbar, settings sections, format icons and badges, switch cards,
+  filename extension field and footer. Format cards select without radio inputs;
+  printing uses the preview PDF for either export format.
 - Metrics shares the centered 1440px workspace, responsive padding and heading
   typography used by Analysis. Period controls update the incident summaries,
   alarm breakdown, barangay counts and reported causes. Response analysis remains
@@ -259,7 +358,9 @@ Plans and docstrings are cross-checked against handlers and callers.
   padding and heading typography. The response-time budget controls its summary,
   sortable/searchable barangay table and CSV review; the map shows all three
   reachability bands. Selecting a barangay enables its status overlay and zooms
-  to its boundary. Map sizing follows panel changes and tables scroll internally.
+  to its boundary. The regional default zoom is also the map's minimum zoom;
+  users can zoom in and return to that level. Map sizing follows panel changes
+  and tables scroll internally.
 - Coverage/population definitions remain unchanged. Thresholds and the area-weighted
   population assumptions appear under How to read this coverage. Superseded band
   replies are ignored; recomputation waits for fresh table measurements and failed
@@ -278,6 +379,54 @@ Plans and docstrings are cross-checked against handlers and callers.
   tabs. The first combines incident lifecycle cards/stages/trends and incident
   records with dispatch/team comparisons, quality counts, route revisions and
   independently paginated full filtered incident/dispatch CSV reviews.
+  Dispatch observations also have table-only team, response-quality and
+  initial/reinforcement filters. These intersect the analysis filters and selected
+  chart month, apply before pagination, and are shared by dispatch CSV exports.
+  Table refinements and paging fetch dispatch rows independently of analysis cards
+  and charts. The table's month dropdown and chart selection share the same month
+  filter. Its reset icon clears that month and the other table refinements.
+  Dispatch pages without derived-quality, reinforcement or snapshot-station
+  refinements are counted and paginated in SQL before observation serialization.
+  The view retains up to twelve exact dispatch-query results for quick resets and
+  page revisits; operational events, manual/focus refreshes and the foreground
+  timer refresh cached results while keeping their loaded rows visible.
+  Incident records have equivalent table-only month, responding-team,
+  call-to-arrival-quality and initial/reinforcement-presence filters, applied
+  before pagination and shared with incident CSV export. The month dropdown is
+  linked to the operational trend chart's selected month. Team and assignment
+  filters select whole incidents without recalculating first arrival from a
+  selected team; an incident can contain both initial and reinforcement dispatches.
+  Demo timelines disable team/assignment controls because they imply no actual
+  assignments. Incident page results use the same bounded, refresh-aware cache
+  for quick resets; resetting clears its month and other table filters.
+  Incident record View actions open a separate Response Analysis page using the
+  Incident Details layout. Its back button returns to the same mounted analysis
+  workspace, preserving table filters, pagination and scroll position. The page
+  shares route evidence, stage/unit selection, milestone confirmation and live
+  refresh behavior with the legacy operational-timing modal. Dispatch Records
+  links open the Dispatch Details page; Back restores the same response analysis
+  unit/stage selection, milestone form, scroll position and focused link.
+  Dispatch observation View actions open a separate Dispatch Details page using
+  the same detail shell, hero metrics, context sidebar and section panels. Back
+  restores the mounted table's refinements, pagination, expansion, scroll and
+  focused View button. The page includes dispatch milestones, actor attribution,
+  interval quality, responder tracks and selectable saved route revisions, plus
+  the incident-register link. Operational evidence events refresh its loaded
+  detail in place. The page and legacy modal component share the saved-route
+  revision viewer.
+  Response Analysis's single Responder Route History map also offers an optional vehicle-GPS
+  layer when dispatch-unit GPS paths are available. Team/member filters scope
+  that layer without changing personal GPS counts or timings. Vehicle timing
+  and selected-route ETA comparisons remain in the Response Timeline section.
+  Operational trend points include a `breakdown` (common-cohort count, mean
+  stage `seconds`, and metric `values`/`counts`), so chart selections update stage distribution for that timeframe.
+  Selecting the same timeframe again restores the full-window distribution.
+  The distribution panel includes averages and sample counts and controls both
+  views with All valid measurements (default) / Four stages recorded. The latter
+  uses the same complete-incident sample for chart values and stage percentages;
+  the former compares stage means without percentage shares. Call-to-arrival and
+  overall operation are separate intervals available only in All valid measurements. The
+  operational chart no longer has a separate chart-data table.
 - Shared response timing helpers govern first arrival, chronology and the six-hour
   review guard across the combined view and retained APIs. Suppression and overall
   operation can exceed six hours. Incident cohorts use receipt/occurrence dates;
@@ -318,6 +467,19 @@ Plans and docstrings are cross-checked against handlers and callers.
 - Clicking a station pin opens its details and a View station action in both
   themes. The action opens Stations with that station selected after loading.
   The popup uses the shared Leaflet overlay path for standard and enhanced maps.
+
+### Resource export previews (2026-10-30)
+
+- Personnel, Teams, Trucks and Stations Export buttons reuse the Incident register
+  preview and formatting controls: PDF, Word (DOCX), CSV, paper size, orientation,
+  document title/office, summary counts, signatures, columns and file name. PDF is
+  the default; PDF/Word use the paged PDF preview and support printing. CSV uses
+  the spreadsheet preview. All formats use the same snapshot of matching rows,
+  preserving the page's filters and sort order. Close dismisses without downloading.
+  Export is disabled while loading or when no rows match; download/print require
+  at least one selected column. Analysis CSV review modals retain their controls.
+- Resource CSVs use UTF-8 with a BOM, preserve quoted/multiline values and numeric
+  zeros, and escape formula-like text. Filenames use the Philippine calendar date.
 
 ### Analysis CSV review (2026-10-20)
 
@@ -865,8 +1027,10 @@ empty until actual milestones are recorded.
 Personnel submit authenticated positions tied to an active dispatch and team
 membership. The backend records history, resolves source/time races, updates current
 location and synchronizes truck position for the person manning it. PostGIS distance
-checks detect deviations using the configured 280 m threshold and 50 m rejoin
-threshold. Graph-heavy correction is normally deferred to a background task and
+checks detect deviations beyond 25 m, with rejoining at 10 m. Automatic entry
+requires two recent accepted mobile fixes with reported accuracy of 25 m or
+better (at most 30 seconds apart); inaccurate fixes remain in location history
+without changing navigation state or scheduling correction. Graph-heavy correction is normally deferred to a background task and
 [routing_pool.py](backend/routing_pool.py), with in-process fallback.
 
 Routes can be rebuilt from driver location or connectors can be computed for a
@@ -885,6 +1049,25 @@ and RL checkpoint directory are not supplied by this checkout.
 ## Important workflows and algorithms
 
 ### Incident intake and dispatch
+
+The Incidents page and map quick-entry forms reuse `AppModal` and the shared
+incident form controls. Intake puts location and assessment first, with reporter
+and receipt/classification fields in expandable sections and actions kept outside
+the scrolling body. The map form keeps its auto-dispatch choice visible; the
+Incidents page starts live reports as Pending and dispatch follows separately.
+Past-incident mode exposes history, units and outcomes, opens receipt details,
+and interprets entered occurrence and receipt times in Asia/Manila. Switching
+back to live mode clears historical status/outcome values. Saving prevents
+duplicate submission and dismissing the modal; a failed request retains the
+draft for retry. Moving the map pin continues to pass the draft to the parent.
+New intake defaults to Minor severity. Receipt details offer Now and Unknown
+actions; Unknown keeps the receipt timestamp empty rather than inferring one.
+
+Reporter location requests use the same modal and field spacing. SMS and direct
+link copying remain available while waiting; a message preview expands for manual
+sharing. A received pin exposes coordinates and the existing Log incident here
+handoff. SMS submission blocks duplicate requests and dismissal while pending;
+copy feedback reports clipboard failures instead of claiming a successful copy.
 
 1. Admin logs a fire; validated coordinates/details are persisted and spatial
    barangay assignment is attempted. WebSocket `incident_created` updates clients.
@@ -966,6 +1149,7 @@ bodies for exact query parameters and response shapes.
 | `GET/POST /api/incidents`, `PATCH/DELETE /api/incidents/{fire_id}` | Incident register and mutations | Admin |
 | `GET /api/incidents/active` | Current incident list | Admin |
 | `GET /api/incidents/{fire_id}/report`, `GET /api/incidents/{fire_id}/events` | After-action report and change history | Admin |
+| `PUT /api/incidents/{fire_id}/report` | Create a missing after-action report or correct its text and outcome | Admin |
 | `GET /api/metrics/summary` | Dashboard aggregates | Admin |
 | `GET/POST /api/dispatch` | List/create dispatches | Admin |
 | `GET /api/incidents/{fire_id}/dispatch-recommendations`, `GET /api/incidents/{fire_id}/routes` | Ranked candidates; saved routes | Admin |
@@ -973,6 +1157,7 @@ bodies for exact query parameters and response shapes.
 | `PATCH /api/dispatch/{dispatch_id}/arrived`, `PATCH /api/dispatch/{dispatch_id}/truck-manning` | Arrival and truck custody | User; assigned personnel; only team driver can claim truck manning |
 | `PATCH /api/dispatch/{dispatch_id}/contain`, `POST /api/dispatch/{dispatch_id}/report` | Containment; multipart report/photo submission | User; assigned personnel team leader |
 | `GET /api/mobile/me/station`, `GET /api/mobile/me/status` | Own home station; team/active dispatch status | User; personnel role/profile checks |
+| `GET /api/mobile/road-snap?lat=...&lon=...` | Display-only nearest routing road within 60m, including its segment for local projection; null if none, 503 when offline | User; personnel role/profile checks |
 | `PUT /api/mobile/push-token`, `POST /api/mobile/push-token/unregister`, `POST /api/mobile/push-token/test` | Register/remove/test own phone token | User; personnel checks |
 | `POST /api/location/update` | Own active-dispatch position | User; personnel/team checks |
 | `GET /api/report-sessions`, `GET /api/report-sessions/{token}`, `POST /api/report-sessions/{token}/send-sms` | Dispatcher reporter sessions and SMS | Admin |
@@ -1258,17 +1443,21 @@ roster's names/roles and shows members with no saved locations; legacy dispatche
 without a roster list only people with attributed samples. Current team membership
 and unattributed historical location logs never manufacture personal histories.
 Generated plans are optional dashed overlays, separate from the coloured personal
-GPS paths. Vehicle GPS and preserved generated-route revisions remain expandable
-context in analysis. Active dispatch locations refresh every ten seconds.
-The Response Analysis modal uses a left-side roster of member toggle buttons:
+GPS paths. The Response Analysis page consolidates vehicle GPS into an optional
+layer on that map; its timeline no longer contains a second map. The legacy
+timing modal retains its expandable vehicle context, and dispatch drill-downs
+retain expandable generated-route revisions. Active dispatch locations refresh
+every ten seconds.
+The Response Analysis page and legacy timing modal use a left-side roster of member toggle buttons:
 selecting a member focuses their attributed GPS route and recording metrics;
 selecting them again restores all members in the selected team scope. Team buttons
 also refine the roster. Personal metrics show the GPS recording window, usable
 sample count, displayed segments and excluded fixes, rather than inferred travel
 or arrival. Selecting a member switches the separate vehicle timing section to
 their dispatch. Incident first-arrival and overall-operation summaries remain
-incident-wide. The modal follows the shared header/footer and both dashboard
-themes; narrow screens show a horizontally scrollable member row above the map.
+incident-wide. The page uses the Incident Details shell, hero and context sidebar;
+the legacy modal retains its shared header/footer. Both support dashboard themes;
+narrow screens show a horizontally scrollable member row above the map.
 Gaps over 120 seconds, coordinates outside valid ranges, accuracy worse than 35 m,
 and jumps over 200 km/h break the displayed line; points with unknown accuracy
 remain explicitly labelled. Long traces retain gap boundaries and endpoints while
