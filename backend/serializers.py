@@ -133,12 +133,17 @@ def _report_dict(r: IncidentReport) -> dict:
         f"{author.per_firstname or ''} {author.per_lastname or ''}".strip()
         if author else None
     ) or None
+    if not author and r.admin_author:
+        from services.incident_events import actor_name
+        author_name = actor_name(r.admin_author)
     return {
         "report_id":       r.report_id,
         "fire_id":         r.fire_id,
         "dispatch_id":     r.dispatch_id,
         "author":          author_name,
-        "author_rank":     author.per_rank if author else None,
+        "author_rank":     author.per_rank if author else ("Administrator" if r.author_user_id else None),
+        "author_role":     "personnel" if author else ("admin" if r.author_user_id else None),
+        "author_user_id":  r.author_user_id,
         "cause":           r.report_cause,
         "casualties":      r.report_casualties,
         "damage_estimate": r.report_damage_estimate,

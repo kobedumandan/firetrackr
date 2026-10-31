@@ -1,0 +1,145 @@
+/* Report content uses the Incident Details cards and shared dl-* fields. */
+.aar-editor-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.aar-section-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.aar-section-actions .action_icons {
+  width: 13px;
+  height: 13px;
+  margin-top: -2px;
+}
+.aar-report {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.aar-initials {
+  font-family: var(--font-span);
+  font-size: 10.8px;
+  font-weight: 600;
+}
+.aar-rank {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.aar-report .aar-edit {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+.aar-report .aar-edit svg { width: 12px; height: 12px; }
+.aar-report .aar-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 0;
+}
+.aar-metrics .kpi-card-head { gap: 8px; }
+.aar-metrics .kpi-card-value {
+  font-size: 12px;
+  line-height: 1.6;
+  letter-spacing: -0.1px;
+  overflow-wrap: anywhere;
+}
+.aar-metrics .kpi-card-icon .material-symbols-outlined { font-size: 15px; }
+.aar-report .aar-filed-at {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  text-align: left;
+}
+.aar-filed-timestamp {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+.aar-filed-timestamp > .material-symbols-outlined { font-size: 13px; flex-shrink: 0; }
+.aar-datetime {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.aar-time-separator { opacity: 0.45; }
+.aar-datetime.is-stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+.aar-datetime.is-stacked .aar-time {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 400;
+}
+.aar-operations {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.aar-operations-heading {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-dim);
+}
+.aar-operations .aar-missing { opacity: 0.35; }
+.aar-report .dl-prose { font-size: 10.8px; }
+.aar-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.aar-photo {
+  position: relative;
+  display: block;
+  min-width: 0;
+  padding: 0;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--bg-base);
+  border: 1px solid var(--border-dim);
+  border-radius: 10px;
+  cursor: zoom-in;
+  transition: border-color 0.15s;
+}
+.aar-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s;
+}
+.aar-photo:hover { border-color: var(--border); }
+.aar-photo:hover img { transform: scale(1.03); }
+.aar-photo-zoom {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--scrim);
+  color: rgb(var(--lightbox-fg-rgb));
+}
+.aar-photo-zoom .material-symbols-outlined { font-size: 16px; }
+.aar-photo:focus-visible {
+  outline: 2px solid var(--accent-fire-focus);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .aar-photo,
+  .aar-photo img { transition: none; }
+  .aar-photo:hover img { transform: none; }
+}

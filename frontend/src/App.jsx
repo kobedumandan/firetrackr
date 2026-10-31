@@ -15,7 +15,7 @@ import TeamsPage from './pages/TeamsPage'
 import TrucksPage from './pages/TrucksPage'
 import MetricsPage from './pages/MetricsPage'
 import AnalysisPage from './pages/AnalysisPage'
-import { invalidateOperationalTimes } from './api'
+import { invalidateOperationalTimes, notifyIncidentReportUpdated } from './api'
 import SettingsPage from './pages/SettingsPage'
 import LoginPage from './pages/LoginPage'
 import ToastStack from './components/ToastStack'
@@ -446,7 +446,10 @@ export default function App() {
             return
           }
           if (msg.notification_cursor && !notificationCursor.accept(msg.notification_cursor)) return
-          if (/^(incident_|dispatch_|personnel_arrived|report_submitted|route_updated)/.test(msg.type || '')) dataRevision += 1
+          if (/^(incident_|dispatch_|personnel_arrived|report_|route_updated)/.test(msg.type || '')) dataRevision += 1
+          if (msg.type === 'report_submitted' || msg.type === 'report_updated') {
+            notifyIncidentReportUpdated(msg.data.fire_id, msg.data.incident)
+          }
           if (['model_candidate_ready', 'model_training_failed', 'model_training_cancelled', 'model_promoted'].includes(msg.type)) {
             if (msg.type === 'model_promoted') invalidateModelRouting()
             notifyModelUpdate()

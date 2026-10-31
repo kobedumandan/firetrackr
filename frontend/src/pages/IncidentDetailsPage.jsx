@@ -5,7 +5,6 @@ import DetailsLayout, {
   DetailsSection,
   DetailsGrid,
   DetailsField,
-  DetailsProse,
 } from "../layout/DetailsLayout";
 import {
   SeverityBadge,
@@ -16,7 +15,8 @@ import {
 } from "../components/incidentUi";
 import { fetchIncidentReport, fetchDispatches } from "../api";
 import ResponderRouteHistory from "../components/ResponderRouteHistory";
-import { dateTime, duration as operationalDuration } from "../utils/operationalTimes";
+import AfterActionReport from "../components/AfterActionReport";
+import AfterActionReportModal from "../components/AfterActionReportModal";
 
 const STEPS = [
   { key: "pending", label: "Reported" },
@@ -52,11 +52,6 @@ function span(fromIso, toMs) {
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
-function initials(name) {
-  const parts = (name || "").trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
-}
-
 function Tone({ tone = "muted", children, dot }) {
   return (
     <span className={`idp-pill idp-tone-${tone}`}>
@@ -76,9 +71,8 @@ function StatTile({ label, value, sub, tone }) {
   );
 }
 
-/* Where the incident is in its lifecycle. Only the reported and first-dispatch
-   times are recorded; contained has no timestamp, and closed borrows the
-   report's submission time when there is one. */
+/* Report closure comes from the recorded status event, independently of a
+   report added later by an administrator. */
 function Progress({ status, reportedAt, dispatchedAt, closedAt }) {
   const current = STEP_INDEX[status] ?? 0;
   const times = [reportedAt, dispatchedAt, null, closedAt];
@@ -273,10 +267,18 @@ export default function IncidentDetailsPage({
   onEdit,
   onDelete,
   onViewOnMap,
+  onUpdated,
 }) {
-  const [report, setReport] = useState(null);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [reportError, setReportError] = useState(null);
+  const [reportState, setReportState] = useState(null);
+  const [reportRevision, setReportRevision] = useState(0);
+  const [reportEditor, setReportEditor] = useState(null);
+  const fireId = incident?.fire_id;
+  const incStatus = incident?.status;
+  const canFileReport = incStatus === "contained" || incStatus === "closed";
+  const reportReady = reportState?.fireId === fireId && reportState?.status === incStatus && reportState?.revision === reportRevision;
+  const report = reportReady ? reportState.report : null;
+  const reportError = reportReady ? reportState.error : null;
+  const reportLoading = canFileReport && !reportReady;
   // Keyed by fire_id so rows from a previous incident never show on this one;
   // `dispatches` is null until this incident's fetch lands.
   const [dispatchState, setDispatchState] = useState({ fireId: null, rows: null });
@@ -292,38 +294,33 @@ export default function IncidentDetailsPage({
     return () => clearInterval(id);
   }, [incident?.status]);
 
-  // Load the after-action report (narrative + photos) for a closed incident.
-  // Other statuses don't have a report, so we skip the fetch.
+  // Contained incidents may need an administrator to file the closing report.
+  // Key the result by incident/status/revision so another report never flashes here.
   useEffect(() => {
-    if (!incident || incident.status !== "closed") {
-      setReport(null);
-      setReportError(null);
-      setReportLoading(false);
-      return;
-    }
+    if (!canFileReport || fireId == null) return;
     let cancelled = false;
-    setReportLoading(true);
-    setReportError(null);
-    setReport(null);
-    fetchIncidentReport(incident.fire_id)
+    fetchIncidentReport(fireId)
       .then((r) => {
-        if (!cancelled) setReport(r);
+        if (!cancelled) setReportState({ fireId, status: incStatus, revision: reportRevision, report: r, error: null });
       })
       .catch((e) => {
-        if (!cancelled) setReportError(e.message);
-      })
-      .finally(() => {
-        if (!cancelled) setReportLoading(false);
+        if (!cancelled) setReportState({ fireId, status: incStatus, revision: reportRevision, report: null, error: e.message });
       });
     return () => {
       cancelled = true;
     };
-  }, [incident?.fire_id, incident?.status]);
+  }, [fireId, incStatus, canFileReport, reportRevision]);
+
+  useEffect(() => {
+    const refresh = event => {
+      if (event.detail?.fireId === fireId) setReportRevision(value => value + 1);
+    };
+    window.addEventListener('incident-report-updated', refresh);
+    return () => window.removeEventListener('incident-report-updated', refresh);
+  }, [fireId]);
 
   // Units sent to this incident, for the Responding Units column and the
   // "Dispatched" step's timestamp. Refetched when the status moves.
-  const fireId = incident?.fire_id;
-  const incStatus = incident?.status;
   useEffect(() => {
     if (fireId == null) return;
     let cancelled = false;
@@ -355,9 +352,9 @@ export default function IncidentDetailsPage({
   const firstDispatchAt = dispatches?.length
     ? dispatches.map((d) => d.dispatch_at).filter(Boolean).sort()[0]
     : null;
-  const closedAt = report?.submitted_at ?? null;
+  const closedAt = report && Object.hasOwn(report, "closed_at") ? report.closed_at : report?.submitted_at ?? null;
   const endMs = closed && closedAt ? new Date(closedAt).getTime() : now;
-  const duration = span(incident.reported_at, endMs);
+  const duration = closed && !closedAt ? null : span(incident.reported_at, endMs);
 
   function copyCoords() {
     if (!hasCoords || !navigator.clipboard) return;
@@ -365,6 +362,13 @@ export default function IncidentDetailsPage({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
+  }
+
+  function handleReportSaved(result) {
+    setReportState({ fireId, status: result.incident.status, revision: reportRevision, report: result.report, error: null });
+    setReportEditor(null);
+    setPhotoIndex(null);
+    onUpdated?.(result.incident);
   }
 
   const aside = (
@@ -515,91 +519,35 @@ export default function IncidentDetailsPage({
       </DetailsSection>}
 
       {/* ── Report ───────────────────────────────────────────────────── */}
-      {closed && (
-        <DetailsSection title="After-Action Report">
-          {reportLoading ? (
-            <div className="idp-report-state">Loading report…</div>
-          ) : reportError ? (
-            <DetailsProse tone="danger">
-              Failed to load report: {reportError}
-            </DetailsProse>
-          ) : !report ? (
-            <div className="idp-report-empty">
-              <div className="idp-aside-empty-icon">
-                <span className="material-symbols-outlined">description</span>
-              </div>
-              <div className="idp-aside-state">No report filed for this incident</div>
-            </div>
-          ) : (
-            <>
-              {(report.author || report.submitted_at) && (
-                <div className="idp-author">
-                  <span className="idp-author-av">{initials(report.author)}</span>
-                  <div className="idp-author-info">
-                    <div className="idp-author-name">
-                      {report.author_rank ? `${report.author_rank} ` : ""}
-                      {report.author || "Unknown"}
-                    </div>
-                    <div className="idp-author-sub">
-                      Filed {report.submitted_at ? formatReported(report.submitted_at) : "—"}
-                    </div>
-                  </div>
-                  <Tone tone="green">Filed</Tone>
-                </div>
-              )}
-
-              <div className="idp-report-stats">
-                <StatTile label="Cause" value={report.cause || "—"} />
-                <StatTile label="Casualties" value={report.casualties || "—"} />
-                <StatTile label="Damage Estimate" value={report.damage_estimate || "—"} />
-              </div>
-
-              {report.operational_timing?.response_kind === 'fire' && <DetailsField label="Fire-operation times · Philippine time">
-                <DetailsGrid min={150}>
-                  <DetailsField label="Suppression started" value={dateTime(report.operational_timing.suppression_started_at)} />
-                  <DetailsField label="Fire contained" value={dateTime(report.operational_timing.controlled_at)} />
-                  <DetailsField label="Fire out" value={dateTime(report.operational_timing.fire_out_at)} />
-                  <DetailsField label="Suppression duration" value={operationalDuration(report.operational_timing.suppression_seconds)} />
-                </DetailsGrid>
-              </DetailsField>}
-
-              <DetailsField label="Narrative">
-                <DetailsProse>{report.narrative}</DetailsProse>
-              </DetailsField>
-
-              {report.recommendations && (
-                <DetailsField label="Recommendations">
-                  <DetailsProse>{report.recommendations}</DetailsProse>
-                </DetailsField>
-              )}
-
-              {photos.length > 0 && (
-                <DetailsField label={`Scene photos (${photos.length})`}>
-                  <div className="idp-photo-grid">
-                    {photos.map((url, i) => (
-                      <button
-                        key={url}
-                        type="button"
-                        className="idp-photo"
-                        onClick={() => setPhotoIndex(i)}
-                      >
-                        <img
-                          src={url}
-                          alt={`Scene photo ${i + 1}`}
-                          loading="lazy"
-                        />
-                        <span className="idp-photo-zoom">
-                          <span className="material-symbols-outlined">zoom_in</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </DetailsField>
-              )}
-            </>
-          )}
+      {canFileReport && (
+        <DetailsSection title="After-Action Report" actions={!report ? <span className="aar-section-actions">
+          {reportError && <button type="button" className="eim-link-btn" onClick={() => setReportRevision(value => value + 1)}>Retry</button>}
+          <button
+            type="button"
+            className="act-btn"
+            aria-label="Add after-action report"
+            disabled={reportLoading || !!reportError}
+            onClick={() => setReportEditor({ incident, report })}
+          >
+            <EditIcon /> Add report
+          </button>
+        </span> : null}>
+          <AfterActionReport
+            report={report}
+            loading={reportLoading}
+            error={reportError}
+            onPhotoSelect={setPhotoIndex}
+            onEdit={() => setReportEditor({ incident, report })}
+          />
         </DetailsSection>
       )}
+
+      {reportEditor && <AfterActionReportModal
+        incident={reportEditor.incident}
+        report={reportEditor.report}
+        onClose={() => setReportEditor(null)}
+        onSaved={handleReportSaved}
+      />}
 
       {photoIndex !== null && photos[photoIndex] && (
         <PhotoViewer

@@ -33,12 +33,14 @@ export default function AppModal({
     const panel = panelRef.current
     const before = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const focusable = () => [...panel.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), summary, a[href], [tabindex="0"]')].filter(el => {
-      if (el.hidden) return false
+    const focusable = () => [...panel.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, a[href], [tabindex="0"]')].filter(el => {
+      if (el.hidden || el.matches(':disabled') || el.closest('[inert]')) return false
       const closedDetails = el.closest('details:not([open])')
       return !closedDetails || el === closedDetails.querySelector('summary')
     })
-    focusable()[0]?.focus()
+    const elements = focusable()
+    const initial = elements.find(el => el.hasAttribute('data-autofocus')) || elements[0]
+    initial?.focus()
     const onTab = event => {
       if (event.key !== 'Tab') return
       const elements = focusable()

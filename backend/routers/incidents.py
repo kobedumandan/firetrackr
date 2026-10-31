@@ -1,4 +1,4 @@
-"""Fire incident CRUD and the after-action report readback."""
+"""Fire incident CRUD and administrator after-action report management."""
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,7 +12,7 @@ from models import (
     DispatchRecord, DispatchTruck, FireIncident, HeatmapData, IncidentEvent,
     IncidentReport, Route, Users,
 )
-from schemas import IncidentCreate, IncidentUpdate
+from schemas import IncidentCreate, IncidentReportSave, IncidentUpdate
 from security import require_admin
 from serializers import _incident_dict, _report_dict
 from services.dispatch import (
@@ -311,8 +311,44 @@ def get_incident_report(
     )
     if not report:
         return {"report": None}
+    from services.incident_reports import report_closed_at
     from services.report_timing import report_timeline
-    return {"report": {**_report_dict(report), 'operational_timing': report_timeline(db, report)}}
+    return {"report": {**_report_dict(report), 'operational_timing': report_timeline(db, report),
+                       'closed_at': report_closed_at(db, report)}}
+
+
+@router.put("/api/incidents/{fire_id}/report")
+async def save_incident_report(
+    fire_id: int,
+    body: IncidentReportSave,
+    db: Session = Depends(get_db),
+    _auth: Users = Depends(require_admin),
+):
+    """Recover a missing report or correct its text without changing field times."""
+    from services.incident_events import actor_name
+    from services.incident_reports import report_closed_at, save_admin_report
+    from services.report_timing import report_timeline
+
+    report, inc, released, creating = save_admin_report(db, fire_id, body, _auth)
+    db.commit()
+    db.refresh(report)
+    db.refresh(inc)
+    report_data = {**_report_dict(report), 'operational_timing': report_timeline(db, report),
+                   'closed_at': report_closed_at(db, report)}
+    incident_data = _incident_dict(inc)
+    await manager.broadcast({
+        'type': 'report_submitted' if creating else 'report_updated',
+        'data': {
+            'fire_id': inc.fire_id, 'report_id': report.report_id,
+            'dispatch_id': report.dispatch_id, 'filed_by': report_data['author'],
+            'edited_by': actor_name(_auth), 'photo_count': len(report.photos),
+            'incident': incident_data,
+        },
+    })
+    await manager.broadcast({'type': 'incident_updated', 'data': incident_data})
+    if released:
+        await manager.broadcast(released)
+    return {'report': report_data, 'incident': incident_data}
 
 
 @router.get("/api/incidents/{fire_id}/events")

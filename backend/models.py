@@ -290,7 +290,7 @@ class FireIncident(Base):
     fire_alarm_level       = Column(String(50))    # "1st Alarm" | "2nd Alarm" | "3rd Alarm"
     fire_dispatch_type     = Column(String(100), nullable=True)
     fire_structure_type    = Column(String(100))   # "Residential" | "Commercial" | ...
-    fire_casualties        = Column(String(100))   # "None" | "Unconfirmed" | ...
+    fire_casualties        = Column(String(255))   # category or after-action summary
     fire_units_assigned    = Column(Integer, default=0)
     fire_remarks           = Column(Text, nullable=True)
     fire_incident_datetime = Column(DateTime(timezone=True), default=_now)
@@ -448,14 +448,15 @@ class DispatchLocation(Base):
 # ---------------------------------------------------------------------------
 
 class IncidentReport(Base):
-    """An after-action report authored by responding personnel once a fire is
-    contained. Submitting the report closes the incident (fire_status='closed')."""
+    """A personnel report or administrator recovery report after containment.
+    Submitting the report closes the incident (fire_status='closed')."""
     __tablename__ = "incident_reports"
 
     report_id              = Column(Integer, primary_key=True, autoincrement=True)
     fire_id                = Column(Integer, ForeignKey("fire_incidents.fire_id"),     nullable=False, index=True)
     dispatch_id            = Column(Integer, ForeignKey("dispatch_records.dispatch_id"), nullable=True)
-    per_id                 = Column(Integer, ForeignKey("personnel.per_id"),           nullable=False)
+    per_id                 = Column(Integer, ForeignKey("personnel.per_id"),           nullable=True)
+    author_user_id         = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
     report_cause           = Column(String(255), nullable=True)   # probable cause of fire
     report_casualties      = Column(String(255), nullable=True)   # casualties / injuries summary
     report_damage_estimate = Column(String(100), nullable=True)   # estimated damage (e.g. peso value)
@@ -467,6 +468,7 @@ class IncidentReport(Base):
     fire_incident = relationship("FireIncident")
     dispatch      = relationship("DispatchRecord")
     author        = relationship("Personnel")
+    admin_author  = relationship("Users", foreign_keys=[author_user_id])
     photos        = relationship(
         "ReportPhoto", back_populates="report",
         cascade="all, delete-orphan", order_by="ReportPhoto.photo_id",

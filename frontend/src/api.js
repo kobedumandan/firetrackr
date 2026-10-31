@@ -355,7 +355,7 @@ export async function deleteIncident(fireId) {
   }
 }
 
-// The after-action report filed for a closed incident (with photo URLs).
+// The latest after-action report for an incident (with photo URLs).
 // Returns null when no report has been filed yet.
 export async function fetchIncidentReport(fireId) {
   const res = await apiFetch(`/api/incidents/${fireId}/report`)
@@ -364,7 +364,10 @@ export async function fetchIncidentReport(fireId) {
     throw new Error(err.detail || `Failed to fetch incident report (${res.status})`)
   }
   const data = await res.json()
-  const report = data.report
+  return dashboardIncidentReport(data.report)
+}
+
+function dashboardIncidentReport(report) {
   // Photo URLs come back pointing at PUBLIC_BASE_URL (the ngrok tunnel, for the
   // mobile app). The dashboard can't pass ngrok's skip-warning header on a plain
   // <img>, so rewrite each URL onto our own BASE_URL — same /uploads/... path,
@@ -379,6 +382,25 @@ export async function fetchIncidentReport(fireId) {
     })
   }
   return report
+}
+
+export function notifyIncidentReportUpdated(fireId, incident) {
+  window.dispatchEvent(new CustomEvent('incident-report-updated', { detail: { fireId, incident } }))
+}
+
+export async function saveIncidentReport(fireId, body) {
+  const res = await apiFetch(`/api/incidents/${fireId}/report`, { method: 'PUT', body: JSON.stringify(body) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const detail = typeof data.detail === 'string' ? data.detail
+      : Array.isArray(data.detail) ? data.detail.map(item => item.msg).join('; ') : null
+    throw new Error(detail || `Failed to save incident report (${res.status})`)
+  }
+  const result = { ...data, report: dashboardIncidentReport(data.report) }
+  for (const key of ['teams', 'trucks', 'personnel']) delete _cache[key]
+  invalidateOperationalTimes()
+  notifyIncidentReportUpdated(fireId, result.incident)
+  return result
 }
 
 // Status / alarm / severity changes for the incident timeline, oldest first:

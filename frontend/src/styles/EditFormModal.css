@@ -1,0 +1,41 @@
+.edit-form-modal .apm-field label {
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+.edit-form-modal .apm-field input::placeholder,
+.edit-form-modal .apm-field textarea::placeholder {
+  color: color-mix(in srgb, var(--text-primary) 32%, transparent);
+  opacity: 1;
+}
+
+.edit-form-modal .edit-form-separator {
+  color: color-mix(in srgb, var(--text-primary) 28%, transparent);
+}
+
+/* Page tone classes must not tint unselected status options. */
+.edit-form-modal .eim-seg-btn:not(.active) {
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.edit-form-modal .eim-seg-btn:not(.active):hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* Incident history stays neutral; only the selected step keeps its color. */
+.edit-form-modal .eim-step:not(.current) .eim-step-node {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.edit-form-modal .eim-steps .eim-step::before {
+  background: var(--border);
+  opacity: 1;
+}
+
+.edit-form-modal .eim-steps.complete .eim-step.current .eim-step-node,
+.edit-form-modal .eim-steps.complete .eim-step.current .eim-step-label {
+  opacity: 1;
+}

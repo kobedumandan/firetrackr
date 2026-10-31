@@ -205,6 +205,25 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
     setEditingIncident(null);
   }
 
+  function handleReportSaved(updated) {
+    setIncidents(previous => previous.map(row => row.fire_id === updated.fire_id ? updated : row));
+    setDetailsIncident(previous => previous?.fire_id === updated.fire_id ? updated : previous);
+    setQuery(previous => ({ ...previous, _seq: (previous._seq ?? 0) + 1 }));
+  }
+
+  useEffect(() => {
+    function refreshReport(event) {
+      const updated = event.detail?.incident;
+      if (updated) {
+        setIncidents(previous => previous.map(row => row.fire_id === updated.fire_id ? updated : row));
+        setDetailsIncident(previous => previous?.fire_id === updated.fire_id ? updated : previous);
+      }
+      setQuery(previous => ({ ...previous, _seq: (previous._seq ?? 0) + 1 }));
+    }
+    window.addEventListener('incident-report-updated', refreshReport);
+    return () => window.removeEventListener('incident-report-updated', refreshReport);
+  }, []);
+
   async function confirmDelete() {
     const target = deletingIncident;
     await deleteIncident(target.fire_id);
@@ -277,12 +296,14 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
     return (
       <>
         <IncidentDetailsPage
+          key={detailsView.fire_id}
           incident={detailsView}
           theme={theme}
           onBack={() => setDetailsIncident(null)}
           onEdit={setEditingIncident}
           onDelete={setDeletingIncident}
           onViewOnMap={onShowOnMap}
+          onUpdated={handleReportSaved}
         />
         {renderModals()}
       </>
