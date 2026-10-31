@@ -618,6 +618,8 @@ export default function PlanningPage() {
                 <MapContainer
                   center={MAP_CENTER}
                   zoom={MAP_ZOOM}
+                  minZoom={MAP_ZOOM}
+                  bounceAtZoomLimits={false}
                   className="plan-map"
                   zoomAnimation={false}
                   attributionControl={false}
@@ -808,10 +810,29 @@ export default function PlanningPage() {
                 </tbody>
               </table>
             </div>
-            <div className="plan-table-footer"><span>{gapsLoading ? "Loading measurements" : `${visibleRows?.length || 0} barangays shown`} · {minutes} minute budget</span>{selected ? <button className="plan-clear-selection" onClick={() => setSelected(null)}>Clear {selected}<span aria-hidden="true">×</span></button> : <span>Population estimates use area share</span>}</div>
           </div>
         </div>
-        <details className="plan-method"><summary><AnalysisIcon name="info" />How to read this coverage<AnalysisIcon name="chevron" /></summary><div><p>Coverage estimates road travel from the current stations. It does not include report processing, preparation or measured live traffic. This is a planning estimate rather than a guaranteed response time.</p><p>Covered means at least 80% of a barangay's area is reachable within the selected budget; partial means 40% to below 80%; a gap means below 40%. Mean coverage gives each barangay equal weight. Residents outside the band are estimated from uncovered area, assuming population is evenly distributed; missing population stays unavailable.</p><div className="plan-method-source"><span><NodesProvIcon />Reachable road nodes: {fmtInt(meta.reachable_nodes) ?? "—"}</span><span><SpeedProvIcon />Computation: {meta.generated_ms != null ? `${meta.generated_ms} ms` : "Not recorded"}</span></div></div></details>
+        <details className="plan-method">
+          <summary><AnalysisIcon name="info" />How to read this coverage<AnalysisIcon name="chevron" /></summary>
+          <div className="plan-method-content">
+            <section className="plan-method-overview">
+              <div className="plan-method-heading"><span><AnalysisIcon name="route" /></span><h3>Road travel estimate</h3></div>
+              <p>Coverage estimates road travel from the current stations. It does not include report processing, preparation or measured live traffic. This is a planning estimate rather than a guaranteed response time.</p>
+              <div className="plan-method-assumptions"><h4>Summary assumptions</h4><p>Mean coverage gives each barangay equal weight. Residents outside the band are estimated from uncovered area, assuming population is evenly distributed; missing population stays unavailable.</p></div>
+            </section>
+            <section className="plan-method-categories">
+              <div className="plan-method-heading"><span><AnalysisIcon name="coverage" /></span><h3>Coverage categories</h3></div>
+              <p>Share of each barangay's area reachable within the selected travel budget.</p>
+              <dl className="plan-method-bands">{[
+                ["covered", "80% or more"], ["partial", "40% to below 80%"], ["gap", "Below 40%"],
+              ].map(([key, threshold]) => <div key={key}><dt><span className="plan-status" style={{ color: STATUS[key].color, background: `rgba(${STATUS[key].rgb}, .1)` }}>{STATUS[key].label}</span></dt><dd>{threshold}</dd></div>)}</dl>
+            </section>
+            <dl className="plan-method-source">
+              <div><dt><NodesProvIcon />Reachable road nodes</dt><dd className={meta.reachable_nodes == null ? "is-missing" : undefined}>{fmtInt(meta.reachable_nodes) ?? "—"}</dd></div>
+              <div><dt><SpeedProvIcon />Computation</dt><dd className={meta.generated_ms == null ? "is-missing" : undefined}>{meta.generated_ms != null ? `${meta.generated_ms} ms` : "Not recorded"}</dd></div>
+            </dl>
+          </div>
+        </details>
         </div>
       </div>
     </main>
