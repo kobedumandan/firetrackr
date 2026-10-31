@@ -1,11 +1,11 @@
-import { useState } from 'react'
-import PanelToggleIcon from './PanelToggleIcon'
+import MapControlIcon from './MapControlIcon'
+import AnalysisIcon from './AnalysisIcon'
 import { HEAT_COLORS, HEAT_RADIUS_METRES, manilaDate } from '../utils/heatmap'
 import '../styles/HeatmapPanel.css'
+import '../styles/CommandViewPanel.css'
 
 export default function HeatmapPanel({ range, onRangeChange, count, status, onRefresh }) {
-  const [open, setOpen] = useState(true)
-  const invalid = range.from && range.to && range.from > range.to
+  const selectedDays = !range.from && !range.to ? 0 : Math.round((Date.parse(range.to) - Date.parse(range.from)) / 86400000) + 1
   function preset(days) {
     if (!days) { onRangeChange({ from: '', to: '' }); return }
     const today = manilaDate(new Date())
@@ -13,34 +13,30 @@ export default function HeatmapPanel({ range, onRangeChange, count, status, onRe
     start.setUTCDate(start.getUTCDate() - days + 1)
     onRangeChange({ from: start.toISOString().slice(0, 10), to: today })
   }
-  if (!open) return <button type="button" className="constraint-float-btn" aria-label="Expand fire heatmap" aria-expanded={false} onClick={() => setOpen(true)}><PanelToggleIcon />Fire heatmap</button>
-  return <section className="heatmap-panel" aria-label="Fire history heatmap">
-    <div className="constraint-editor-head">
-      <button type="button" className="constraint-collapse-btn" onClick={() => setOpen(false)} aria-label="Collapse fire heatmap" aria-expanded={true}><PanelToggleIcon expanded /></button>
-      <span className="constraint-editor-title">Fire history</span>
+  return <section className="heatmap-panel command-view-panel" aria-label="Fire history heatmap">
+    <div className="command-view-heading">
+      <span><MapControlIcon name="heatmap" />Fire history</span>
+      <span className="command-view-badge heatmap-view-badge">HEATMAP</span>
     </div>
     <div className="heatmap-panel-body">
-      <div className="heatmap-summary"><strong>{count.toLocaleString()}</strong><span>closed incident{count === 1 ? '' : 's'} in this region</span></div>
-      <div className="heatmap-presets" aria-label="Heatmap date presets">
-        <button type="button" onClick={() => preset(0)}>All time</button>
-        <button type="button" onClick={() => preset(30)}>Last 30 days</button>
-        <button type="button" onClick={() => preset(365)}>Last 365 days</button>
+      <div className="heatmap-summary" aria-busy={status === 'loading'}>
+        <div className="heatmap-summary-heading"><span>Closed incidents</span></div>
+        <strong>{status === 'loading' ? '…' : status === 'error' ? '—' : count.toLocaleString()}</strong>
       </div>
-      <div className="heatmap-dates">
-        <label>From (PH time)<input type="date" value={range.from} max={range.to || undefined} onChange={e => onRangeChange({ ...range, from: e.target.value })} /></label>
-        <label>Through (PH time)<input type="date" value={range.to} min={range.from || undefined} onChange={e => onRangeChange({ ...range, to: e.target.value })} /></label>
-      </div>
+      <div className="heatmap-presets" role="group" aria-label="Heatmap date presets">{[0, 30, 365].map(days => <button key={days} type="button" aria-pressed={selectedDays === days} onClick={() => preset(days)}>{days ? `Last ${days} days` : 'All time'}</button>)}</div>
       <div className="heatmap-legend">
         <div className="heatmap-gradient" style={{ background: `linear-gradient(to right, ${HEAT_COLORS.join(',')})` }} />
         <div><span>Lower concentration</span><span>Higher</span></div>
       </div>
       <details className="heatmap-info">
-        <summary>About this heatmap</summary>
-        <p className="constraint-help">Severity-weighted fire history, smoothed within {HEAT_RADIUS_METRES} m. Colors are relative to this selection.</p>
-        <p className="constraint-help">Imported history includes estimated address and representative area pins. Open a pin for its location specification; shared area pins can create apparent hotspots.</p>
+        <summary><AnalysisIcon name="info" />About this heatmap<AnalysisIcon name="chevron" /></summary>
+        <div className="heatmap-info-content">
+          <section><div className="heatmap-info-heading"><span><AnalysisIcon name="chart" /></span><h3>Historical concentration</h3></div><p>Severity-weighted fire history, smoothed within {HEAT_RADIUS_METRES} m. Colors are relative to this selection.</p></section>
+          <section><div className="heatmap-info-heading"><span><AnalysisIcon name="coverage" /></span><h3>Location accuracy</h3></div><p>Imported history includes estimated address and representative area pins. Open a pin for its location specification; shared area pins can create apparent hotspots.</p></section>
+        </div>
       </details>
-      <div className="heatmap-status" role={invalid || status === 'error' ? 'alert' : 'status'}>
-        {invalid ? 'Choose an end date on or after the start date.' : status === 'loading' ? 'Updating fire history...' : status === 'error' ? 'Fire history could not load.' : count ? 'Historical concentration, not predicted fire risk.' : 'No closed incidents match this region and date range.'}
+      <div className="heatmap-status" role={status === 'error' ? 'alert' : 'status'}>
+        {status === 'loading' ? 'Updating fire history...' : status === 'error' ? 'Fire history could not load.' : count ? 'Historical concentration, not predicted fire risk.' : 'No closed incidents match this region and period.'}
       </div>
       {count > 0 && <p className="constraint-help">Hover an incident location on the heatmap for details. Click for more.</p>}
       <button type="button" className="heatmap-refresh" onClick={onRefresh} disabled={status === 'loading'}>{status === 'error' ? 'Retry' : 'Refresh data'}</button>

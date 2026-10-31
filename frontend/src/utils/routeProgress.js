@@ -1,9 +1,9 @@
-// Split a [lat, lon] route into the traveled and remaining paths. An off-route
-// truck leaves the full path visible until it rejoins or receives a new route.
-export function splitRouteAtPoint(line, pt) {
-  if (!line || line.length < 2 || !pt) {
-    return { traveled: [], remaining: line || [] };
-  }
+const ROUTE_SNAP_METERS = 60;
+const validPoint = point => Array.isArray(point) && point.length >= 2
+  && Number.isFinite(point[0]) && Number.isFinite(point[1]);
+
+function projectRoutePoint(line, pt) {
+  if (!line || line.length < 2 || !validPoint(pt)) return null;
   const D2R = Math.PI / 180;
   const lat0 = pt[0] * D2R;
   const mx = (lon) => lon * D2R * Math.cos(lat0) * 6371000;
@@ -27,18 +27,59 @@ export function splitRouteAtPoint(line, pt) {
     const d = Math.sqrt(ex * ex + ey * ey);
     if (d < best.d) {
       const point = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-      best = { i, point, d };
+      best = { i, point, d, progress: i + t };
     }
   }
 
-  if (best.d > 60) return { traveled: [], remaining: line };
+  return best.d <= ROUTE_SNAP_METERS ? best : null;
+}
+
+// Split a [lat, lon] route at an accepted fix. An off-route truck leaves the
+// full path visible until it rejoins or receives a new route.
+export function splitRouteAtPoint(line, pt) {
+  const best = projectRoutePoint(line, pt);
+  if (!best) return { traveled: [], remaining: line || [] };
   return {
     traveled: [...line.slice(0, best.i + 1), best.point],
     remaining: [best.point, ...line.slice(best.i + 1)],
   };
 }
 
-export function truckProgressPoint(dispatchId, liveLocations) {
+// Keep truck progress independent, and expose the part behind it that another
+// responder still needs. This is an active approach, not a historical trail.
+export function dispatchRouteProgress(line, dispatchId, liveLocations = [], includePersonnel = true) {
+  const truckPoint = truckProgressPoint(dispatchId, liveLocations);
+  const truck = projectRoutePoint(line, truckPoint);
+  const remaining = truck ? [truck.point, ...line.slice(truck.i + 1)] : line || [];
+  const result = { remaining, personnelRemaining: [], personnel: [] };
+  if (!truck || !includePersonnel) return result;
+
+  let earliest = truck;
+  for (const person of liveLocations) {
+    if (person.dispatch_id !== dispatchId || person.manned_truck?.truck_id != null
+      || person.is_stale || person.personnel_arrived_at
+      || !Number.isFinite(person.latitude) || !Number.isFinite(person.longitude)
+      || ['on_scene', 'onscene'].includes(person.personnel_status)
+      || ['off', 'standby', 'on_scene'].includes(person.tracking?.mode)) continue;
+
+    const connector = person.connector_geojson;
+    const point = person.is_deviated
+      ? connector?.merges === true && validPoint(connector.merge_point)
+        ? [connector.merge_point[1], connector.merge_point[0]] : null
+      : [person.latitude, person.longitude];
+    const projection = projectRoutePoint(line, point);
+    if (!projection || projection.progress >= truck.progress - 1e-9) continue;
+
+    result.personnel.push(person);
+    if (projection.progress < earliest.progress) earliest = projection;
+  }
+  if (earliest !== truck) {
+    result.personnelRemaining = [earliest.point, ...line.slice(earliest.i + 1, truck.i + 1), truck.point];
+  }
+  return result;
+}
+
+export function truckProgressPoint(dispatchId, liveLocations = []) {
   const drivers = liveLocations.filter(person => person.dispatch_id === dispatchId
     && person.manned_truck?.truck_id != null && !person.is_stale
     && Number.isFinite(person.latitude) && Number.isFinite(person.longitude));

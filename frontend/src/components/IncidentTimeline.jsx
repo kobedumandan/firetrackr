@@ -188,9 +188,8 @@ export default function IncidentTimeline({ incident, liveDispatches = [] }) {
   const elapsed = span(incident.reported_at, now);
 
   return (
-    <div className="detail-body">
-      <div className="detail-section-title">Timeline</div>
-      <p className="ci-timeline-zone">Times shown in Philippine time (PHT)</p>
+    <div className="detail-body ci-timeline-body">
+      <div className="ci-timeline-heading"><div className="detail-section-title">Timeline</div></div>
       {!loaded && liveDispatches.length === 0 ? (
         <div className="itl-state">Loading timeline…</div>
       ) : (

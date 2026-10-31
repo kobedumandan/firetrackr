@@ -6,6 +6,7 @@ import { PANABO_BOUNDARY_COLOR } from './mapOverlayColors'
 import { attachIncidentHover } from './incidentHover'
 
 const position = point => ({ lat: point.lat, lng: point.lng, altitude: 0 })
+const markerAppearance = description => JSON.stringify({ ...description, position: undefined })
 
 export function linePaths(points) {
   if (!points?.length) return []
@@ -110,7 +111,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
       if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return null
       return { type: 'marker', position: position(point), title: labelFor(layer),
         icon: options.icon?.options, radius: options.radius, color: options.fillColor || options.color,
-        interactive: options.interactive !== false, opacity: options.opacity ?? 1 }
+        interactive: options.interactive !== false, opacity: options.opacity ?? 1, mapAligned: !!options.mapAligned }
     }
     if (layer instanceof L.Polyline) {
       if (options.className === 'jurisdiction-boundary') {
@@ -129,6 +130,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
 
   function createOverlay(layer, description) {
     const elements = []
+    const appearance = markerAppearance(description)
     let hover
     const popup = layer.getPopup?.()
     const previousAutoPan = popup?.options.autoPan
@@ -187,11 +189,26 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
       }
     }
     googleMap.append(...elements)
-    const move = () => schedule()
-    layer.on('move iconchange', move)
+    // A GPS update moves the existing marker so its hover/detail card stays
+    // attached. Rebuild only when its appearance or interaction changes.
+    const move = () => {
+      if (!active || disposed || unloaded) return
+      if (!overlays.get(layer)?.updatePosition(describe(layer))) schedule()
+    }
+    layer.on('move', move)
+    layer.on('iconchange', schedule)
     return {
       signature: JSON.stringify(description),
       element: elements[0],
+      updatePosition(next) {
+        if (description.type !== 'marker' || next?.type !== 'marker'
+          || appearance !== markerAppearance(next)) return false
+        elements[0].position = next.position
+        this.signature = JSON.stringify(next)
+        this.align()
+        popups.update()
+        return true
+      },
       align() {
         if (layer.options.mapAligned) {
           const icon = elements[0]?.firstElementChild
@@ -201,7 +218,8 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
       hideHover() { hover?.hide() },
       remove() {
         hover?.dispose()
-        layer.off('move iconchange', move)
+        layer.off('move', move)
+        layer.off('iconchange', schedule)
         elements.forEach(element => element.remove())
         if (popup) popup.options.autoPan = previousAutoPan
       },
@@ -218,6 +236,7 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
       seen.add(layer)
       const current = overlays.get(layer)
       if (current?.signature === JSON.stringify(description)) return
+      if (current?.updatePosition(description)) return
       current?.remove()
       const overlay = createOverlay(layer, description)
       overlays.set(layer, overlay)
