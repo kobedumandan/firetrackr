@@ -99,22 +99,22 @@
 .toggle.on .toggle-knob { transform: translateX(16px); }
 .toggle-label { min-width: 24px; color: var(--settings-muted); font-size: 10px; }
 
-.theme-options { display: flex; gap: 14px; }
-.theme-opt { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.theme-options { display: flex; gap: 8px; }
+.theme-opt { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .theme-opt:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 4px; }
-.theme-preview { position: relative; width: 64px; height: 42px; overflow: hidden; border: 2px solid var(--border); border-radius: 6px; }
-.theme-opt.selected .theme-name::after { content: " ✓"; }
+.theme-preview { position: relative; width: 52px; height: 34px; overflow: hidden; border: 2px solid var(--border-bright); border-radius: 4px; transition: border-color .15s; }
+.theme-preview.selected { border-color: var(--accent-fire); }
 /* These swatches depict their named theme regardless of the current theme. */
 .tp-dark { background: #101011; }
 .tp-light { background: #f0f3f7; }
-.tp-dark::before, .tp-light::before { content: ""; position: absolute; top: 9px; left: 9px; right: 9px; height: 8px; border-radius: 3px; }
-.tp-dark::before { background: #25282c; }
+.tp-dark::before, .tp-light::before { content: ""; position: absolute; top: 6px; left: 6px; right: 6px; height: 4px; border-radius: 2px; }
+.tp-dark::before { background: #141a21; }
 .tp-light::before { background: #d0dce8; }
-.tp-dark::after, .tp-light::after { content: ""; position: absolute; top: 24px; left: 9px; width: 60%; height: 5px; border-radius: 2px; }
-.tp-dark::after { background: #3b424a; }
-.tp-light::after { background: #b5c2ce; }
-.theme-name { color: var(--settings-muted); font-size: 11px; }
-.theme-opt.selected .theme-name { color: var(--text-primary); font-weight: 600; }
+.tp-dark::after, .tp-light::after { content: ""; position: absolute; top: 14px; left: 6px; width: 60%; height: 3px; border-radius: 2px; }
+.tp-dark::after { background: #2e2e2e; }
+.tp-light::after { background: #bcc4cc; }
+.theme-name { color: var(--text-muted); font: 700 10px var(--font-condensed); letter-spacing: .5px; text-transform: uppercase; }
+.theme-opt.selected .theme-name { color: var(--accent-fire); }
 .danger-block { border-color: color-mix(in srgb, var(--accent-fire) 25%, var(--border-dim)); }
 .danger-block .settings-card-icon { background: var(--accent-fire-dim); border-color: transparent; color: var(--accent-fire); }
 
