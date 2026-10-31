@@ -43,7 +43,7 @@
 .op-report-choice small { display: block; margin-top: 3px; color: var(--op-muted); font-size: 9px; }
 .op-choice-arrow { width: 14px; height: 14px; margin-left: auto; flex-shrink: 0; color: var(--text-tertiary); }
 .op-report-choice[aria-pressed="true"] .op-choice-arrow { color: var(--accent-fire); }
-.op-filter-panel { padding: 14px 16px; margin-bottom: 23px; border: 1px solid var(--border-dim); border-radius: 11px; background: var(--bg-panel); }
+.op-filter-panel { padding: 14px 16px 16px; margin-bottom: 23px; border: 1px solid var(--border-dim); border-radius: 11px; background: var(--bg-panel); }
 .op-filter-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .op-filter-heading h2 { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; white-space: nowrap; }
 .op-filter-heading h2 svg { width: 15px; height: 15px; color: var(--op-muted); }
@@ -59,12 +59,12 @@
 .op-report-filters :is(input,select) { box-sizing: border-box; width: 100%; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--page-default-base); color: var(--text-primary); font: 11px var(--font-condensed); }
 .op-report-filters input { font-variant-numeric: tabular-nums; }
 .op-assignment-filters { margin-top: 14px; border-top: 1px solid var(--border-dim); }
-.op-assignment-filters summary,.op-method-note summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; list-style: none; cursor: pointer; }
-.op-assignment-filters summary::-webkit-details-marker,.op-method-note summary::-webkit-details-marker { display: none; }
+.op-assignment-filters summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; list-style: none; cursor: pointer; }
+.op-assignment-filters summary::-webkit-details-marker { display: none; }
 .op-assignment-filters summary { min-height: 39px; color: var(--op-muted); font-size: 10px; }
-.op-assignment-filters summary > span,.op-method-note summary > span { display: inline-flex; align-items: center; gap: 7px; }
-.op-assignment-filters summary svg,.op-method-note summary svg { width: 13px; height: 13px; flex-shrink: 0; }
-.op-assignment-filters[open] summary > svg,.op-method-note[open] summary > svg { transform: rotate(90deg); }
+.op-assignment-filters summary > span { display: inline-flex; align-items: center; gap: 7px; }
+.op-assignment-filters summary svg { width: 13px; height: 13px; flex-shrink: 0; }
+.op-assignment-filters[open] summary > svg { transform: rotate(90deg); }
 .op-section-label { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 10px; color: var(--op-muted); font-size: 9px; }
 .op-section-label > span:first-child { color: var(--text-primary); font-size: 11px; font-weight: 500; }
 .op-report-stats { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-bottom: 20px; }
@@ -132,10 +132,6 @@
 .op-report-error p { color: var(--op-muted); font-size: 10px; margin-top: 3px; }
 .op-report-error button { margin-left: auto; }
 .op-cell-skeleton { display: block; width: 80%; height: 12px; margin-block: 8px; }
-.op-method-note { margin-top: 16px; padding: 0 2px; color: var(--op-muted); font-size: 10px; }
-.op-method-note summary { justify-content: flex-start; min-height: 28px; }
-.op-method-note > div { max-width: 95ch; padding: 7px 0 0 20px; font-size: 10px; }
-.op-method-note p + p { margin-top: 6px; }
 .op-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 1100px) {
   .op-report-stats { grid-template-columns: repeat(2,minmax(0,1fr)); }

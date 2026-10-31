@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import AnalysisIcon from '../components/AnalysisIcon'
 import ResponsePerformanceView from '../components/ResponsePerformanceView'
+import ResponseAnalysisPage from './ResponseAnalysisPage'
+import DispatchDetailsPage from './DispatchDetailsPage'
 import PlanningPage from './PlanningPage'
 import OperationalReports from '../components/OperationalReports'
 import '../styles/MetricsPage.css'
@@ -16,6 +18,18 @@ export default function AnalysisPage({ theme, tab = 'response', onTabChange, onO
   // Preserve navigation from older callers that still request the timing tab.
   const activeTab = tab === 'operational' ? 'response' : tab
   const tabListRef = useRef(null)
+  const [detailView, setDetailView] = useState(null)
+  const recordTriggerRef = useRef(null)
+  useEffect(() => {
+    if (detailView == null && recordTriggerRef.current?.isConnected) {
+      recordTriggerRef.current.focus({ preventScroll: true })
+      recordTriggerRef.current = null
+    }
+  }, [detailView])
+  function openDetails(kind, id) {
+    recordTriggerRef.current = document.activeElement
+    setDetailView({ kind, id })
+  }
   useEffect(() => {
     tabListRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }, [activeTab])
@@ -29,6 +43,7 @@ export default function AnalysisPage({ theme, tab = 'response', onTabChange, onO
     event.currentTarget.querySelector(`#analysis-${next}-tab`)?.focus()
   }
   return <div className="analysis-page">
+    <div className="analysis-workspace" hidden={detailView != null}>
     <header className="m-header analysis-header">
       <div className="m-title-row"><div><span className="m-title">Analysis</span><svg className="unfold_icon" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true"><path d="M480-120 300-300l58-58 122 122 122-122 58 58-180 180ZM358-598l-58-58 180-180 180 180-58 58-122-122-122 122Z" /></svg></div></div>
       <div ref={tabListRef} className="analysis-tabs" role="tablist" aria-label="Analysis views" onKeyDown={moveTab}>
@@ -36,7 +51,10 @@ export default function AnalysisPage({ theme, tab = 'response', onTabChange, onO
       </div>
     </header>
     <div id="analysis-panel" role="tabpanel" aria-labelledby={`analysis-${activeTab}-tab`} className="analysis-panel">
-      {activeTab === 'response' ? <ResponsePerformanceView theme={theme} onOpenIncident={onOpenIncident} /> : activeTab === 'reports' ? <OperationalReports /> : <PlanningPage />}
+      {activeTab === 'response' ? <ResponsePerformanceView onOpenAnalysis={id => openDetails('incident', id)} onOpenDispatch={id => openDetails('dispatch', id)} /> : activeTab === 'reports' ? <OperationalReports /> : <PlanningPage />}
     </div>
+    </div>
+    {detailView?.kind === 'incident' && <ResponseAnalysisPage key={detailView.id} fireId={detailView.id} theme={theme} onBack={() => setDetailView(null)} onOpenIncident={onOpenIncident} />}
+    {detailView?.kind === 'dispatch' && <DispatchDetailsPage key={detailView.id} id={detailView.id} theme={theme} onBack={() => setDetailView(null)} onOpenIncident={onOpenIncident} />}
   </div>
 }

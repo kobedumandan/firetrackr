@@ -6,6 +6,7 @@ import KpiCard, { KPI_EMPTY } from './KpiCard'
 import { duration, dateTime } from '../utils/operationalTimes'
 import '../styles/IncidentsPage.css'
 import '../styles/OperationalReports.css'
+import '../styles/MethodNote.css'
 
 const PAGE_SIZE = 10
 const TYPES = { 'personnel-deployment': 'Personnel Deployment', 'fire-prone-areas': 'Fire-Prone Areas', 'eta-accuracy': 'ETA Prediction Error' }
@@ -217,7 +218,7 @@ export default function OperationalReports({ initialType = 'personnel-deployment
           </div>
         </nav>}
       </section>
-      {data && <details className="op-method-note"><summary><span><AnalysisIcon name="info" />Methodology & data quality</span><AnalysisIcon name="chevron" /></summary><div><p>{data.notice}</p>{area && <p>{data.formula} {data.incident_count} eligible incidents · {data.unassigned_incidents} without an assigned barangay. Ties share a rank.</p>}{!area && !deployed && <p>Mean signed error: <strong>{signedDuration(data.mean_error_seconds)}</strong>. Positive values mean actual travel took longer than predicted.</p>}</div></details>}
+      {data && <details className="op-method-note mo-method"><summary><AnalysisIcon name="info" />Methodology & data quality<AnalysisIcon name="chevron" /></summary><div className="mo-method-content is-single"><p>{data.notice}</p>{area && <p>{data.formula} {data.incident_count} eligible incidents · {data.unassigned_incidents} without an assigned barangay. Ties share a rank.</p>}{!area && !deployed && <p>Mean signed error: <strong>{signedDuration(data.mean_error_seconds)}</strong>. Positive values mean actual travel took longer than predicted.</p>}</div></details>}
     </>}
     {csv && <CsvReviewModal views={csv.views} initialView={csv.initialView} title={TYPES[csv.type]} onClose={() => setCsv(null)} />}
     </div>

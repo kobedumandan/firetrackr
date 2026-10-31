@@ -1,10 +1,11 @@
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { duration } from '../utils/operationalTimes'
 import '../styles/DurationTrendChart.css'
 
 // Values stay in seconds; only the vertical axis is converted to minutes.
-export default function DurationTrendChart({ points, series, label, onSelect, selectedIndex = -1 }) {
+export default function DurationTrendChart({ points, series, label, onSelect, onClose, selectedIndex = -1, sortTooltipByValue = false, formatCount = count => `n=${count}` }) {
   const id = useId()
+  const chartRef = useRef(null)
   const [hovered, setHovered] = useState(null)
   const [focused, setFocused] = useState(null)
   const width = 900, height = 300, left = 52, right = 18, top = 22, bottom = 38
@@ -19,6 +20,9 @@ export default function DurationTrendChart({ points, series, label, onSelect, se
   const y = value => baseline - value / max * (baseline - top)
   const index = focused ?? hovered ?? (selectedIndex >= 0 ? selectedIndex : null)
   const active = index != null ? points[index] : null
+  const tooltipSeries = active && sortTooltipByValue
+    ? [...series].sort((a, b) => (active.values[a.key] ?? Infinity) - (active.values[b.key] ?? Infinity))
+    : series
   const tickStride = Math.max(1, Math.ceil(points.length / 8))
 
   function inspect(event) {
@@ -30,10 +34,17 @@ export default function DurationTrendChart({ points, series, label, onSelect, se
     setHovered(position < left || position > width - right ? null : Math.max(0, Math.min(points.length - 1, Math.round((position - left) / plotWidth * (points.length - 1)))))
   }
 
-  return <div className="duration-trend">
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label}
-      onPointerMove={inspect} onPointerLeave={() => setHovered(null)}
-      onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(null) }}>
+  function closeTooltip() {
+    setHovered(null)
+    setFocused(null)
+    onClose?.()
+    chartRef.current?.focus()
+  }
+
+  return <div className="duration-trend" onPointerLeave={() => setHovered(null)}
+    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(null) }}>
+    <svg ref={chartRef} tabIndex={onClose ? -1 : undefined} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label}
+      onPointerMove={inspect}>
       <defs>{series.map((item, i) => <linearGradient key={item.key} id={`${id}-${i}`} x1="0" x2="0" y1="0" y2="1">
         <stop offset="0%" stopColor={item.color} stopOpacity={series.length === 1 ? '.28' : '.13'} />
         <stop offset="100%" stopColor={item.color} stopOpacity="0" />
@@ -66,7 +77,7 @@ export default function DurationTrendChart({ points, series, label, onSelect, se
       </g>)}
       {points.map((point, i) => <rect key={i} className="duration-trend-target" x={x(i) - 8} y={top} width="16" height={baseline - top}
         tabIndex="0" role={onSelect ? 'button' : undefined} aria-pressed={onSelect ? selectedIndex === i : undefined}
-        aria-label={`${point.label}: ${series.map(item => `${item.label}: ${duration(point.values[item.key])}, n=${point.counts?.[item.key] || 0}`).join('; ')}`}
+        aria-label={`${point.label}: ${series.map(item => `${item.label}: ${duration(point.values[item.key])}, ${formatCount(point.counts?.[item.key] || 0)}`).join('; ')}`}
         onFocus={() => setFocused(i)} onClick={() => onSelect?.(i)}
         onKeyDown={event => {
           if (onSelect && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onSelect(i) }
@@ -81,9 +92,9 @@ export default function DurationTrendChart({ points, series, label, onSelect, se
         {series.map(item => active.values[item.key] != null && <circle key={item.key} className="duration-trend-active" cx={x(index)} cy={y(active.values[item.key])} r="5" fill={item.color} />)}
       </g>}
     </svg>
-    {active && <div className={`duration-trend-tooltip${x(index) > width / 2 ? ' is-right' : ''}`} style={{ left: `${x(index) / width * 100}%` }} role="status">
-      <strong>{active.label}</strong>
-      {series.map(item => <div key={item.key}><i style={{ background: item.color }} /><span>{item.label}</span><b>{duration(active.values[item.key])}</b><small>n={active.counts?.[item.key] || 0}</small></div>)}
+    {active && <div className={`duration-trend-tooltip${x(index) > width / 2 ? ' is-right' : ''}${onClose ? ' is-interactive' : ''}`} style={{ left: `${x(index) / width * 100}%` }} role="status">
+      <header><strong>{active.label}</strong>{onClose && <button type="button" className="duration-trend-close" aria-label="Close tooltip and reset timeframe" onClick={closeTooltip}>×</button>}</header>
+      {tooltipSeries.map(item => <div key={item.key}><i style={{ background: item.color }} /><span>{item.label}</span><b className={!Number.isFinite(active.values[item.key]) ? 'duration-trend-missing' : undefined} aria-label={!Number.isFinite(active.values[item.key]) ? 'No data' : undefined}>{duration(active.values[item.key], '—')}</b><small>{formatCount(active.counts?.[item.key] || 0)}</small></div>)}
     </div>}
   </div>
 }

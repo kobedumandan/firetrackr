@@ -99,12 +99,6 @@
 .rp-kpis .kpi-card-sub { color: var(--rp-muted); font-size: 10px; }
 .rp-kpis .trend-up { color: color-mix(in srgb, var(--accent-red) 65%, var(--text-primary)); }
 .rp-kpis .trend-down { color: color-mix(in srgb, var(--accent-emerald) 55%, var(--text-primary)); }
-.rp-method-note { margin: 0 0 24px; color: var(--rp-muted); font-size: 10px; }
-.rp-method-note summary { display: flex; align-items: center; gap: 7px; width: fit-content; cursor: pointer; }
-.rp-method-note summary::after { content: '+'; margin-left: 5px; font: 14px var(--font-mono); }
-.rp-method-note[open] summary::after { content: '-'; }
-.rp-method-note svg { width: 14px; height: 14px; }
-.rp-method-note p { max-width: 95ch; margin-top: 10px; }
 
 /* The chart preserves missing-data gaps and offers its values as a table. */
 .rp-chart { overflow: auto; margin-top: 20px; }
@@ -115,8 +109,6 @@
 .rp-legend i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
 .rp-chart-footer { margin-top: 17px; padding-top: 12px; border-top: 1px solid var(--border-dim); }
 .rp-chart-footer > .rp-disclosure { margin-top: 0; }
-.rp-months { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.rp-view .rp-months button { padding: 5px 8px; font: 9px var(--font-mono); color: var(--rp-muted); background: transparent; border-color: transparent; }
 .rp-view button[aria-pressed="true"] { border-color: var(--accent-fire); background: var(--accent-fire-dim); color: var(--accent-fire); }
 .rp-chart-empty { min-height: 220px; }
 .rp-chart-skeleton { height: 200px; width: 100%; margin: 24px 0; }
@@ -126,8 +118,8 @@
 /* The dispatch table scrolls within its own boundary. */
 .rp-heading-title { display: flex; align-items: center; gap: 8px; }
 .rp-count { padding: 1px 6px; border-radius: 4px; background: var(--rp-soft); color: var(--rp-muted); font: 10px var(--font-mono); }
-.rp-view .rp-export { background: var(--text-primary); color: var(--bg-panel); border-color: var(--text-primary); }
-.rp-view .rp-export:hover:not(:disabled) { background: var(--text-primary); color: var(--bg-panel); opacity: .85; }
+.rp-view button.rp-export { background: var(--text-primary); color: var(--bg-panel); border-color: var(--text-primary); }
+.rp-view button.rp-export:hover:not(:disabled) { background: var(--text-primary); color: var(--bg-panel); border-color: var(--text-primary); opacity: .85; }
 .rp-scroll { overflow: auto; min-width: 0; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 .rp-observations > .rp-scroll { margin: 18px -18px 0; }
 .rp-view table, .rp-detail table { width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; }
@@ -147,8 +139,6 @@
 .rp-quality-badge { display: inline-block; padding: 3px 6px; border-radius: 4px; background: var(--rp-soft); color: var(--rp-muted); font-size: 9px; white-space: nowrap; }
 .rp-quality-badge[data-quality="valid"] { background: rgba(var(--accent-emerald-rgb), .1); color: color-mix(in srgb, var(--accent-emerald) 55%, var(--text-primary)); }
 .rp-quality-badge[data-quality="invalid"] { background: var(--accent-amber-dim); color: var(--accent-amber); }
-.rp-active-month { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 10px; color: var(--accent-fire); }
-.rp-view .rp-active-month button { padding: 3px 6px; font-size: 9px; }
 .rp-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 14px; font-size: 10px; color: var(--rp-muted); }
 .rp-pagination > div { display: flex; gap: 6px; }
 .rp-page-divider { margin-inline: 8px; }
@@ -162,8 +152,8 @@
 .rp-error > svg { flex-shrink: 0; color: var(--accent-red); }
 .rp-error p { font-size: 11px; }
 .rp-error button { margin-left: auto; }
-.rp-view .rp-notice { display: flex; align-items: flex-start; gap: 8px; color: var(--rp-muted); font-size: 10px; }
-.rp-notice svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 2px; }
+.rp-view .rp-notice { display: flex; align-items: flex-start; gap: 5px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-dim); color: var(--rp-muted); font-size: 9px; line-height: 1.5; }
+.rp-notice svg { width: 11px; height: 11px; flex-shrink: 0; margin-top: 1px; }
 .rp-cell-skeleton { width: 85%; height: 12px; margin-block: 3px; }
 .rp-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 

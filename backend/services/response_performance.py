@@ -57,6 +57,12 @@ def context(dispatch):
             "truck": team.truck.truck_platenum if team and team.truck else None}
 
 
+def is_reinforcement(dispatch, incident=None):
+    incident = incident if incident is not None else dispatch.fire_incident
+    return any(other.dispatch_at and dispatch.dispatch_at and other.dispatch_at < dispatch.dispatch_at
+               and other.dispatch_status not in EXCLUDED for other in incident.dispatches)
+
+
 def observation(dispatch):
     inc = dispatch.fire_incident
     arrived, departed = arrival(dispatch), departure(dispatch)
@@ -81,12 +87,11 @@ def observation(dispatch):
             "acknowledged_by": dispatch.acknowledged_by, "departed_at": iso(departed),
             "departed_by": dispatch.departed_by, "arrived_at": iso(arrived),
             "departure_basis": "dispatch_action" if dispatch.departed_at else "unit_evidence" if departed else None,
-            "reinforcement": any(d.dispatch_at and dispatch.dispatch_at and d.dispatch_at < dispatch.dispatch_at
-                                 and d.dispatch_status not in EXCLUDED for d in inc.dispatches),
+            "reinforcement": is_reinforcement(dispatch, inc),
             "metrics": metrics}
 
 
-def load(db, start, end, kind="operational", team_ids=None, station_id=None, barangay_id=None, severity=None):
+def _dispatch_query(db, start, end, kind="operational", team_ids=None, barangay_id=None, severity=None):
     if kind not in KINDS | {"all"}:
         raise HTTPException(422, "Unknown record kind.")
     query = db.query(DispatchRecord).options(
@@ -104,10 +109,44 @@ def load(db, start, end, kind="operational", team_ids=None, station_id=None, bar
         query = query.filter(FireIncident.brgy_id == barangay_id)
     if severity:
         query = query.filter(FireIncident.fire_severity == severity)
-    dispatches = query.order_by(DispatchRecord.dispatch_at.desc(), DispatchRecord.dispatch_id.desc()).all()
+    return query.order_by(DispatchRecord.dispatch_at.desc(), DispatchRecord.dispatch_id.desc())
+
+
+def load(db, start, end, kind="operational", team_ids=None, station_id=None, barangay_id=None, severity=None):
+    dispatches = _dispatch_query(db, start, end, kind, team_ids, barangay_id, severity).all()
     if station_id:
         dispatches = [d for d in dispatches if context(d).get("station_id") == station_id]
     return [observation(d) for d in dispatches]
+
+
+def filtered_dispatches(db, dispatch_team_id=None, response_quality=None, assignment_type="all", **filters):
+    """Apply observation-only refinements before pagination or CSV serialization."""
+    rows = load(db, **filters)
+    return [row for row in rows
+            if (dispatch_team_id is None or row["team_id"] == dispatch_team_id)
+            and (response_quality is None or row["metrics"]["response"]["quality"] == response_quality)
+            and (assignment_type == "all" or row["reinforcement"] == (assignment_type == "reinforcement"))]
+
+
+def dispatch_page(db, page=1, page_size=25, dispatch_team_id=None, response_quality=None,
+                  assignment_type="all", **filters):
+    """Paginate in SQL when no refinement needs derived timing or snapshot context."""
+    if response_quality is not None or assignment_type != "all" or filters.get("station_id"):
+        rows = filtered_dispatches(db, dispatch_team_id, response_quality, assignment_type, **filters)
+        total = len(rows)
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = min(page, pages)
+        records = rows[(page - 1) * page_size:page * page_size]
+    else:
+        query = _dispatch_query(db, **{key: value for key, value in filters.items() if key != "station_id"})
+        if dispatch_team_id is not None:
+            query = query.filter(DispatchRecord.team_id == dispatch_team_id)
+        total = query.order_by(None).count()
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = min(page, pages)
+        records = [observation(dispatch) for dispatch in query.offset((page - 1) * page_size).limit(page_size).all()]
+    return {"records": records, "total": total, "page": page,
+            "page_size": page_size, "total_pages": pages}
 
 
 def overall(db, start, end, kind="operational", station_id=None, barangay_id=None, severity=None):

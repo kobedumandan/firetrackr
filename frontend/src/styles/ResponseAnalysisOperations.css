@@ -1,0 +1,117 @@
+/* Page-only timeline treatment: shared detail-card, KPI and form design tokens.
+   The legacy modal does not have these three classes on its operations section. */
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog {
+  --ram-soft: color-mix(in srgb, var(--text-primary) 3%, var(--bg-panel));
+  container: response-operations / inline-size;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--border-dim);
+  border-radius: 14px;
+  background: var(--bg-panel);
+}
+
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-section-heading { align-items: center; gap: 14px; margin-bottom: 20px; font: 11px/1.65 var(--font-ui); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-section-heading > div { min-width: 0; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-eyebrow { color: var(--text-secondary); font-size: 8px; letter-spacing: .7px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-section-heading h3 { margin: 0 0 4px; font: 500 15px/1.65 var(--font-ui); letter-spacing: -.25px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-section-heading p { margin: 0; color: color-mix(in srgb, var(--text-primary) 65%, var(--bg-panel)); font-size: 10px; line-height: 1.65; overflow-wrap: anywhere; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-context-label { display: flex; align-items: flex-start; gap: 5px; margin: 12px 0 0; padding: 12px 0 0; border: 0; border-top: 1px solid var(--border-dim); border-radius: 0; background: transparent; color: var(--ota-muted); font: 9px/1.5 var(--font-condensed); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-context-label > svg { width: 11px; height: 11px; flex-shrink: 0; margin-top: 1px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-separator { color: var(--text-secondary); opacity: .45; font-weight: 400; }
+
+/* Unit chips and selectable metric cards retain their existing pressed state. */
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-unit-buttons { gap: 6px; margin-bottom: 16px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-unit-buttons button { min-width: 0; padding: 6px 10px; border-radius: 6px; background: var(--ram-soft); color: var(--text-secondary); font: 500 9.8px/1.5 var(--font-condensed); overflow-wrap: anywhere; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-unit-buttons button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--accent-fire) 40%, var(--border)); background: var(--accent-fire-dim); color: var(--accent-fire); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-stages button { gap: 8px; padding: 12px 14px 13px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); color: var(--text-primary); transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-stages button:hover:not(:disabled) { border-color: var(--border); background: var(--bg-panel); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-stages button.active,
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-stages button.active:hover:not(:disabled) { border-color: var(--accent-fire); background: color-mix(in srgb, var(--accent-fire) 5%, var(--bg-panel)); box-shadow: none; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .kpi-card-head { width: 100%; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .kpi-card-label { min-width: 0; overflow-wrap: anywhere; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-stages strong { color: var(--text-primary); font: 600 27px/1 var(--font-condensed); letter-spacing: .6px; font-variant-numeric: tabular-nums; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-stage-scope { color: var(--text-secondary); font: 500 9px/1.35 var(--font-condensed); }
+
+/* Timing evidence combines the detail page's timeline and compact KPI cards. */
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-timing-grid { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 14px; margin-top: 20px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-timing-grid > :is(.ram-timestamps, .ota-comparison) { min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-timing-grid > .ota-comparison { margin-top: 8px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog :is(.ota-note, .ota-comparison p) { color: var(--text-secondary); font-size: 9px; line-height: 1.65; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-evidence-heading { display: flex; align-items: center; gap: 10px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-evidence-heading > div { min-width: 0; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-evidence-icon { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border: 1px solid var(--border-dim); border-radius: 8px; background: var(--ram-soft); color: var(--text-secondary); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-evidence-icon svg { width: 15px; height: 15px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-evidence-heading :is(h3, h4) { display: block; margin: 0; color: var(--text-primary); font: 600 11px/1.5 var(--font-condensed); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-evidence-heading > div > p { margin: 3px 0 0; color: var(--text-secondary); font: 400 8.5px/1.5 var(--font-condensed); }
+
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-milestones { margin: 18px 0 0; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-milestones > div { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; padding: 0 0 20px 26px; border: 0; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-milestones > div:last-child { padding-bottom: 0; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-milestones > div:not(:last-child)::after { content: ''; position: absolute; top: 14px; bottom: -2px; left: 5px; width: 1px; background: var(--border-dim); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-milestones dt { display: block; color: var(--text-secondary); font: 500 8.8px/1.5 var(--font-condensed); text-transform: uppercase; letter-spacing: -.1px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-milestones dt > i { position: absolute; box-sizing: border-box; top: 4px; left: 1px; width: 9px; height: 9px; border: 2px solid var(--bg-panel); border-radius: 50%; outline: 1px solid var(--border); background: var(--bg-hover); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-milestones > div[data-recorded="true"] dt > i { background: var(--accent-fire); outline-color: color-mix(in srgb, var(--accent-fire) 40%, var(--border-dim)); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-milestones dd { min-width: 0; margin: 0; color: var(--text-primary); text-align: left; font: 500 12px/1.5 var(--font-condensed); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-timestamps > .ota-note:first-of-type { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-dim); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-sources:has(> h5) { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-dim); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-sources h5 { margin: 0 0 8px; color: var(--text-secondary); font: 500 8.8px/1.5 var(--font-condensed); text-transform: uppercase; letter-spacing: .2px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-sources p { margin: 8px 0 0; padding: 9px 11px; border: 1px solid var(--border-dim); border-radius: 8px; background: var(--ram-soft); color: var(--text-secondary); font-size: 9px; overflow-wrap: anywhere; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-sources small { display: block; margin-top: 4px; font-size: 8px; }
+
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-travel-kpis { margin: 16px 0; gap: 10px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-travel-kpis .kpi-card { padding: 10px 12px; gap: 8px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-travel-kpis .kpi-card-value { font-size: 22px; overflow-wrap: anywhere; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-comparison-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-comparison-details > div { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 5px; min-width: 0; padding: 10px 12px; border: 0; border-radius: 8px; background: var(--ram-soft); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-comparison-details > div:first-child { grid-column: 1 / -1; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-comparison-details dt { color: var(--text-secondary); font: 500 8.8px/1.5 var(--font-condensed); text-transform: uppercase; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-comparison-details dd { min-width: 0; margin: 0; color: var(--text-primary); text-align: left; font: 500 12px/1.5 var(--font-condensed); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-travel-insights { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--border-dim); border-radius: 10px; background: var(--ram-soft); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-travel-insights h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--text-primary); font: 600 10.5px/1.5 var(--font-condensed); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-travel-insights h4 svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--text-secondary); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-travel-insights p { margin: 8px 0 0; color: var(--text-secondary); font: 9px/1.65 var(--font-condensed); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-travel-insights > p:first-of-type { margin-top: 0; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-travel-insights > p:not(.ota-note) { color: var(--text-primary); }
+
+/* Confirmation uses the same icon-led header and field hierarchy as the evidence panels. */
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm { margin-top: 20px; padding: 0; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm > summary { display: flex; align-items: center; gap: 10px; margin: 0; padding: 16px; border-radius: 12px; color: var(--text-primary); font: 500 11px/1.5 var(--font-condensed); list-style: none; cursor: pointer; overflow-wrap: anywhere; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm > summary::-webkit-details-marker { display: none; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm > summary:hover { background: var(--ram-soft); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm[open] > summary { border-bottom: 1px solid var(--border-dim); border-radius: 12px 12px 0 0; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-confirm-heading { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-confirm-title { color: var(--text-primary); font-weight: 600; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-confirm-subtitle { color: var(--text-secondary); font-size: 9px; font-weight: 400; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-confirm-chevron { flex-shrink: 0; width: 14px; height: 14px; margin-left: auto; color: var(--text-secondary); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm[open] .ram-confirm-chevron { transform: rotate(90deg); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-confirm-guidance { display: flex; align-items: flex-start; gap: 8px; margin: 14px 16px 0; padding: 10px 12px; border: 1px solid var(--border-dim); border-radius: 8px; background: var(--ram-soft); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-confirm-guidance > svg { flex-shrink: 0; width: 13px; height: 13px; margin-top: 1px; color: var(--text-secondary); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-confirm-guidance .ota-note { margin: 0; font-size: 9px; line-height: 1.65; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; max-width: none; margin: 0; padding: 16px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm form > .apm-field { min-width: 0; margin: 0; gap: 6px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm .apm-field > label { color: var(--text-secondary); font: 500 9px/1.5 var(--font-condensed); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm form > :is(.ram-confirm-dispatch, .ram-confirm-time, .ram-confirm-actions, [role="alert"]) { grid-column: 1 / -1; min-width: 0; margin: 0; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm :is(select, input) { box-sizing: border-box; width: 100%; min-width: 0; height: 36px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--ram-soft); color: var(--text-primary); font: 11px var(--font-condensed); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm :is(select, input):disabled { opacity: .5; cursor: default; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-confirm-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding-top: 14px; border-top: 1px solid var(--border-dim); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm button { min-width: 0; min-height: 34px; padding: 8px 12px; border-radius: 6px; font-size: 10px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-confirm-actions button svg { width: 13px; height: 13px; flex-shrink: 0; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm button[type="submit"] { border-color: var(--accent-fire); background: var(--accent-fire-dim); color: var(--accent-fire); }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm [role="alert"] { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent-red) 35%, var(--border-dim)); border-radius: 8px; background: color-mix(in srgb, var(--accent-red) 5%, var(--bg-panel)); color: var(--text-primary); font-size: 10px; line-height: 1.65; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-dispatch-links { gap: 6px; margin-top: 16px; padding-top: 14px; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-dispatch-links > span { flex-basis: 100%; margin-bottom: 4px; color: var(--text-secondary); font-size: 8.8px; text-transform: uppercase; }
+.response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-dispatch-links button { min-width: 0; padding: 6px 9px; border-radius: 6px; background: var(--ram-soft); font-size: 9px; overflow-wrap: anywhere; }
+
+@container response-operations (max-width: 420px) {
+  .response-analysis-page .ram-operations.ota-dialog.ram-dialog .ota-confirm form { grid-template-columns: minmax(0, 1fr); }
+  .response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-confirm-actions { flex-direction: column; align-items: stretch; }
+}
+@container response-operations (min-width: 680px) {
+  .response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-timing-grid:has(> .ota-comparison) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); }
+}
+@media (max-width: 600px) {
+  .response-analysis-page .ram-operations.ota-dialog.ram-dialog { padding: 14px 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .response-analysis-page .ram-operations.ota-dialog.ram-dialog .ram-stages button { transition: none; }
+}

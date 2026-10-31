@@ -11,10 +11,17 @@
 .duration-trend-active { stroke: var(--page-default-base); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .duration-trend-target { fill: transparent; outline: none; }
 .duration-trend-target[role="button"] { cursor: pointer; }
-.duration-trend-tooltip { position: absolute; top: 25px; z-index: 1; transform: translateX(12px); max-width: 320px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel); color: var(--text-primary); box-shadow: 0 2px 5px #0002; pointer-events: none; font: 11px/1.5 var(--font-condensed); }
+.duration-trend-tooltip { position: absolute; top: 25px; z-index: 1; display: grid; grid-template-columns: 6px minmax(0,1fr) max-content max-content; column-gap: 7px; width: max-content; transform: translateX(12px); max-width: 320px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel); color: var(--text-primary); box-shadow: 0 2px 5px #0002; pointer-events: none; font: 11px/1.5 var(--font-condensed); }
 .duration-trend-tooltip.is-right { transform: translateX(calc(-100% - 12px)); }
-.duration-trend-tooltip > strong { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; }
-.duration-trend-tooltip > div { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.duration-trend-tooltip.is-interactive { pointer-events: auto; }
+.duration-trend-tooltip > header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.duration-trend-tooltip > header strong { font-size: 12px; font-weight: 600; }
+.duration-trend .duration-trend-tooltip button.duration-trend-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 3px; background: transparent; color: var(--text-secondary); font: 18px/1 var(--font-condensed); cursor: pointer; }
+.duration-trend .duration-trend-tooltip button.duration-trend-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+.duration-trend-tooltip > div { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; padding-bottom: 3px; white-space: nowrap; }
+.duration-trend-tooltip > div > span { overflow: hidden; text-overflow: ellipsis; }
 .duration-trend-tooltip i { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.duration-trend-tooltip b { margin-left: auto; font-weight: 500; font-variant-numeric: tabular-nums; }
-.duration-trend-tooltip small { color: var(--text-secondary); font-size: 10px; }
+.duration-trend-tooltip b { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
+.duration-trend-tooltip .duration-trend-missing { opacity: .25; font-weight: 400; }
+.duration-trend-tooltip small { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary); font-size: 10px; }
+.rp-view .duration-trend-tooltip small { margin: 0; }

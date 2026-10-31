@@ -92,6 +92,8 @@
 .ota-chart-scroll text { fill: var(--ota-muted); font: 10px var(--font-mono); }
 .ota-chart-scroll circle:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 3px; }
 .ota-chart-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+:is(.ota-trends,.rp-trends) .ota-chart-note { display: flex; align-items: flex-start; gap: 5px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-dim); color: var(--ota-muted); font-size: 9px; line-height: 1.5; }
+.ota-chart-note svg { width: 11px; height: 11px; flex-shrink: 0; margin-top: 1px; }
 .ota-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--ota-muted); font-size: 10px; }
 .ota-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .ota-legend i { background: var(--ota-series-color); width: 7px; height: 7px; border-radius: 50%; }

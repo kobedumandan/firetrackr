@@ -1,0 +1,36 @@
+/* The incident detail shell owns page scrolling; analysis keeps its existing controls. */
+.response-analysis-page {
+  --ota-muted: color-mix(in srgb, var(--text-primary) 64%, var(--bg-panel));
+  --ota-soft: color-mix(in srgb, var(--text-primary) 8%, var(--bg-panel));
+  display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
+  color: var(--text-primary); font: 12px/1.5 var(--font-condensed); color-scheme: dark;
+}
+[data-theme="light"] .response-analysis-page { color-scheme: light; }
+.response-analysis-page[hidden] { display: none; }
+.response-analysis-page > .dl-page { min-width: 0; min-height: 0; }
+.response-analysis-page button.dl-back { padding: 5px 10px 3px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); font-size: 9.8px; }
+.response-analysis-page button.dl-back:hover { border: 0; background: var(--bg-hover); color: var(--text-primary); }
+.response-analysis-page .dl-back .dl-back-icon { width: 10px; height: 10px; }
+.response-analysis-page .ram-body { display: flex; flex-direction: column; gap: 16px; overflow: visible; }
+.response-analysis-page h1.idp-title { margin: 0; }
+.response-analysis-page .idp-eyebrow { font-size: 8px; }
+.response-analysis-page .rap-incident-code { margin-top: 6px; color: var(--text-primary); opacity: .6; font: 10px var(--font-mono); }
+.response-analysis-page .idp-chips .status-pill { padding: 2px 6px; font-size: 8px; }
+.response-analysis-page .idp-chips .status-pill::before { width: 4px; height: 4px; }
+.response-analysis-page .idp-hero-svg { width: 30px; height: 30px; }
+.response-analysis-page .idp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.response-analysis-page .kpi-card-sub { font-size: 9px; }
+.response-analysis-page .ram-operations { padding: 18px; border: 1px solid var(--border-dim); border-radius: 14px; background: var(--bg-card); min-width: 0; max-height: none; overflow: visible; }
+.response-analysis-page .ram-notice { margin: 0; }
+.response-analysis-page .ram-notice > button { margin-left: auto; padding: 8px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); color: var(--text-primary); font: 500 11px/1.4 var(--font-condensed); cursor: pointer; }
+.response-analysis-page .ram-notice > button:hover { background: var(--bg-hover); border-color: var(--ota-muted); }
+.response-analysis-page .ram-location-note { margin: 0; padding: 0; }
+.response-analysis-page .ram-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.response-analysis-page .ram-timing-grid { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.response-analysis-page .rap-context { display: flex; flex-direction: column; gap: 18px; }
+.response-analysis-page .rap-timezone { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--ota-muted); font-size: 10px; line-height: 1.7; }
+.response-analysis-page .rap-timezone svg { flex-shrink: 0; width: 14px; height: 14px; margin-top: 1px; }
+.response-analysis-page :is(button, summary, input, select):focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 3px; }
+@media (max-width: 600px) {
+  .response-analysis-page .ram-operations { padding: 16px 12px; }
+}

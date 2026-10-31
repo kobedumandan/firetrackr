@@ -62,8 +62,10 @@
 .rp-view .rp-quality-counts span[data-present="false"] { display: none; }
 
 /* Stage selection controls the chart; quality details stay available on demand. */
-.ro-stages-panel { margin-bottom: 20px; padding: 20px 22px 14px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); }
+.ro-stages-panel { margin-bottom: 20px; padding: 20px 22px 12px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); }
 .ro-stages-panel h2 { margin-top: 0; }
+.ro-stage-heading-copy { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ro-stage-heading-copy > div { min-width: 0; }
 .ro-section-hint { align-self: flex-end; color: var(--rp-muted); font-size: 10px; }
 .rp-view .ro-stage-kpis { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 0; margin: 20px -4px 0; }
 .ro-stage-kpis .rp-metric-card { position: relative; min-width: 0; padding: 3px 18px 8px; border: 0; border-radius: 0; background: transparent; }
@@ -83,8 +85,6 @@
 .rp-view .ro-stage-kpis .kpi-card:has(> .kpi-card-action:focus-visible) { background: var(--ro-accent); }
 .rp-view .ro-stage-kpis .kpi-card-action:hover { border: 0; background: transparent; }
 .rp-view .ro-stage-kpis .kpi-card-action:active { transform: none; }
-.rp-view .ro-stage-note { display: flex; align-items: flex-start; gap: 7px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-dim); font-size: 9px; }
-.ro-stage-note svg { width: 12px; height: 12px; flex-shrink: 0; margin-top: 1px; }
 .ro-quality-compact > summary { display: flex; align-items: center; justify-content: space-between; gap: 7px; cursor: pointer; list-style: none; }
 .ro-quality-compact > summary::-webkit-details-marker { display: none; }
 .ro-quality-compact > summary > strong { font-size: 9px; color: var(--rp-muted); font-weight: 400; }
@@ -116,6 +116,17 @@
 .ro-distribution-panel { min-width: 0; padding: 20px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); }
 .ro-distribution-panel h2 { margin-top: 0; font-size: 13px; }
 .ro-distribution-panel > p { font-size: 10px; }
+.ro-stage-distribution { display: flex; flex-direction: column; box-sizing: border-box; height: 400px; min-height: 0; overflow: hidden; }
+.ro-stage-distribution > :is(.rp-section-heading,.ro-measurement-modes,p) { flex-shrink: 0; }
+.ro-stage-distribution-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.ro-stage-distribution-scroll::-webkit-scrollbar { display: none; }
+.ro-measurement-modes { display: flex; gap: 4px; margin: 14px 0 10px; padding: 3px; border: 1px solid var(--border-dim); border-radius: 7px; background: var(--ro-soft); }
+.rp-view .ro-measurement-modes button { flex: 1; min-width: 0; padding: 7px 5px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--rp-muted); font-size: 9px; line-height: 1.4; }
+.rp-view .ro-measurement-modes button[aria-pressed="true"] { border-color: var(--border); background: var(--bg-panel); color: var(--text-primary); }
+.ro-additional-metrics { display: grid; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-dim); }
+.ro-additional-metrics > div { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 3px 8px; font-size: 10px; }
+.ro-additional-metrics strong { font-size: 10px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.rp-view .ro-additional-metrics small { grid-column: 1 / -1; margin: 0; font-size: 9px; }
 .ro-distribution-rows { margin-top: 20px; }
 .ro-distribution-row + .ro-distribution-row { margin-top: 15px; }
 .ro-distribution-row > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
@@ -136,7 +147,8 @@
 .rp-view .ro-team-analysis { margin: 0 0 22px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); }
 .ro-team-analysis > summary { display: flex; align-items: center; gap: 12px; padding: 17px 20px; cursor: pointer; list-style: none; }
 .ro-team-analysis > summary::-webkit-details-marker { display: none; }
-.ro-team-summary-icon { display: grid; place-items: center; flex-shrink: 0; width: 35px; height: 35px; border: 1px solid var(--border-dim); border-radius: 8px; color: var(--rp-muted); background: var(--ro-soft); }
+.ro-team-summary-icon,
+.ro-table-icon { display: grid; place-items: center; flex-shrink: 0; width: 35px; height: 35px; border: 1px solid var(--border-dim); border-radius: 8px; color: var(--rp-muted); background: var(--ro-soft); }
 .ro-team-summary-copy { display: flex; flex-direction: column; gap: 4px; }
 .ro-team-summary-copy strong { font-size: 12px; font-weight: 500; }
 .ro-team-summary-copy > span { font-size: 10px; font-weight: 400; color: var(--rp-muted); }
@@ -146,16 +158,20 @@
 .ro-team-content { padding: 20px; border-top: 1px solid var(--border-dim); }
 .ro-team-content > .rp-kpis { margin-top: 16px; }
 .ro-team-content .rp-metric-card { padding: 13px; border: 1px solid var(--border-dim); border-radius: 8px; background: var(--ro-soft); }
-.ro-team-content .rp-trends { margin-top: 20px; }
+.ro-team-trend-grid { grid-template-columns: minmax(270px,1fr) minmax(0,1.9fr); margin-top: 20px; }
+.ro-team-trend-grid > .ro-distribution-panel { display: flex; flex-direction: column; box-sizing: border-box; height: 400px; min-height: 0; overflow: hidden; }
+.ro-team-trend-grid .ro-distribution-panel > :is(.rp-section-heading,p) { flex-shrink: 0; }
+.ro-team-trend-grid .ro-distribution-rows { flex: 1; min-height: 0; overflow-y: auto; align-content: start; scrollbar-width: none; }
+.ro-team-trend-grid .ro-distribution-rows::-webkit-scrollbar { display: none; }
+.rp-view .ro-team-trend-grid .rp-trends { margin: 0; }
 .rp-view .ro-team-content .rp-observations { margin-bottom: 0; border-radius: 9px; }
 
 /* Bounded tables keep navigation and the incident identifier in view. */
 .rp-view .rp-observations { padding: 0; overflow: hidden; border-radius: 12px; }
 .rp-observations > .rp-section-heading { padding: 18px 20px; align-items: center; }
+.ro-stage-heading-copy > div > p,
 .rp-observations .rp-section-heading p { max-width: 72ch; font-size: 10px; }
 .rp-view .rp-heading-title { gap: 8px; }
-.ro-table-icon { color: var(--rp-muted); display: inline-flex; margin-right: 2px; }
-.ro-table-icon svg { width: 17px; height: 17px; }
 .rp-view .rp-count { padding: 3px 6px; border: 1px solid var(--border-dim); border-radius: 4px; background: var(--ro-soft); font-size: 9px; font-weight: 400; }
 .rp-observations > .rp-scroll { max-height: 560px; margin: 0; }
 .rp-view .rp-observations table { border-collapse: separate; border-spacing: 0; font-size: 11px; }
@@ -167,20 +183,31 @@
 .rp-view .rp-observations .rp-duration { font-size: 11px; font-weight: 500; }
 .rp-view .rp-observations .rp-duration small { white-space: normal; max-width: 23ch; font-size: 9px; font-weight: 400; }
 .rp-view .ro-missing { color: var(--rp-muted); }
+.rp-view .ro-missing-value { color: var(--text-primary); opacity: .25; font-weight: 400; }
 .ro-record-incident { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 .ro-receipt-time { display: flex; flex-direction: column; gap: 4px; white-space: nowrap; }
 .ro-label-separator { opacity: .55; padding-inline: 2px; }
-.ro-incident-records .inc-pagination { flex-wrap: wrap; gap: 10px; }
+.rp-observations .inc-pagination { flex-wrap: wrap; gap: 10px; }
+.ro-dispatch-incident { color: var(--rp-muted); font-size: 9px; }
+.rp-view .ro-dispatch-context { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.ro-shift-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; padding: 3px 6px 2px; border-radius: 6px; font-family: var(--font-mono); font-size: 9.8px; font-weight: 600; color: var(--text-secondary); background: var(--chip-muted-bg); }
+.ro-dispatch-location .inc-badge,
+.ro-incident-records .status-pill { padding: 1px 5px; font-size: 8px; }
+.ro-incident-records .status-pill { border: 1px solid transparent; }
+.ro-dispatch-location .sev-icon { width: 8px; height: 8px; }
 .ro-unit-count { font-size: 10px; }
 .ro-unit-count small { font-size: 9px; }
 .rp-view .rp-pagination { padding: 12px 20px; background: var(--ro-soft); font-size: 9px; }
 .rp-view .rp-pagination button { min-height: 30px; border-radius: 6px; font-size: 10px; }
-.rp-observations > .rp-active-month { margin: 0; padding: 10px 20px; border-top: 1px solid var(--border-dim); }
+.ro-dispatch-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--border-dim); background: var(--ro-soft); }
+.ro-dispatch-filters label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 150px; min-width: 0; color: var(--rp-muted); font-size: 10px; }
+.ro-dispatch-filters select { width: 100%; min-width: 0; height: 34px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel); color: var(--text-primary); font: 11px var(--font-condensed); }
+.rp-view button.ro-reset-dispatch-filters { flex: 0 0 34px; width: 34px; height: 34px; min-height: 34px; padding: 0; }
 .rp-observations > .rp-error { margin: 12px 20px; }
-.rp-view .rp-notice { padding: 0 2px; font-size: 9px; }
 
 @container (max-width: 1020px) {
   .ro-analysis-grid { grid-template-columns: minmax(0,1.6fr) minmax(240px,1fr); gap: 14px; }
+  .ro-team-trend-grid { grid-template-columns: minmax(240px,1fr) minmax(0,1.6fr); }
   .rp-view .rp-filters { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .rp-view .ro-refinement-fields { grid-template-columns: repeat(4,minmax(0,1fr)); }
   .ro-unit-label { display: none; }
@@ -212,7 +239,7 @@
   .rp-view .ro-overview { grid-template-columns: 1fr; }
   .ro-overview-card + .ro-overview-card { border-left: 0; border-top: 1px solid var(--border-dim); }
   .ro-mean-caption { flex-direction: row; }
-  .ro-stages-panel { padding: 18px 16px 13px; }
+  .ro-stages-panel { padding: 18px 16px 10px; }
   .rp-view .ro-stage-kpis .kpi-card-value { font-size: 25px; }
   .rp-view .ro-stage-kpis .kpi-card-icon { display: none; }
   .ro-team-analysis > summary { flex-wrap: wrap; gap: 9px; padding: 15px; }
