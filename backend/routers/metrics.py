@@ -85,22 +85,25 @@ def metrics_summary(
         breakdown_end = min(following_month, now)
     prev_start = start if period == "all" else start - (now - start)
 
-    def _count(*filters, since, until):
-        q = db.query(func.count(FireIncident.fire_id)).filter(
-            FireIncident.fire_incident_datetime >= since,
-            FireIncident.fire_incident_datetime < until,
-            *filters,
-        )
-        return q.scalar() or 0
-
-    _contained = (FireIncident.fire_status.in_(["contained", "closed"]),)
-    _critical = (FireIncident.fire_severity == "Critical",)
-
-    total = _count(since=start, until=now)
-    prev_total = _count(since=prev_start, until=start)
-    contained = _count(*_contained, since=start, until=now)
-    prev_contained = _count(*_contained, since=prev_start, until=start)
-    prev_critical = _count(*_critical, since=prev_start, until=start)
+    current_window = and_(FireIncident.fire_incident_datetime >= start,
+                          FireIncident.fire_incident_datetime < now)
+    prior_window = and_(FireIncident.fire_incident_datetime >= prev_start,
+                        FireIncident.fire_incident_datetime < start)
+    is_contained = FireIncident.fire_status.in_(["contained", "closed"])
+    is_critical = FireIncident.fire_severity == "Critical"
+    count = func.count(FireIncident.fire_id)
+    totals = db.query(
+        count.filter(current_window).label('total'),
+        count.filter(prior_window).label('previous'),
+        count.filter(current_window, is_contained).label('contained'),
+        count.filter(prior_window, is_contained).label('previous_contained'),
+        count.filter(prior_window, is_critical).label('previous_critical'),
+        *(count.filter(current_window, FireIncident.fire_severity == name).label(name)
+          for name in ('Critical', 'Moderate', 'Minor')),
+    ).filter(FireIncident.fire_incident_datetime >= prev_start,
+             FireIncident.fire_incident_datetime < now).one()
+    total, prev_total = totals.total, totals.previous
+    contained, prev_contained, prev_critical = totals.contained, totals.previous_contained, totals.previous_critical
 
     def _avg_response(since, until):
         # First dispatch arrival per incident, so a second team arriving later doesn't
@@ -138,16 +141,7 @@ def metrics_summary(
     recorded_minutes = recorded["mean_seconds"] / 60 if recorded["mean_seconds"] is not None else None
 
     # Severity breakdown for the current window.
-    severity = {"Critical": 0, "Moderate": 0, "Minor": 0}
-    for name, c in (
-        db.query(FireIncident.fire_severity, func.count(FireIncident.fire_id))
-          .filter(FireIncident.fire_incident_datetime >= start,
-                  FireIncident.fire_incident_datetime < now)
-          .group_by(FireIncident.fire_severity)
-          .all()
-    ):
-        if name in severity:
-            severity[name] = c
+    severity = {name: totals._mapping[name] for name in ('Critical', 'Moderate', 'Minor')}
 
     # Prefer the known barangay. Only legacy non-imported rows use spatial
     # fallback, with one polygon chosen to prevent boundary-overlap duplication.

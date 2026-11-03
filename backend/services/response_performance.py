@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import func
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from models import DispatchRecord, FireIncident, ResponseTeam, IncidentEvent, Station, BarangayBoundary
 from services.operational_times import EXCLUDED, detail, iso
@@ -96,10 +96,10 @@ def _dispatch_query(db, start, end, kind="operational", team_ids=None, barangay_
         raise HTTPException(422, "Unknown record kind.")
     query = db.query(DispatchRecord).options(
         selectinload(DispatchRecord.dispatch_trucks),
-        selectinload(DispatchRecord.team).selectinload(ResponseTeam.station),
-        selectinload(DispatchRecord.team).selectinload(ResponseTeam.shift),
-        selectinload(DispatchRecord.team).selectinload(ResponseTeam.truck),
-        selectinload(DispatchRecord.fire_incident).selectinload(FireIncident.dispatches),
+        joinedload(DispatchRecord.team).joinedload(ResponseTeam.station),
+        joinedload(DispatchRecord.team).joinedload(ResponseTeam.shift),
+        joinedload(DispatchRecord.team).joinedload(ResponseTeam.truck),
+        joinedload(DispatchRecord.fire_incident).selectinload(FireIncident.dispatches),
     ).join(FireIncident).filter(DispatchRecord.dispatch_at >= start, DispatchRecord.dispatch_at < end)
     if kind != "all":
         query = query.filter(func.coalesce(FireIncident.record_kind, "unknown") == kind)
@@ -152,7 +152,9 @@ def dispatch_page(db, page=1, page_size=25, dispatch_team_id=None, response_qual
 def overall(db, start, end, kind="operational", station_id=None, barangay_id=None, severity=None):
     query = db.query(FireIncident).options(
         selectinload(FireIncident.dispatches).selectinload(DispatchRecord.dispatch_trucks),
-        selectinload(FireIncident.dispatches).selectinload(DispatchRecord.team),
+        selectinload(FireIncident.dispatches).joinedload(DispatchRecord.team).joinedload(ResponseTeam.station),
+        selectinload(FireIncident.dispatches).joinedload(DispatchRecord.team).joinedload(ResponseTeam.shift),
+        selectinload(FireIncident.dispatches).joinedload(DispatchRecord.team).joinedload(ResponseTeam.truck),
     ).filter(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) >= start,
              func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) < end)
     if kind != "all":
@@ -178,7 +180,11 @@ def summaries(rows):
 
 def team_options(db):
     options = {}
-    for dispatch in db.query(DispatchRecord).options(selectinload(DispatchRecord.team)).order_by(DispatchRecord.dispatch_at):
+    for dispatch in db.query(DispatchRecord).options(
+        joinedload(DispatchRecord.team).joinedload(ResponseTeam.station),
+        joinedload(DispatchRecord.team).joinedload(ResponseTeam.shift),
+        joinedload(DispatchRecord.team).joinedload(ResponseTeam.truck),
+    ).order_by(DispatchRecord.dispatch_at):
         options[dispatch.team_id] = context(dispatch).get("team_name") or f"Team {dispatch.team_id}"
     return [{"id": key, "name": value} for key, value in sorted(options.items())]
 

@@ -8,7 +8,7 @@ from typing import Literal
 from fastapi import (
     APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile,
 )
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from starlette.concurrency import run_in_threadpool
 
 import state
@@ -19,8 +19,8 @@ from config import (
 )
 from database import get_db
 from models import (
-    CurrentLocation, DispatchRecord, FireIncident, IncidentReport, ReportPhoto,
-    ResponseTeamMember, Route, Users,
+    CurrentLocation, DispatchRecord, DispatchTruck, FireIncident, IncidentReport, ReportPhoto,
+    ResponseTeam, ResponseTeamMember, Route, Users,
 )
 from schemas import ClearanceBody, DispatchCreate, SelectRouteBody, TruckManningBody
 from security import get_current_user, require_admin
@@ -152,18 +152,20 @@ def get_dispatches(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    q = db.query(DispatchRecord)
+    q = db.query(DispatchRecord).options(
+        joinedload(DispatchRecord.fire_incident),
+        joinedload(DispatchRecord.team).joinedload(ResponseTeam.station),
+        joinedload(DispatchRecord.team).selectinload(ResponseTeam.members)
+        .joinedload(ResponseTeamMember.personnel),
+        selectinload(DispatchRecord.dispatch_trucks).joinedload(DispatchTruck.truck),
+        selectinload(DispatchRecord.routes),
+    )
     if fire_id:
         q = q.filter(DispatchRecord.fire_id == fire_id)
     rows = q.order_by(DispatchRecord.dispatch_at.desc()).all()
     def _dispatch_routes(r):
         # Routes owned by this specific dispatch, ordered by rank
-        inc_routes = (
-            db.query(Route)
-            .filter(Route.dispatch_id == r.dispatch_id)
-            .order_by(Route.route_rank)
-            .all()
-        )
+        inc_routes = sorted(r.routes, key=lambda route: (route.route_rank is None, route.route_rank or 0))
         return [
             {
                 "route_id":              rt.route_id,

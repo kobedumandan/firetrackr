@@ -25,6 +25,38 @@ def arrival_for(db, dispatch, per_id):
     return legacy.occurred_at if legacy else None
 
 
+def arrivals_for(db, assignments):
+    """Batch the same personal-arrival evidence used by arrival_for for a roster."""
+    pairs = {(dispatch.dispatch_id, per_id): dispatch for per_id, dispatch in assignments.items()}
+    if not pairs:
+        return {}
+    keys = {f'personnel-arrival:{dispatch_id}:{per_id}': (dispatch_id, per_id)
+            for dispatch_id, per_id in pairs}
+    arrivals = {}
+    for event in db.query(IncidentEvent).filter(IncidentEvent.idempotency_key.in_(keys)).all():
+        arrivals[keys[event.idempotency_key]] = event.occurred_at
+    missing = {pair: dispatch for pair, dispatch in pairs.items()
+               if pair not in arrivals and dispatch.dispatch_at is not None}
+    if missing:
+        legacy = (
+            db.query(IncidentEvent, Personnel.per_id)
+            .join(Personnel, Personnel.user_id == IncidentEvent.user_id)
+            .join(DispatchRecord, DispatchRecord.dispatch_id == IncidentEvent.dispatch_id)
+            .filter(IncidentEvent.dispatch_id.in_({pair[0] for pair in missing}),
+                    Personnel.per_id.in_({pair[1] for pair in missing}),
+                    IncidentEvent.event_type == 'op_arrival',
+                    IncidentEvent.source == 'crew_confirmation', IncidentEvent.verified.is_(True),
+                    IncidentEvent.occurred_at >= DispatchRecord.dispatch_at)
+            .order_by(IncidentEvent.occurred_at, IncidentEvent.event_id)
+            .all()
+        )
+        for event, per_id in legacy:
+            pair = (event.dispatch_id, per_id)
+            if pair in missing:
+                arrivals.setdefault(pair, event.occurred_at)
+    return arrivals
+
+
 def personnel_status(dispatch, arrived_at):
     if dispatch is None:
         return 'standby'

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import ValidationError
-from sqlalchemy import case, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -61,10 +61,14 @@ def get_incidents(
             start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
         q = q.filter(FireIncident.fire_incident_datetime >= start)
 
-    # stats reflect period but not the active status tab
-    stats_q = q
+    # Stats reflect the period before any list filters, in one database trip.
+    counts = dict(
+        q.with_entities(FireIncident.fire_status, func.count(FireIncident.fire_id))
+        .group_by(FireIncident.fire_status)
+        .all()
+    )
     stats = {
-        s: stats_q.filter(FireIncident.fire_status == s).count()
+        s: counts.get(s, 0)
         for s in ("pending", "active", "dispatched", "contained", "closed")
     }
 

@@ -1,6 +1,6 @@
 """Response team CRUD and team membership."""
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db
 from models import (
@@ -19,7 +19,21 @@ def get_teams(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    rows = db.query(ResponseTeam).options(selectinload(ResponseTeam.dispatches)).order_by(ResponseTeam.team_id).all()
+    # Load everything the serializer reads without one query per team/member.
+    rows = (
+        db.query(ResponseTeam)
+        .options(
+            joinedload(ResponseTeam.station),
+            joinedload(ResponseTeam.shift),
+            joinedload(ResponseTeam.truck),
+            selectinload(ResponseTeam.members)
+            .joinedload(ResponseTeamMember.personnel)
+            .joinedload(Personnel.shift),
+            selectinload(ResponseTeam.dispatches),
+        )
+        .order_by(ResponseTeam.team_id)
+        .all()
+    )
     return [_team_dict(r) for r in rows]
 
 
