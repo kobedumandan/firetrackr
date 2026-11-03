@@ -4,13 +4,14 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, or_
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 import state
 from auto_dispatch import select_best_team
 from database import get_db
 from models import (
     DispatchRecord, DispatchTruck, FireIncident, HeatmapData, IncidentEvent,
-    IncidentReport, Route, Users,
+    IncidentReport, ReportPhoto, Route, Users,
 )
 from schemas import IncidentCreate, IncidentReportSave, IncidentUpdate
 from security import require_admin
@@ -20,6 +21,7 @@ from services.dispatch import (
     _complete_dispatch_and_release, _perform_dispatch, _released_payload,
 )
 from services.incident_events import event_dict, record_changes, snapshot
+from services.report_photos import cleanup_report_photos
 from state import manager, report_session_phones, report_sessions
 
 
@@ -255,10 +257,15 @@ async def delete_incident(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    inc = db.get(FireIncident, fire_id)
+    # Serialize deletion with report submission/correction before collecting
+    # object names, so a concurrent upload cannot be missed by cleanup.
+    inc = (db.query(FireIncident).filter_by(fire_id=fire_id)
+           .populate_existing().with_for_update().first())
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found.")
 
+    photo_names = [name for (name,) in db.query(ReportPhoto.file_name)
+                   .join(IncidentReport).filter(IncidentReport.fire_id == fire_id).all()]
     dispatch_ids = [
         d.dispatch_id
         for d in db.query(DispatchRecord).filter(DispatchRecord.fire_id == fire_id).all()
@@ -278,6 +285,11 @@ async def delete_incident(
         ).delete(synchronize_session=False)
 
     # Remove all child rows tied to this incident, then the incident itself.
+    # Reports reference both the incident and its dispatch. Remove them before
+    # the dispatches; their photo rows cascade, and object cleanup follows commit.
+    db.query(IncidentReport).filter(IncidentReport.fire_id == fire_id).delete(
+        synchronize_session="fetch"
+    )
     db.query(Route).filter(Route.fire_id == fire_id).delete(synchronize_session=False)
     db.query(DispatchRecord).filter(DispatchRecord.fire_id == fire_id).delete(
         synchronize_session=False
@@ -291,6 +303,7 @@ async def delete_incident(
 
     db.delete(inc)
     db.commit()
+    await run_in_threadpool(cleanup_report_photos, photo_names)
 
     await manager.broadcast({"type": "incident_deleted", "data": {"fire_id": fire_id}})
 
@@ -349,6 +362,10 @@ async def save_incident_report(
     if released:
         await manager.broadcast(released)
     return {'report': report_data, 'incident': incident_data}
+
+
+
+
 
 
 @router.get("/api/incidents/{fire_id}/events")

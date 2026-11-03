@@ -368,14 +368,14 @@ export async function fetchIncidentReport(fireId) {
 }
 
 function dashboardIncidentReport(report) {
-  // Photo URLs come back pointing at PUBLIC_BASE_URL (the ngrok tunnel, for the
-  // mobile app). The dashboard can't pass ngrok's skip-warning header on a plain
-  // <img>, so rewrite each URL onto our own BASE_URL — same /uploads/... path,
-  // served directly with no interstitial.
+  // Local photo URLs use PUBLIC_BASE_URL (possibly an ngrok tunnel). Route only
+  // those uploads through our API; preserve storage hosts and signed queries.
   if (report?.photos?.length) {
     report.photos = report.photos.map((url) => {
       try {
-        return `${BASE_URL}${new URL(url).pathname}`
+        const photo = new URL(url)
+        return photo.pathname.startsWith('/uploads/')
+          ? `${BASE_URL}${photo.pathname}${photo.search}` : url
       } catch {
         return url
       }

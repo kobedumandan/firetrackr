@@ -56,10 +56,19 @@ DISPATCH_SMS_FALLBACK = os.getenv("DISPATCH_SMS_FALLBACK", "true").lower() == "t
 
 
 # ── Uploaded report photos ────────────────────────────────────────────────────
-# Scene photographs personnel attach to an incident report are written here and
-# served back over the public tunnel at /uploads/report_photos/<file>.
+# Local development keeps photos on disk. Supabase mode uses a private bucket;
+# its server credential must never be included in browser/mobile configuration.
 UPLOAD_ROOT       = os.path.join(os.path.dirname(__file__), "uploads")
 REPORT_PHOTO_DIR  = os.path.join(UPLOAD_ROOT, "report_photos")
+REPORT_PHOTO_STORAGE = os.getenv("REPORT_PHOTO_STORAGE", "local").strip().lower()
+if REPORT_PHOTO_STORAGE not in {"local", "supabase"}:
+    raise ValueError("REPORT_PHOTO_STORAGE must be 'local' or 'supabase'.")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_SECRET_KEY = (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")).strip()
+SUPABASE_REPORT_PHOTO_BUCKET = os.getenv("SUPABASE_REPORT_PHOTO_BUCKET", "report-photos").strip()
+REPORT_PHOTO_URL_TTL_SECONDS = int(os.getenv("REPORT_PHOTO_URL_TTL_SECONDS", "3600"))
+if not 60 <= REPORT_PHOTO_URL_TTL_SECONDS <= 86400:
+    raise ValueError("REPORT_PHOTO_URL_TTL_SECONDS must be between 60 and 86400.")
 MAX_REPORT_PHOTOS = 8
 MAX_PHOTO_BYTES   = 10 * 1024 * 1024  # 10 MB per photo
 ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"}

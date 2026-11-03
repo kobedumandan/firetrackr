@@ -510,13 +510,13 @@ class IncidentEvent(Base):
 
 class ReportPhoto(Base):
     """A photograph attached to an incident report by responding personnel.
-    The image bytes live on disk under the backend uploads directory; this row
-    records the stored filename so the file can be served and cleaned up."""
+    Image bytes live in local uploads or the configured private storage bucket;
+    this row records a stable object name, never an expiring signed URL."""
     __tablename__ = "report_photos"
 
     photo_id      = Column(Integer, primary_key=True, autoincrement=True)
     report_id     = Column(Integer, ForeignKey("incident_reports.report_id", ondelete="CASCADE"), nullable=False, index=True)
-    file_name     = Column(String(255), nullable=False)   # stored filename on disk
+    file_name     = Column(String(255), nullable=False)   # stable storage object name
     original_name = Column(String(255), nullable=True)     # client-provided name
     content_type  = Column(String(100), nullable=True)     # e.g. image/jpeg
     created_at    = Column(DateTime(timezone=True), default=_now)

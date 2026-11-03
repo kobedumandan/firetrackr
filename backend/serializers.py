@@ -5,7 +5,7 @@ in one place rather than being duplicated per router.
 """
 import json
 
-from config import PUBLIC_BASE_URL
+from services.report_photos import report_photo_urls
 from models import (
     FireIncident, GnnConstraint, IncidentReport, ResponseTeam, Station, Truck,
 )
@@ -123,8 +123,8 @@ def _incident_dict(r: FireIncident) -> dict:
 
 
 def _report_photo_url(file_name: str) -> str:
-    """Public URL the mobile app / dashboard can load a stored photo from."""
-    return f"{PUBLIC_BASE_URL}/uploads/report_photos/{file_name}"
+    """A local URL or temporary private-storage URL, after report authorization."""
+    return report_photo_urls([file_name])[0]
 
 
 def _report_dict(r: IncidentReport) -> dict:
@@ -150,7 +150,7 @@ def _report_dict(r: IncidentReport) -> dict:
         "narrative":       r.report_narrative,
         "recommendations": r.report_recommendations,
         "submitted_at":    r.report_submitted_at.isoformat() if r.report_submitted_at else None,
-        "photos":          [_report_photo_url(p.file_name) for p in r.photos],
+        "photos":          report_photo_urls([p.file_name for p in r.photos]),
     }
 
 
