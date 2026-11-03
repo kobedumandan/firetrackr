@@ -1,6 +1,6 @@
 """Fire truck CRUD."""
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from database import get_db
 from models import Station, Truck, Users
@@ -17,7 +17,8 @@ def get_trucks(
     db: Session = Depends(get_db),
     _auth: Users = Depends(get_current_user),
 ):
-    rows = db.query(Truck).order_by(Truck.truck_id).all()
+    rows = (db.query(Truck).options(joinedload(Truck.station))
+            .order_by(Truck.truck_id).all())
     return [_truck_dict(r) for r in rows]
 
 

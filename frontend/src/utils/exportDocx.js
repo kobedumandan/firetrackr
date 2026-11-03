@@ -163,7 +163,7 @@ export async function registerToDocx(doc, { paper = 'a4', orientation = 'landsca
   const file = new Document({
     creator: 'FireTrackr',
     title: doc.title,
-    description: 'Incident register',
+    description: doc.subject ?? 'Incident register',
     styles: { default: { document: { run: { font: 'Arial', size: 18, color: INK } } } },
     sections: [{
       properties: {

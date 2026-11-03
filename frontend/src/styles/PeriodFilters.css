@@ -1,0 +1,40 @@
+/* Match the Incidents period selector across the reporting pages. */
+.inc-period-filter,
+.plan-page .plan-seg,
+.m-page .m-period-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  background: var(--page-default-base);
+  border: 1px solid var(--border);
+  border-radius: 9.8px;
+  padding: 2px 6px;
+}
+
+.inc-period-btn,
+.plan-page .plan-seg-btn,
+.m-page .m-period-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-condensed);
+  font-size: 10.8px;
+  font-weight: 500;
+  padding: 5px 8px 1px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.inc-period-btn:hover,
+.inc-period-btn.active,
+.plan-page .plan-seg-btn:hover,
+.plan-page .plan-seg-btn.active,
+.m-page .m-period-btn:hover,
+.m-page .m-period-btn.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}

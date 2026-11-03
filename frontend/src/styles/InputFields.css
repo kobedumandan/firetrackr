@@ -1,0 +1,39 @@
+/* Shared dimensions for single-line fields. Keep component colors and typography.
+   Sizing is important so legacy and lazy-loaded component rules cannot restore
+   larger fields. Override the custom properties for controls with embedded icons. */
+:root {
+  --input-height: 30px;
+  --input-padding-inline: 8px;
+}
+
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]),
+select:not([multiple]):not([size]),
+.rp-view .rp-team-trigger {
+  box-sizing: border-box;
+  height: var(--input-height) !important;
+  min-height: 0 !important;
+  padding-block: 0 !important;
+  padding-inline-start: var(--input-padding-start, var(--input-padding-inline)) !important;
+  padding-inline-end: var(--input-padding-end, var(--input-padding-inline)) !important;
+}
+
+:is(.per-search-wrap, .inc-search-wrap, .tea-search-wrap, .sta-search-wrap, .trk-search-wrap) input {
+  --input-padding-start: 28px;
+}
+
+.lp-field-input { --input-padding-start: 38px; }
+.lp-field-input.has-toggle { --input-padding-end: 42px; }
+.apm-input-wrap input { --input-padding-end: 34px; }
+
+/* These search controls draw the field border around the icon and input. */
+.plan-search,
+.constraint-search {
+  height: var(--input-height);
+  min-height: var(--input-height);
+  padding: 0 var(--input-padding-inline);
+}
+
+:is(.plan-search, .constraint-search) input {
+  --input-height: 28px;
+  --input-padding-inline: 0px;
+}

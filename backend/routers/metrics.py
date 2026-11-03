@@ -1,10 +1,11 @@
 """Aggregates behind the Metrics dashboard."""
 from datetime import datetime, timedelta, timezone
 from collections import Counter
+import re
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import func, text
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import and_, func, or_, text
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -33,39 +34,76 @@ def _pct_delta(cur: int, prev: int) -> float | None:
     return round((cur - prev) / prev * 100, 1)
 
 
+def _incident_causes(db, incidents):
+    """One latest nonempty report cause per incident; workbook cause wins."""
+    report_causes = {}
+    if incidents:
+        for fire_id, cause in db.query(IncidentReport.fire_id, IncidentReport.report_cause).filter(
+            IncidentReport.fire_id.in_([i.fire_id for i in incidents]),
+            IncidentReport.report_cause.isnot(None),
+        ).order_by(IncidentReport.report_submitted_at, IncidentReport.report_id):
+            if cause.strip():
+                report_causes[fire_id] = cause.strip()
+    return {i.fire_id: history(i).get("cause_clean") or report_causes.get(i.fire_id) or "Not recorded"
+            for i in incidents}
+
+
+def _top_causes(counts, limit):
+    return [{"cause": cause, "count": count}
+            for cause, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]]
+
+
 @router.get("/api/metrics/summary")
 def metrics_summary(
     period: str = "1m",
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
+    month: str | None = None,
 ):
     """One count per incident, source causes and explicitly labeled demo alarms.
 
     Both response metrics require an actual report receipt. The separate
     recorded metric also accepts per-unit arrivals.
     Synthesized historical metadata never supplies measured response timestamps.
+    Optional month selects the alarm/cause/barangay breakdowns independently
+    of the reporting-period KPIs and monthly chart history.
     """
     now = datetime.now(timezone.utc)
     earliest = db.query(func.min(FireIncident.fire_incident_datetime)).scalar() if period == "all" else None
     start, now = reporting_window(period, now, earliest)
+    breakdown_start, breakdown_end = start, now
+    if month is not None:
+        if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+            raise HTTPException(422, 'Use a month in YYYY-MM format.')
+        year, month_number = map(int, month.split('-'))
+        try:
+            breakdown_start = datetime(year, month_number, 1, tzinfo=ZoneInfo('Asia/Manila'))
+            following_month = datetime(year + (month_number == 12), month_number % 12 + 1, 1,
+                                       tzinfo=ZoneInfo('Asia/Manila'))
+        except ValueError:
+            raise HTTPException(422, 'Use a valid calendar month.') from None
+        breakdown_end = min(following_month, now)
     prev_start = start if period == "all" else start - (now - start)
 
-    def _count(*filters, since, until):
-        q = db.query(func.count(FireIncident.fire_id)).filter(
-            FireIncident.fire_incident_datetime >= since,
-            FireIncident.fire_incident_datetime < until,
-            *filters,
-        )
-        return q.scalar() or 0
-
-    _contained = (FireIncident.fire_status.in_(["contained", "closed"]),)
-    _critical = (FireIncident.fire_severity == "Critical",)
-
-    total = _count(since=start, until=now)
-    prev_total = _count(since=prev_start, until=start)
-    contained = _count(*_contained, since=start, until=now)
-    prev_contained = _count(*_contained, since=prev_start, until=start)
-    prev_critical = _count(*_critical, since=prev_start, until=start)
+    current_window = and_(FireIncident.fire_incident_datetime >= start,
+                          FireIncident.fire_incident_datetime < now)
+    prior_window = and_(FireIncident.fire_incident_datetime >= prev_start,
+                        FireIncident.fire_incident_datetime < start)
+    is_contained = FireIncident.fire_status.in_(["contained", "closed"])
+    is_critical = FireIncident.fire_severity == "Critical"
+    count = func.count(FireIncident.fire_id)
+    totals = db.query(
+        count.filter(current_window).label('total'),
+        count.filter(prior_window).label('previous'),
+        count.filter(current_window, is_contained).label('contained'),
+        count.filter(prior_window, is_contained).label('previous_contained'),
+        count.filter(prior_window, is_critical).label('previous_critical'),
+        *(count.filter(current_window, FireIncident.fire_severity == name).label(name)
+          for name in ('Critical', 'Moderate', 'Minor')),
+    ).filter(FireIncident.fire_incident_datetime >= prev_start,
+             FireIncident.fire_incident_datetime < now).one()
+    total, prev_total = totals.total, totals.previous
+    contained, prev_contained, prev_critical = totals.contained, totals.previous_contained, totals.previous_critical
 
     def _avg_response(since, until):
         # First dispatch arrival per incident, so a second team arriving later doesn't
@@ -103,16 +141,7 @@ def metrics_summary(
     recorded_minutes = recorded["mean_seconds"] / 60 if recorded["mean_seconds"] is not None else None
 
     # Severity breakdown for the current window.
-    severity = {"Critical": 0, "Moderate": 0, "Minor": 0}
-    for name, c in (
-        db.query(FireIncident.fire_severity, func.count(FireIncident.fire_id))
-          .filter(FireIncident.fire_incident_datetime >= start,
-                  FireIncident.fire_incident_datetime < now)
-          .group_by(FireIncident.fire_severity)
-          .all()
-    ):
-        if name in severity:
-            severity[name] = c
+    severity = {name: totals._mapping[name] for name in ('Critical', 'Moderate', 'Minor')}
 
     # Prefer the known barangay. Only legacy non-imported rows use spatial
     # fallback, with one polygon chosen to prevent boundary-overlap duplication.
@@ -134,12 +163,12 @@ def metrics_summary(
                 GROUP BY bb.brgy_name
                 """
             ),
-            {"start": start, "end": now},
+            {"start": breakdown_start, "end": breakdown_end},
         ).all()
     }
 
     # Incidents per month over the last 12 months (independent of `period`).
-    end_month = (now - timedelta(seconds=1)) if period == "2023-2024" else now
+    end_month = ((now - timedelta(seconds=1)) if period == "2023-2024" else now).astimezone(ZoneInfo("Asia/Manila"))
     y, m = end_month.year, end_month.month
     seq: list[tuple[int, int]] = []
     first_month = start.astimezone(ZoneInfo("Asia/Manila"))
@@ -151,44 +180,50 @@ def metrics_summary(
             yy -= 1
         seq.append((yy, mm))
     window_start = datetime(seq[0][0], seq[0][1], 1, tzinfo=ZoneInfo("Asia/Manila"))
+    # Read chart/breakdown incidents together so each source history and report
+    # cause is looked up once, including a selected month outside chart history.
+    chart_and_breakdown = attach_history(db, db.query(FireIncident).filter(or_(
+        and_(FireIncident.fire_incident_datetime >= window_start,
+             FireIncident.fire_incident_datetime < now),
+        and_(FireIncident.fire_incident_datetime >= breakdown_start,
+             FireIncident.fire_incident_datetime < breakdown_end),
+    )).all())
+    incident_causes = _incident_causes(db, chart_and_breakdown)
     month_counts = {key: 0 for key in seq}
-    m_bucket = func.date_trunc("month", func.timezone("Asia/Manila", FireIncident.fire_incident_datetime)).label("m")
-    for bucket, c in (
-        db.query(m_bucket, func.count(FireIncident.fire_id))
-          .filter(FireIncident.fire_incident_datetime >= window_start,
-                  FireIncident.fire_incident_datetime < now)
-          .group_by(m_bucket)
-          .all()
-    ):
-        if bucket is not None and (bucket.year, bucket.month) in month_counts:
-            month_counts[(bucket.year, bucket.month)] = c
+    month_causes = {key: Counter() for key in seq}
+    for inc in chart_and_breakdown:
+        if not window_start <= inc.fire_incident_datetime < now:
+            continue
+        at = inc.fire_incident_datetime.astimezone(ZoneInfo("Asia/Manila"))
+        key = (at.year, at.month)
+        if key in month_counts:
+            month_counts[key] += 1
+            cause = incident_causes[inc.fire_id]
+            # Tooltips list reported causes only; unknowns still contribute to
+            # incident totals and the existing summary cause breakdown.
+            if cause and cause.strip() not in ("", "Not recorded"):
+                month_causes[key][cause] += 1
     monthly = [
-        {"month": f"{_MONTH_ABBR[mm - 1]} {str(yy)[2:]}" if period in ("2023-2024", "all") else _MONTH_ABBR[mm - 1], "count": month_counts[(yy, mm)]}
+        {"month": f"{_MONTH_ABBR[mm - 1]} {str(yy)[2:]}" if period in ("2023-2024", "all") else _MONTH_ABBR[mm - 1],
+         "month_key": f"{yy:04d}-{mm:02d}", "count": month_counts[(yy, mm)],
+         "top_causes": _top_causes(month_causes[(yy, mm)], 5)}
         for (yy, mm) in seq
     ]
 
-    incidents = attach_history(db, db.query(FireIncident).filter(
-        FireIncident.fire_incident_datetime >= start, FireIncident.fire_incident_datetime < now).all())
+    incidents = [inc for inc in chart_and_breakdown if breakdown_start <= inc.fire_incident_datetime < breakdown_end]
     alarms = Counter(i.fire_alarm_level or "Not recorded" for i in incidents)
-    # One latest non-empty report cause per incident; workbook cause has precedence.
-    report_causes = {}
-    if incidents:
-        for report in db.query(IncidentReport).filter(
-            IncidentReport.fire_id.in_([i.fire_id for i in incidents]),
-            IncidentReport.report_cause.isnot(None),
-        ).order_by(IncidentReport.report_submitted_at, IncidentReport.report_id):
-            if report.report_cause.strip():
-                report_causes[report.fire_id] = report.report_cause.strip()
-    causes = Counter(history(i).get("cause_clean") or report_causes.get(i.fire_id) or "Not recorded" for i in incidents)
+    causes = Counter(incident_causes[i.fire_id] for i in incidents)
     return {
         "period": period,
+        "breakdown_month": month,
+        "breakdown_total": len(incidents),
         "total": total,
         "severity": severity,
         "contained": contained,
         "by_barangay": by_barangay,
         "monthly": monthly,
         "alarm_levels": dict(sorted(alarms.items())),
-        "top_causes": [{"cause": name, "count": count} for name, count in sorted(causes.items(), key=lambda item: (-item[1], item[0]))[:10]],
+        "top_causes": _top_causes(causes, 10),
         "synthetic_alarm_count": sum(history(i).get("alarm_basis") == "synthetic_demo" for i in incidents),
         "historical_import_count": sum(bool(history(i)) for i in incidents),
         "approximate_location_count": sum(bool(history(i)) and not history(i).get("pin_specification", {}).get("verified", False) for i in incidents),

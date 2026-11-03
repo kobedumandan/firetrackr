@@ -1,18 +1,20 @@
-"""Fire incident CRUD and the after-action report readback."""
+"""Fire incident CRUD and administrator after-action report management."""
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, or_
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from pydantic import ValidationError
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 import state
 from auto_dispatch import select_best_team
 from database import get_db
 from models import (
     DispatchRecord, DispatchTruck, FireIncident, HeatmapData, IncidentEvent,
-    IncidentReport, Route, Users,
+    IncidentReport, ReportPhoto, Route, Users,
 )
-from schemas import IncidentCreate, IncidentUpdate
+from schemas import IncidentCreate, IncidentReportSave, IncidentUpdate
 from security import require_admin
 from serializers import _incident_dict, _report_dict
 from services.dispatch import (
@@ -20,6 +22,7 @@ from services.dispatch import (
     _complete_dispatch_and_release, _perform_dispatch, _released_payload,
 )
 from services.incident_events import event_dict, record_changes, snapshot
+from services.report_photos import cleanup_report_photos
 from state import manager, report_session_phones, report_sessions
 
 
@@ -58,10 +61,14 @@ def get_incidents(
             start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
         q = q.filter(FireIncident.fire_incident_datetime >= start)
 
-    # stats reflect period but not the active status tab
-    stats_q = q
+    # Stats reflect the period before any list filters, in one database trip.
+    counts = dict(
+        q.with_entities(FireIncident.fire_status, func.count(FireIncident.fire_id))
+        .group_by(FireIncident.fire_status)
+        .all()
+    )
     stats = {
-        s: stats_q.filter(FireIncident.fire_status == s).count()
+        s: counts.get(s, 0)
         for s in ("pending", "active", "dispatched", "contained", "closed")
     }
 
@@ -255,10 +262,15 @@ async def delete_incident(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    inc = db.get(FireIncident, fire_id)
+    # Serialize deletion with report submission/correction before collecting
+    # object names, so a concurrent upload cannot be missed by cleanup.
+    inc = (db.query(FireIncident).filter_by(fire_id=fire_id)
+           .populate_existing().with_for_update().first())
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found.")
 
+    photo_names = [name for (name,) in db.query(ReportPhoto.file_name)
+                   .join(IncidentReport).filter(IncidentReport.fire_id == fire_id).all()]
     dispatch_ids = [
         d.dispatch_id
         for d in db.query(DispatchRecord).filter(DispatchRecord.fire_id == fire_id).all()
@@ -278,6 +290,11 @@ async def delete_incident(
         ).delete(synchronize_session=False)
 
     # Remove all child rows tied to this incident, then the incident itself.
+    # Reports reference both the incident and its dispatch. Remove them before
+    # the dispatches; their photo rows cascade, and object cleanup follows commit.
+    db.query(IncidentReport).filter(IncidentReport.fire_id == fire_id).delete(
+        synchronize_session="fetch"
+    )
     db.query(Route).filter(Route.fire_id == fire_id).delete(synchronize_session=False)
     db.query(DispatchRecord).filter(DispatchRecord.fire_id == fire_id).delete(
         synchronize_session=False
@@ -291,6 +308,7 @@ async def delete_incident(
 
     db.delete(inc)
     db.commit()
+    await run_in_threadpool(cleanup_report_photos, photo_names)
 
     await manager.broadcast({"type": "incident_deleted", "data": {"fire_id": fire_id}})
 
@@ -311,8 +329,79 @@ def get_incident_report(
     )
     if not report:
         return {"report": None}
+    from services.incident_reports import report_closed_at
     from services.report_timing import report_timeline
-    return {"report": {**_report_dict(report), 'operational_timing': report_timeline(db, report)}}
+    return {"report": {**_report_dict(report), 'operational_timing': report_timeline(db, report),
+                       'closed_at': report_closed_at(db, report)}}
+
+
+@router.put("/api/incidents/{fire_id}/report")
+async def save_incident_report(
+    fire_id: int,
+    body: IncidentReportSave,
+    db: Session = Depends(get_db),
+    _auth: Users = Depends(require_admin),
+):
+    """Recover a missing report or correct its text without changing field times."""
+    return await _save_incident_report(fire_id, body, db, _auth)
+
+
+@router.post("/api/incidents/{fire_id}/report/photos")
+async def save_incident_report_with_photos(
+    fire_id: int,
+    report: str = Form(...),
+    photos: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    _auth: Users = Depends(require_admin),
+):
+    """Save dispatcher edits and additional photos together, preserving existing photos."""
+    try:
+        body = IncidentReportSave.model_validate_json(report)
+    except ValidationError as error:
+        raise HTTPException(422, detail=error.errors(include_context=False, include_input=False)) from None
+    uploads = [photo for photo in photos if photo and photo.filename]
+    if not uploads:
+        raise HTTPException(422, 'Choose at least one photo to attach.')
+    return await _save_incident_report(fire_id, body, db, _auth, uploads)
+
+
+async def _save_incident_report(fire_id, body, db, user, photos=()):
+    from services.incident_events import actor_name
+    from services.incident_reports import append_admin_report_photos, report_closed_at, save_admin_report
+    from services.report_timing import report_timeline
+
+    written_names = []
+    try:
+        report, inc, released, creating = save_admin_report(db, fire_id, body, user, photos_added=len(photos))
+        await append_admin_report_photos(db, report, photos, written_names)
+        # Resolve links before commit so failed storage work cannot partially save
+        # text changes, close an incident or release its responding crews.
+        report_payload = await run_in_threadpool(_report_dict, report)
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        finally:
+            await run_in_threadpool(cleanup_report_photos, written_names)
+        raise
+    db.refresh(report)
+    db.refresh(inc)
+    report_data = {**report_payload, 'operational_timing': report_timeline(db, report),
+                   'closed_at': report_closed_at(db, report)}
+    incident_data = _incident_dict(inc)
+    await manager.broadcast({
+        'type': 'report_submitted' if creating else 'report_updated',
+        'data': {
+            'fire_id': inc.fire_id, 'report_id': report.report_id,
+            'dispatch_id': report.dispatch_id, 'filed_by': report_data['author'],
+            'edited_by': actor_name(user), 'photo_count': len(report.photos),
+            'incident': incident_data,
+        },
+    })
+    await manager.broadcast({'type': 'incident_updated', 'data': incident_data})
+    if released:
+        await manager.broadcast(released)
+    return {'report': report_data, 'incident': incident_data}
 
 
 @router.get("/api/incidents/{fire_id}/events")

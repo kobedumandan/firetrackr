@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from services import operational_times as operational
 from services.historical_incidents import demo_times
-from services.response_performance import context, MANILA
+from services.response_performance import context, is_reinforcement, MANILA
 from services.timing_metrics import EXCLUDED, summarize
 
 STAGES = ("processing", "preparation", "travel", "suppression")
@@ -73,12 +73,40 @@ def record(inc, source="recorded"):
     return result
 
 
+def filtered_incidents(db, incident_team_id=None, arrival_quality=None, incident_assignment_type="all", **filters):
+    """Refine table incidents without changing which responders supply their timings."""
+    result = []
+    for inc in incidents(db, **filters):
+        if incident_team_id is not None and not any(dispatch.team_id == incident_team_id for dispatch in inc.dispatches):
+            continue
+        if incident_assignment_type != "all" and not any(
+            dispatch.dispatch_at and is_reinforcement(dispatch, inc) == (incident_assignment_type == "reinforcement")
+            for dispatch in inc.dispatches
+        ):
+            continue
+        if arrival_quality is not None:
+            samples = metric_samples([inc], filters.get("source", "recorded"))["cta"]
+            if not samples or samples[0]["quality"] != arrival_quality:
+                continue
+        result.append(inc)
+    return result
+
+
 def records(db, page=1, page_size=10, **filters):
-    cohort = incidents(db, **filters)
+    cohort = filtered_incidents(db, **filters)
     pages = max(1, (len(cohort) + page_size - 1) // page_size)
     page = min(max(1, page), pages)
     return {"records": [record(i, filters.get("source", "recorded")) for i in cohort[(page-1)*page_size:page*page_size]],
             "total": len(cohort), "page": page, "page_size": page_size, "total_pages": pages}
+
+
+def stage_breakdown(cohort, source):
+    """Mean stage durations for incidents with all four stages recorded."""
+    _, common = operational.samples(cohort, include_demo=source == "demo")
+    values = {key: [row[key] for row in common if row.get(key) is not None] for key in METRICS}
+    means = {key: sum(samples)/len(samples) if samples else None for key, samples in values.items()}
+    return {"count": len(common), "seconds": {key: means[key] for key in STAGES},
+            "values": means, "counts": {key: len(samples) for key, samples in values.items()}}
 
 
 def analytics(db, **filters):
@@ -107,10 +135,9 @@ def analytics(db, **filters):
         subset = [i for i in current if cursor <= (i.report_received_at or i.fire_incident_datetime) < following]
         summaries = {key: summarize(values) for key, values in metric_samples(subset, source).items()}
         trends.append({"at": operational.iso(cursor), "values": {key: s["mean_seconds"] for key, s in summaries.items()},
-                       "counts": {key: s["valid"] for key, s in summaries.items()}})
+                       "counts": {key: s["valid"] for key, s in summaries.items()},
+                       "breakdown": stage_breakdown(subset, source)})
         cursor = following
-    _, common = operational.samples(current, include_demo=source == "demo")
     return {"summary": stats, "trends": trends, "trend_period": trend_period, "total": len(current), "source": source,
-            "breakdown": {"count": len(common), "seconds": {
-                key: sum(r[key] for r in common)/len(common) if common else None for key in STAGES}},
+            "breakdown": stage_breakdown(current, source),
             "start": operational.iso(start), "end": operational.iso(end)}

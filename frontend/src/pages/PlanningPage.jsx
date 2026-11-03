@@ -8,6 +8,7 @@ import { useTheme } from "../hooks/useTheme";
 import KpiCard, { KPI_EMPTY } from "../components/KpiCard";
 import CsvReviewModal from "../components/CsvReviewModal";
 import AnalysisIcon from "../components/AnalysisIcon";
+import useSplitPane from "../hooks/useSplitPane";
 import {
   fetchCoverageIsochrones,
   fetchCoverageGaps,
@@ -304,6 +305,9 @@ export default function PlanningPage() {
   const [selected, setSelected] = useState(null);
   const [showBarangays, setShowBarangays] = useState(false);
   const [csvReview, setCsvReview] = useState(null);
+  const { width: coverageWidth, handleProps: resizeHandle } = useSplitPane({
+    storageKey: "planning.coverageWidth", initial: 560, min: 440, minMain: 420, gutter: 10,
+  });
   // Best-covered first, so the list reads covered → partial → gap top to bottom.
   const [sort, setSort] = useState({ key: "covered_pct", dir: "desc" });
   // Picks the basemap out of TILE_OPTIONS; re-renders the layer on a flip.
@@ -503,7 +507,7 @@ export default function PlanningPage() {
           <div><span className="plan-eyebrow">Station reachability</span><h1>Coverage Planning</h1><p>Explore station reachability and identify barangays with coverage gaps.</p></div>
           <div className="plan-header-actions">
             <button
-              className="plan-btn"
+              className="plan-btn plan-recompute"
               onClick={handleRefresh}
               disabled={refreshing || loading}
               title="Recompute coverage from the current stations and road constraints"
@@ -513,7 +517,7 @@ export default function PlanningPage() {
               </span>
               {refreshing ? "Recomputing…" : "Recompute"}
             </button>
-            <button className="plan-btn is-primary" onClick={exportCsv} disabled={!visibleRows?.length}>
+            <button className="plan-btn is-primary table-export-btn" onClick={exportCsv} disabled={!visibleRows?.length}>
               <ExportIcon />
               Export CSV
             </button>
@@ -521,9 +525,6 @@ export default function PlanningPage() {
         </header>
         {error && <div className="plan-error" role="alert"><AnalysisIcon name="info" /><div><strong>Could not load coverage</strong><p>{error}</p></div><button className="plan-btn" disabled={refreshing} onClick={handleRefresh}>Retry</button></div>}
 
-        <section className="plan-controls" aria-label="Coverage settings">
-        <div className="plan-section-row">
-          <div className="plan-control-copy"><span className="plan-control-icon"><AnalysisIcon name="coverage" /></span><div><h2>Response-time budget</h2><p>Compare barangay coverage at a selected road travel time.</p></div></div>
           {/* The band drives the KPIs, the gaps table and the CSV export, so it
               sits with them rather than in the page header. */}
           <div className="plan-seg" role="group" aria-label="Response-time band">
@@ -538,9 +539,6 @@ export default function PlanningPage() {
               </button>
             ))}
           </div>
-        </div>
-        <div className="plan-controls-footer"><span><AnalysisIcon name="info" />The selected budget applies to the summary, table and CSV. The map shows all three bands.</span><span>{stationCount == null ? "Loading stations…" : `${stationCount} station${stationCount === 1 ? '' : 's'}`} · Current road network</span></div>
-        </section>
 
         <div className="kpi-row plan-kpi-row">
           <KpiCard
@@ -581,11 +579,11 @@ export default function PlanningPage() {
           />
         </div>
 
-        <div className="plan-grid">
+        <div className="plan-grid" style={{ '--plan-coverage-width': `${coverageWidth}px` }}>
           {/* Coverage map */}
-          <div className="plan-card plan-map-card">
+          <div className="plan-card plan-map-card" id="planning-map-panel">
             <div className="plan-card-head">
-              <div><h2 className="plan-card-title">Station reachability map</h2><p className="plan-card-description">Estimated 3, 5 and 8 minute road travel areas.</p></div>
+              <h2 className="plan-card-title">Station reachability map</h2>
               <div className="plan-head-right">
                 <div className="plan-map-legend">
                   {bands.map((f) => (
@@ -620,6 +618,8 @@ export default function PlanningPage() {
                 <MapContainer
                   center={MAP_CENTER}
                   zoom={MAP_ZOOM}
+                  minZoom={MAP_ZOOM}
+                  bounceAtZoomLimits={false}
                   className="plan-map"
                   zoomAnimation={false}
                   attributionControl={false}
@@ -658,10 +658,12 @@ export default function PlanningPage() {
             </div>
           </div>
 
+          <div className="split-resizer" {...resizeHandle} aria-label="Resize map and barangay coverage" aria-controls="planning-map-panel planning-coverage-panel" />
+
           {/* Coverage gaps table */}
-          <div className="plan-card plan-gaps-card">
+          <div className="plan-card plan-gaps-card" id="planning-coverage-panel">
             <div className="plan-card-head">
-              <div><div className="plan-table-title"><h2 className="plan-card-title">Barangay coverage</h2><span className="plan-count">{gapsLoading ? "Loading…" : `${visibleRows?.length || 0} / ${rows?.length || 0}`}</span></div><p className="plan-card-description">Area reachable within {minutes} minutes · select a row to locate it.</p></div>
+              <div className="plan-table-title"><h2 className="plan-card-title">Barangay coverage</h2><span className="plan-count">{gapsLoading ? "Loading…" : `${visibleRows?.length || 0} / ${rows?.length || 0}`}</span></div>
             </div>
             <div className="plan-table-toolbar">
               <div className="plan-filters">
@@ -808,10 +810,29 @@ export default function PlanningPage() {
                 </tbody>
               </table>
             </div>
-            <div className="plan-table-footer"><span>{gapsLoading ? "Loading measurements" : `${visibleRows?.length || 0} barangays shown`} · {minutes} minute budget</span>{selected ? <button className="plan-clear-selection" onClick={() => setSelected(null)}>Clear {selected}<span aria-hidden="true">×</span></button> : <span>Population estimates use area share</span>}</div>
           </div>
         </div>
-        <details className="plan-method"><summary><AnalysisIcon name="info" />How to read this coverage<AnalysisIcon name="chevron" /></summary><div><p>Coverage estimates road travel from the current stations. It does not include report processing, preparation or measured live traffic. This is a planning estimate rather than a guaranteed response time.</p><p>Covered means at least 80% of a barangay's area is reachable within the selected budget; partial means 40% to below 80%; a gap means below 40%. Mean coverage gives each barangay equal weight. Residents outside the band are estimated from uncovered area, assuming population is evenly distributed; missing population stays unavailable.</p><div className="plan-method-source"><span><NodesProvIcon />Reachable road nodes: {fmtInt(meta.reachable_nodes) ?? "—"}</span><span><SpeedProvIcon />Computation: {meta.generated_ms != null ? `${meta.generated_ms} ms` : "Not recorded"}</span></div></div></details>
+        <details className="plan-method">
+          <summary><AnalysisIcon name="info" />How to read this coverage<AnalysisIcon name="chevron" /></summary>
+          <div className="plan-method-content">
+            <section className="plan-method-overview">
+              <div className="plan-method-heading"><span><AnalysisIcon name="route" /></span><h3>Road travel estimate</h3></div>
+              <p>Coverage estimates road travel from the current stations. It does not include report processing, preparation or measured live traffic. This is a planning estimate rather than a guaranteed response time.</p>
+              <div className="plan-method-assumptions"><h4>Summary assumptions</h4><p>Mean coverage gives each barangay equal weight. Residents outside the band are estimated from uncovered area, assuming population is evenly distributed; missing population stays unavailable.</p></div>
+            </section>
+            <section className="plan-method-categories">
+              <div className="plan-method-heading"><span><AnalysisIcon name="coverage" /></span><h3>Coverage categories</h3></div>
+              <p>Share of each barangay's area reachable within the selected travel budget.</p>
+              <dl className="plan-method-bands">{[
+                ["covered", "80% or more"], ["partial", "40% to below 80%"], ["gap", "Below 40%"],
+              ].map(([key, threshold]) => <div key={key}><dt><span className="plan-status" style={{ color: STATUS[key].color, background: `rgba(${STATUS[key].rgb}, .1)` }}>{STATUS[key].label}</span></dt><dd>{threshold}</dd></div>)}</dl>
+            </section>
+            <dl className="plan-method-source">
+              <div><dt><NodesProvIcon />Reachable road nodes</dt><dd className={meta.reachable_nodes == null ? "is-missing" : undefined}>{fmtInt(meta.reachable_nodes) ?? "—"}</dd></div>
+              <div><dt><SpeedProvIcon />Computation</dt><dd className={meta.generated_ms == null ? "is-missing" : undefined}>{meta.generated_ms != null ? `${meta.generated_ms} ms` : "Not recorded"}</dd></div>
+            </dl>
+          </div>
+        </details>
         </div>
       </div>
     </main>

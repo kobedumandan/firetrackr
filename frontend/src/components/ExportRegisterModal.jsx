@@ -7,9 +7,10 @@ import {
   COLUMNS, DEFAULT_COLUMNS, MAX_ROWS, buildRegister, defaultOptions, describeQuery,
   downloadBlob, fetchAllIncidents, registerToCsv, safeFileName,
 } from '../utils/incidentRegister'
+import { buildResourceRegister } from '../utils/resourceExport'
 import '../styles/ExportModal.css'
+import { ICON_DOC } from '../utils/exportIcons'
 
-const ICON_DOC = 'M320-240h320v-80H320v80Zm0-160h320v-80H320v80ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z'
 const ICON_DOWNLOAD = 'M480-320 280-520l56-58 104 104v-326h80v326l104-104 56 58-200 200ZM240-160q-33 0-56.5-23.5T160-240v-120h80v120h480v-120h80v120q0 33-23.5 56.5T720-160H240Z'
 const ICON_PRINT = 'M640-640v-120H320v120h-80v-200h480v200h-80Zm-480 80h640-640Zm560 100q17 0 28.5-11.5T760-500q0-17-11.5-28.5T720-540q-17 0-28.5 11.5T680-500q0 17 11.5 28.5T720-460Zm-80 260v-160H320v160h320Zm80 80H240v-160H80v-240q0-51 35-85.5t85-34.5h560q51 0 85.5 34.5T880-520v240H720v160Zm80-240v-160q0-17-11.5-28.5T760-560H200q-17 0-28.5 11.5T160-520v160h80v-80h480v80h80Z'
 const ICON_SUMMARY = 'M280-280h80v-200h-80v200Zm320 0h80v-400h-80v400Zm-160 0h80v-120h-80v120Zm0-200h80v-80h-80v80ZM200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm0-560v560-560Z'
@@ -78,12 +79,17 @@ function printPdf(blob) {
 }
 
 /**
- * Incident register export: live preview on the left, settings on the right.
+ * Register export: live preview on the left, settings on the right.
  *   query – the Incidents page's current filters + sort (the export's scope)
+ *   resource – a resource page's immutable row snapshot, instead of a query
  */
-export default function ExportRegisterModal({ query, onClose }) {
-  const [options, setOptions] = useState(() => defaultOptions(readUser()))
-  const [data, setData] = useState({ status: 'loading' })
+export default function ExportRegisterModal({ query, resource, onClose }) {
+  const [options, setOptions] = useState(() => {
+    const defaults = defaultOptions(readUser())
+    return resource ? { ...defaults, title: resource.title, fileName: resource.fileName, columns: resource.columns.map(column => column.key) } : defaults
+  })
+  const [incidentData, setData] = useState({ status: 'loading' })
+  const data = useMemo(() => resource ? { status: 'ready', value: resource } : incidentData, [resource, incidentData])
   const [preview, setPreview] = useState({ status: 'idle', pages: [], pageCount: 0 })
   const [zoom, setZoom] = useState(1)
   const [busy, setBusy] = useState(null) // 'download' | 'print'
@@ -93,23 +99,26 @@ export default function ExportRegisterModal({ query, onClose }) {
   const set = (key, value) => setOptions(o => ({ ...o, [key]: value }))
   const isDoc = options.format !== 'csv'
   const noColumns = options.columns.length === 0
-  const { parts: scopeParts, sort: scopeSort } = describeQuery(query)
+  const columns = resource?.columns ?? COLUMNS
+  const defaultColumns = resource ? columns.map(column => column.key) : DEFAULT_COLUMNS
+  const { parts: scopeParts, sort: scopeSort } = resource ? { parts: resource.filters, sort: resource.sort } : describeQuery(query)
 
   // ── Scope: every matching incident, fetched once ──
   useEffect(() => {
+    if (resource) return
     const ctrl = new AbortController()
     fetchAllIncidents(query, { signal: ctrl.signal })
       .then(value => setData({ status: 'ready', value }))
       .catch(e => { if (e.name !== 'AbortError') setData({ status: 'error', error: e.message }) })
     return () => ctrl.abort()
-  }, [query, reloadKey])
+  }, [query, reloadKey, resource])
 
   // Typing in a text field shouldn't re-render the PDF on every keystroke.
   const settled = useDebounced(options, 350)
   const doc = useMemo(
     () => (data.status === 'ready' && settled.columns.length
-      ? buildRegister(data.value, query, settled) : null),
-    [data, query, settled],
+      ? resource ? buildResourceRegister(resource, settled) : buildRegister(data.value, query, settled) : null),
+    [data, query, resource, settled],
   )
   const docIsPaged = settled.format !== 'csv'
 
@@ -178,7 +187,8 @@ export default function ExportRegisterModal({ query, onClose }) {
   async function buildFile(format) {
     // Build from the live options, not the debounced ones, so the file always
     // matches the rail even if the preview is a keystroke behind.
-    const d = buildRegister(data.value, query, options)
+    const fileOptions = { ...options, format }
+    const d = resource ? buildResourceRegister(resource, fileOptions) : buildRegister(data.value, query, fileOptions)
     if (format === 'csv') return registerToCsv(d)
     if (format === 'docx') {
       const { registerToDocx } = await import('../utils/exportDocx')
@@ -193,7 +203,7 @@ export default function ExportRegisterModal({ query, onClose }) {
     setActionError(null)
     try {
       const blob = await buildFile(options.format)
-      downloadBlob(blob, safeFileName(options.fileName, options.format))
+      downloadBlob(blob, safeFileName(options.fileName.trim() || resource?.fileName, options.format))
     } catch (e) {
       setActionError(`Couldn't create the ${options.format.toUpperCase()} file: ${e.message}`)
     } finally {
@@ -216,10 +226,10 @@ export default function ExportRegisterModal({ query, onClose }) {
   function toggleColumn(key) {
     set('columns', options.columns.includes(key)
       ? options.columns.filter(k => k !== key)
-      : COLUMNS.map(c => c.key).filter(k => k === key || options.columns.includes(k)))
+      : columns.map(c => c.key).filter(k => k === key || options.columns.includes(k)))
   }
 
-  const rows = data.value?.items.length ?? 0
+  const rows = resource ? resource.rows.length : data.value?.items.length ?? 0
   const ready = data.status === 'ready'
   const fit = options.orientation === 'landscape' ? 900 : 660
   const ratio = options.orientation === 'landscape'
@@ -231,18 +241,19 @@ export default function ExportRegisterModal({ query, onClose }) {
   else if (ready) {
     const pages = preview.pageCount
       ? `${preview.pageCount} ${preview.pageCount === 1 ? 'page' : 'pages'}` : 'Paginating…'
-    footerNote = `${rows} ${rows === 1 ? 'incident' : 'incidents'} · ${pages}${options.format === 'docx' && preview.pageCount ? ' (approx.)' : ''}`
+    footerNote = `${rows} ${resource ? (rows === 1 ? 'row' : 'rows') : (rows === 1 ? 'incident' : 'incidents')} · ${pages}${options.format === 'docx' && preview.pageCount ? ' (approx.)' : ''}`
   }
 
   return (
     <AppModal
       eyebrow="EXPORT"
-      title="Incident register"
+      title={resource ? `${resource.name} export preview` : 'Incident register'}
       subtitle="Preview the report, adjust it on the right, then download or print."
       onClose={onClose}
       width={1280}
       className="eim-panel xpm-panel"
       dismissible={!busy}
+      manageFocus={!!resource}
     >
       <div className="xpm-layout">
         {/* ── Preview ── */}
@@ -340,11 +351,11 @@ export default function ExportRegisterModal({ query, onClose }) {
           </section>
 
           <section className="eim-section">
-            <SectionHead title="Scope" desc="Set on the Incidents page" />
+            <SectionHead title="Scope" desc={`Set on the ${resource?.name ?? 'Incidents'} page`} />
             <div className="xpm-scope">
               <div className="xpm-scope-count">
-                {ready ? <><strong>{rows}</strong> {rows === 1 ? 'incident' : 'incidents'}</> : 'Counting…'}
-                {ready && data.value.total > rows && <span className="xpm-scope-cap"> (capped at {MAX_ROWS})</span>}
+                {ready ? <><strong>{rows}</strong> {resource ? (rows === 1 ? 'row' : 'rows') : (rows === 1 ? 'incident' : 'incidents')}</> : 'Counting…'}
+                {!resource && ready && data.value.total > rows && <span className="xpm-scope-cap"> (capped at {MAX_ROWS})</span>}
               </div>
               <div className="eim-subtitle">
                 {scopeParts.map(([k, v]) => <span key={k} className="eim-chip">{k}: {v}</span>)}
@@ -357,7 +368,7 @@ export default function ExportRegisterModal({ query, onClose }) {
             <section className="eim-section">
               <SectionHead title="Document" />
               <Field label="Title">
-                <input value={options.title} onChange={e => set('title', e.target.value)} placeholder="Fire Incident Register" />
+                <input value={options.title} onChange={e => set('title', e.target.value)} placeholder={resource?.title ?? 'Fire Incident Register'} />
               </Field>
               <Field label="Office">
                 <input value={options.office} onChange={e => set('office', e.target.value)} placeholder="e.g. Panabo City Fire Station" />
@@ -406,11 +417,11 @@ export default function ExportRegisterModal({ query, onClose }) {
           <section className="eim-section">
             <div className="eim-section-head">
               <h3>Columns</h3>
-              <p>{options.columns.length} of {COLUMNS.length}</p>
-              <button type="button" className="eim-link-btn" onClick={() => set('columns', DEFAULT_COLUMNS)}>Reset</button>
+              <p>{options.columns.length} of {columns.length}</p>
+              <button type="button" className="eim-link-btn" onClick={() => set('columns', defaultColumns)}>Reset</button>
             </div>
             <div className="eim-chips">
-              {COLUMNS.map(c => (
+              {columns.map(c => (
                 <button
                   key={c.key}
                   type="button"
@@ -423,7 +434,7 @@ export default function ExportRegisterModal({ query, onClose }) {
               ))}
             </div>
             {noColumns && <FieldError>Select at least one column.</FieldError>}
-            {options.columns.includes('reporter') && (
+            {!resource && options.columns.includes('reporter') && (
               <p className="frm-hint">Reporter names and numbers are personal data. Share this file only within BFP.</p>
             )}
           </section>

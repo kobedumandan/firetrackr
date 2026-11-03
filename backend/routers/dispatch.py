@@ -1,7 +1,6 @@
 """Dispatching teams, route selection, and the on-scene lifecycle
 (arrival, truck manning, containment, and the after-action report)."""
 import logging
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -9,22 +8,24 @@ from typing import Literal
 from fastapi import (
     APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile,
 )
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
+from starlette.concurrency import run_in_threadpool
 
 import state
 from auto_dispatch import ALARM_UNIT_TARGETS, recommend_teams
 from config import (
-    ALLOWED_PHOTO_TYPES, MAX_PHOTO_BYTES, MAX_REPORT_PHOTOS, REPORT_PHOTO_DIR,
+    ALLOWED_PHOTO_TYPES, MAX_PHOTO_BYTES, MAX_REPORT_PHOTOS,
     _PHOTO_EXT,
 )
 from database import get_db
 from models import (
-    CurrentLocation, DispatchRecord, FireIncident, IncidentReport, ReportPhoto,
-    ResponseTeamMember, Route, Users,
+    CurrentLocation, DispatchRecord, DispatchTruck, FireIncident, IncidentReport, ReportPhoto,
+    ResponseTeam, ResponseTeamMember, Route, Users,
 )
 from schemas import ClearanceBody, DispatchCreate, SelectRouteBody, TruckManningBody
 from security import get_current_user, require_admin
-from serializers import _incident_dict, _report_photo_url
+from serializers import _incident_dict
+from services.report_photos import cleanup_report_photos, report_photo_urls, save_report_photo
 from services.dispatch import (
     _add_incident_to_heatmap, _complete_dispatch_and_release, _is_driver,
     _released_payload,
@@ -151,18 +152,20 @@ def get_dispatches(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    q = db.query(DispatchRecord)
+    q = db.query(DispatchRecord).options(
+        joinedload(DispatchRecord.fire_incident),
+        joinedload(DispatchRecord.team).joinedload(ResponseTeam.station),
+        joinedload(DispatchRecord.team).selectinload(ResponseTeam.members)
+        .joinedload(ResponseTeamMember.personnel),
+        selectinload(DispatchRecord.dispatch_trucks).joinedload(DispatchTruck.truck),
+        selectinload(DispatchRecord.routes),
+    )
     if fire_id:
         q = q.filter(DispatchRecord.fire_id == fire_id)
     rows = q.order_by(DispatchRecord.dispatch_at.desc()).all()
     def _dispatch_routes(r):
         # Routes owned by this specific dispatch, ordered by rank
-        inc_routes = (
-            db.query(Route)
-            .filter(Route.dispatch_id == r.dispatch_id)
-            .order_by(Route.route_rank)
-            .all()
-        )
+        inc_routes = sorted(r.routes, key=lambda route: (route.route_rank is None, route.route_rank or 0))
         return [
             {
                 "route_id":              rt.route_id,
@@ -582,50 +585,51 @@ async def submit_incident_report(
         suppression_started_at=suppression_started_at, controlled_at=controlled_at, fire_out_at=fire_out_at,
     )
 
-    # Persist each photo to disk and record it. Files written here are removed if
-    # the request fails before commit, so we never leave orphaned bytes behind.
-    written_paths: list[str] = []
+    # Compensate completed uploads if any subsequent work or the DB commit fails.
+    # Storage I/O runs off the event loop so location/WebSocket traffic can proceed.
+    written_names: list[str] = []
     try:
         for up in photos:
-            ext = _PHOTO_EXT.get((up.content_type or "").lower(), ".jpg")
+            content_type = (up.content_type or "").lower()
+            ext = _PHOTO_EXT.get(content_type, ".jpg")
             file_name = f"report{report.report_id}_{uuid.uuid4().hex}{ext}"
-            dest = os.path.join(REPORT_PHOTO_DIR, file_name)
-            data_bytes = await up.read()
+            data_bytes = await up.read(MAX_PHOTO_BYTES + 1)
             if len(data_bytes) > MAX_PHOTO_BYTES:
                 raise HTTPException(status_code=422, detail=f"Photo '{up.filename}' exceeds the 10 MB limit.")
-            with open(dest, "wb") as fh:
-                fh.write(data_bytes)
-            written_paths.append(dest)
+            if not data_bytes:
+                raise HTTPException(status_code=422, detail="Attached photos must not be empty.")
+            await run_in_threadpool(save_report_photo, file_name, data_bytes, content_type)
+            written_names.append(file_name)
             db.add(ReportPhoto(
                 report_id     = report.report_id,
                 file_name     = file_name,
                 original_name = up.filename,
-                content_type  = up.content_type,
+                content_type  = content_type,
             ))
+
+        # Generate viewing URLs before committing: a storage failure must not
+        # close the incident while the client sees a failed report submission.
+        photo_urls = await run_in_threadpool(report_photo_urls, written_names)
+
+        # Filing closes the whole incident and releases every responding team.
+        before = snapshot(inc)
+        inc.fire_status = "closed"
+        record_changes(db, inc, before, user=current_user, at=now)
+        active_dispatches = db.query(DispatchRecord).filter(
+            DispatchRecord.fire_id == inc.fire_id,
+            DispatchRecord.dispatch_status.in_(("dispatched", "en_route", "on_scene")),
+        ).all()
+        for active_dispatch in active_dispatches:
+            _complete_dispatch_and_release(active_dispatch, now)
+        _add_incident_to_heatmap(db, inc, now)
+        released = _released_payload(active_dispatches)
+        db.commit()
     except Exception:
-        for path in written_paths:
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-        db.rollback()
+        try:
+            db.rollback()
+        finally:
+            await run_in_threadpool(cleanup_report_photos, written_names)
         raise
-
-    # Filing closes the whole incident. Release every responding team, matching
-    # the administrator close path, so escalation cannot strand the other crews.
-    before = snapshot(inc)
-    inc.fire_status = "closed"
-    record_changes(db, inc, before, user=current_user, at=now)
-    active_dispatches = db.query(DispatchRecord).filter(
-        DispatchRecord.fire_id == inc.fire_id,
-        DispatchRecord.dispatch_status.in_(("dispatched", "en_route", "on_scene")),
-    ).all()
-    for active_dispatch in active_dispatches:
-        _complete_dispatch_and_release(active_dispatch, now)
-    _add_incident_to_heatmap(db, inc, now)
-    released = _released_payload(active_dispatches)
-
-    db.commit()
     db.refresh(report)
     db.refresh(inc)
 
@@ -658,7 +662,7 @@ async def submit_incident_report(
         "dispatch_id": dispatch.dispatch_id,
         "dispatch_status": dispatch.dispatch_status,
         "operational_timing": operational_timing,
-        "photos":      [_report_photo_url(p.file_name) for p in report.photos],
+        "photos":      photo_urls,
     }
 
 

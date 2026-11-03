@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, memo, Fragment } from "react";
 import { createPortal } from "react-dom";
-import PanelToggleIcon from "./PanelToggleIcon";
+import MapControlIcon from "./MapControlIcon";
 import StationMapMarker from "./StationMapMarker";
 import PersonnelMapMarker from "./PersonnelMapMarker";
 import {
@@ -19,6 +19,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "../styles/MapArea.css";
+import "../styles/CommandViewPanel.css";
 import "../styles/ConstraintPopup.css";
 import ConfirmModal from "./ConfirmModal";
 import CommandBasemapSelector from "./CommandBasemapSelector";
@@ -29,7 +30,7 @@ import RoadEdgeSelector from "./RoadEdgeSelector";
 import ConstraintEdgeSaveDialog from "./ConstraintEdgeSaveDialog";
 import { toggleRoadEdge } from "../utils/roadEdgeSelection";
 import { constraintFeatures } from "../utils/commandMapData";
-import { splitRouteAtPoint, truckProgressPoint } from "../utils/routeProgress";
+import { dispatchRouteProgress } from "../utils/routeProgress";
 import { openConstraintPopup } from "../utils/constraintPopup";
 import ConstraintLayersPanel from "./ConstraintLayersPanel";
 import { baselineConstraintForEdit, buildConstraintLayers, constraintLayerId } from "../utils/constraintLayers";
@@ -705,7 +706,6 @@ function GnnLegend({ data }) {
           </div>
         ))}
       </div>
-      {!(data?.meta?.constrained > 0) && <p className="constraint-help">No constrained roads in this dataset.</p>}
     </section>
   );
 }
@@ -725,52 +725,22 @@ const CONSTRAINT_TYPES = [
     symbol: "◈",
   },
 ];
-// Layer tools keep their state in MapArea and render into the shared right
-// dock below the camera controls. Match the Actions panel's header and controls.
+// Layer tools stay expanded in the shared right dock, matching the camera controls.
 function ObstructionPanel({
-  open,
-  onToggleOpen,
   placingType,
   onStartPlace,
   onCancelPlace,
   obstructions,
   onDelete,
 }) {
-  if (!open) {
-    return (
-      <button
-        type="button"
-        className="obstruction-float-btn"
-        onClick={onToggleOpen}
-        title="Expand obstructions"
-        aria-expanded={false}
-        aria-label="Expand road obstructions"
-      >
-        <PanelToggleIcon />
-        Obstructions
-        <span className="obstruction-count">{obstructions.length}</span>
-      </button>
-    );
-  }
-
   return (
-    <section className="obstruction-panel" aria-label="Road obstructions">
-      <div className="obstruction-panel-head">
-        <button
-          type="button"
-          className="obstruction-collapse-btn"
-          onClick={onToggleOpen}
-          title="Collapse"
-          aria-label="Collapse obstructions"
-          aria-expanded={true}
-        >
-          <PanelToggleIcon expanded />
-        </button>
-        <div className="obstruction-panel-title">Road obstructions</div>
+    <section className="obstruction-panel command-view-panel" aria-label="Road obstructions">
+      <div className="command-view-heading">
+        <span><MapControlIcon name="obstructions" />Road obstructions</span>
+        <span className="command-view-badge obstruction-view-badge">ROADS</span>
       </div>
 
       <div className="obstruction-panel-body">
-        <div className="obstruction-section-label">Add to map</div>
         <div className="obstruction-panel-tools">
           {OBSTRUCTION_TYPES.map((t) => (
               <button
@@ -788,10 +758,10 @@ function ObstructionPanel({
               </button>
             ))}
         </div>
-        {placingType ? <div className="obstruction-placement" style={{ "--obs": `var(${obsInfo(placingType).token})` }}>
+        {placingType && <div className="obstruction-placement" style={{ "--obs": `var(${obsInfo(placingType).token})` }}>
           <div className="obstruction-placing" role="status"><span>Placing {obsInfo(placingType).label.toLowerCase()}</span><small>Click a road on the map.</small></div>
           <button type="button" className="obstruction-cancel-btn" onClick={onCancelPlace}>Cancel</button>
-        </div> : <p className="obstruction-help">Choose a type, then select a road.</p>}
+        </div>}
 
         <div className="obstruction-panel-list">
           <div className="obstruction-list-title">
@@ -840,14 +810,11 @@ function CloseIcon() {
 }
 
 function ConstraintEditorPanel({ data, loadError, onRetry, editing, onToggleEdit, blocked }) {
-  const [open, setOpen] = useState(true);
-  if (!open) return <button type="button" className="constraint-float-btn" onClick={() => setOpen(true)} aria-label="Expand GAT constraints" aria-expanded={false}><PanelToggleIcon />GAT constraints</button>;
-  return <section className="constraint-editor" aria-label="GAT constraints">
-    <div className="constraint-editor-head"><button type="button" className="constraint-collapse-btn" onClick={() => setOpen(false)} aria-label="Collapse GAT constraints" aria-expanded={true}><PanelToggleIcon expanded /></button><span className="constraint-editor-title">GAT constraints</span></div>
+  return <section className="constraint-editor command-view-panel" aria-label="GAT constraints">
+    <div className="command-view-heading"><span><MapControlIcon name="constraints" />GAT constraints</span><span className="command-view-badge constraint-view-badge">GAT</span></div>
     <div className="constraint-editor-body">
       {data ? <GnnLegend data={data} /> : <div className="constraint-load-state" role="status"><span>{loadError ? 'Could not load road constraints.' : 'Loading road constraints...'}</span>{loadError && <button type="button" onClick={onRetry}>Retry</button>}</div>}
       <button type="button" className="constraint-draw-btn" style={{ '--constraint-color': 'var(--accent-fire)' }} disabled={blocked || (!data && !editing)} aria-pressed={editing} onClick={onToggleEdit}>{editing ? 'Done editing' : 'Edit constraints'}</button>
-      <p className="constraint-help">{editing ? 'Select roads on the map, then confirm and save.' : 'Enter editing mode to select roads and review saved edges.'}</p>
     </div>
   </section>;
 }
@@ -1066,8 +1033,6 @@ export default function MapArea({
   const [obstructions, setObstructions] = useState([]);
   const [placingType, setPlacingType] = useState(null);
   const obstructionPlacementActive = !!placingType && !constraintsView;
-  // The adder starts open; collapsing it leaves the pins and a way back.
-  const [adderOpen, setAdderOpen] = useState(true);
   // Where the pending obstruction would land once snapped, or null when the
   // pointer is too far from any road for it to be placeable.
   const [ghost, setGhost] = useState(null);
@@ -1521,30 +1486,36 @@ export default function MapArea({
                 );
               }
 
-              // Selected route: trim at the truck's live position so the line
-              // shrinks as the manning driver makes progress. Traveled part stays as a
-              // faint ghost for context; remaining part keeps the full style.
-              const truckPt = truckProgressPoint(
-                dr.dispatch_id,
-                livePersonnelLocations
-              );
-              const { traveled, remaining } = splitRouteAtPoint(
+              // Truck progress and personnel progress are separate. A follower
+              // still needs the road behind the truck; draw that as an active
+              // approach and omit road already passed by everyone.
+              const { remaining, personnelRemaining, personnel: followingPersonnel } = dispatchRouteProgress(
                 dr.positions,
-                truckPt
+                dr.dispatch_id,
+                livePersonnelLocations,
+                activeLayers.has("Personnel")
               );
 
               return (
                 <Fragment key={dr.id}>
-                  {traveled.length >= 2 && (
+                  {personnelRemaining.length >= 2 && (
                     <Polyline
-                      positions={traveled}
+                      positions={personnelRemaining}
                       pathOptions={{
-                        color,
-                        weight: 3,
-                        opacity: 0.25,
-                        dashArray: "4 6",
+                        color: "#ffb020",
+                        weight: 4,
+                        opacity: 0.95,
+                        dashArray: "8 5",
                       }}
-                    />
+                    >
+                      <Tooltip sticky className="leaflet-dark-tooltip">
+                        <div className="tooltip-id">Personnel approach</div>
+                        <div className="tooltip-sub">
+                          {followingPersonnel.map(person => person.name || `Personnel #${person.per_id}`).join(", ")}
+                        </div>
+                        <div className="tooltip-sub">Remaining shared route to the incident</div>
+                      </Tooltip>
+                    </Polyline>
                   )}
                   <Polyline positions={remaining} pathOptions={mainStyle}>
                     {tooltip}
@@ -1903,8 +1874,6 @@ export default function MapArea({
           />
         ) : viewMode === "obstructions" ? (
           <ObstructionPanel
-            open={adderOpen}
-            onToggleOpen={() => setAdderOpen((v) => !v)}
             placingType={placingType}
             onStartPlace={(type) => {
               if (isGoogle3D) changeBasemap(theme === "light" ? "street" : "dark");

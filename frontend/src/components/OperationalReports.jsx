@@ -4,8 +4,11 @@ import CsvReviewModal from './CsvReviewModal'
 import AnalysisIcon from './AnalysisIcon'
 import KpiCard, { KPI_EMPTY } from './KpiCard'
 import { duration, dateTime } from '../utils/operationalTimes'
+import '../styles/IncidentsPage.css'
 import '../styles/OperationalReports.css'
+import '../styles/MethodNote.css'
 
+const PAGE_SIZE = 10
 const TYPES = { 'personnel-deployment': 'Personnel Deployment', 'fire-prone-areas': 'Fire-Prone Areas', 'eta-accuracy': 'ETA Prediction Error' }
 const REPORTS = {
   'personnel-deployment': { icon: 'acknowledgement', short: 'Personnel', hint: 'Assignments & deployment', description: 'Review personnel assignments, preserved roles and recorded deployment time.' },
@@ -69,7 +72,9 @@ export default function OperationalReports({ initialType = 'personnel-deployment
   if (area) params.set('source', filters.source)
   if (deployed) for (const key of ['per_id', 'team_id', 'station_id', 'shift']) if (filters[key]) params.set(key, filters[key])
   const query = params.toString()
-  const requestKey = `${type}:${query}:${revision}`
+  // A refresh requests newer data for the same report; keep its loaded rows
+  // visible. Only a different report or filter needs an initial loading state.
+  const requestKey = `${type}:${query}`
   const data = result?.key === requestKey ? result.data : null
   const error = result?.key === requestKey ? result.error : null
   const loading = !data && !error
@@ -77,10 +82,10 @@ export default function OperationalReports({ initialType = 'personnel-deployment
     const controller = new AbortController()
     let alive = true
     fetchOperationalReport(type, query, controller.signal).then(data => { if (alive) setResult({ key: requestKey, data }) }, err => {
-      if (alive && err.name !== 'AbortError') setResult({ key: requestKey, error: err.message })
+      if (alive && err.name !== 'AbortError') setResult(previous => ({ ...(previous?.key === requestKey ? previous : {}), key: requestKey, error: err.message }))
     })
     return () => { alive = false; controller.abort() }
-  }, [type, query, requestKey])
+  }, [type, query, requestKey, revision])
   useEffect(() => {
     const refresh = () => setRevision(n => n + 1)
     window.addEventListener('operational-times-updated', refresh)
@@ -96,9 +101,18 @@ export default function OperationalReports({ initialType = 'personnel-deployment
     return () => { alive = false }
   }, [deployed])
   function update(key, value) { setFilters(prev => ({ ...prev, [key]: value })); setPage(1) }
-  async function review(reportType = type) {
+  async function review() {
     setExporting(true); setExportError(null)
-    try { setCsv({ text: await exportOperationalReport(reportType, query), type: reportType }) }
+    try {
+      const reports = deployed
+        ? [{ id: 'summary', type: 'personnel-deployment-summary', label: 'Summary' }, { id: 'main', type, label: 'Assignment log' }]
+        : [{ id: 'main', type, label: TYPES[type] }]
+      const views = await Promise.all(reports.map(async report => ({
+        id: report.id, label: report.label,
+        csv: await exportOperationalReport(report.type, query), fileName: `${report.type}.csv`,
+      })))
+      setCsv({ type, views, initialView: deployed && tableView === 'summary' ? 'summary' : 'main' })
+    }
     catch (err) { setExportError(err.message) }
     finally { setExporting(false) }
   }
@@ -107,9 +121,13 @@ export default function OperationalReports({ initialType = 'personnel-deployment
   const summaryView = deployed && tableView === 'summary'
   const tableRows = summaryView ? personnel : rows
   const columns = summaryView ? SUMMARY_COLUMNS : COLUMNS[type]
-  const maxPage = Math.max(1, Math.ceil(tableRows.length / 25))
+  const maxPage = Math.max(1, Math.ceil(tableRows.length / PAGE_SIZE))
   const currentPage = Math.min(page, maxPage)
-  const pageRows = tableRows.slice((currentPage - 1) * 25, currentPage * 25)
+  const pageRows = tableRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const pageNumbers = maxPage <= 7 ? Array.from({ length: maxPage }, (_, i) => i + 1)
+    : currentPage <= 4 ? [1, 2, 3, 4, 5, '…', maxPage]
+      : currentPage >= maxPage - 3 ? [1, '…', maxPage - 4, maxPage - 3, maxPage - 2, maxPage - 1, maxPage]
+        : [1, '…', currentPage - 1, currentPage, currentPage + 1, '…', maxPage]
   const maxScore = Math.max(0, ...rows.map(row => row.weighted_score || 0))
   const defaults = defaultFilters(type)
   const dirty = Object.keys(defaults).some(key => filters[key] !== defaults[key])
@@ -147,8 +165,7 @@ export default function OperationalReports({ initialType = 'personnel-deployment
     <div className="op-workspace">
     <header className="op-report-heading">
       <div className="op-report-heading-copy"><span className="op-eyebrow">{fixedType ? 'Historical analysis' : 'Operational reporting'}</span><Heading>{fixedType ? TYPES[type] : 'Operational Reports'}</Heading><p>{REPORTS[type].description}</p></div>
-      <div className="op-report-actions"><span className="op-timezone"><AnalysisIcon name="response" />Asia/Manila · PHT</span><div className="op-export-actions">
-        {deployed && <button className="op-button" disabled={loading || exporting || !!error} onClick={() => review('personnel-deployment-summary')}><AnalysisIcon name="handling" />Review summary CSV</button>}
+      <div className="op-report-actions"><div className="op-export-actions">
         <button className="op-button is-primary" disabled={loading || exporting || !!error} onClick={() => review()}><AnalysisIcon name="download" />{exporting ? 'Preparing…' : 'Review CSV'}</button>
       </div></div>
     </header>
@@ -162,8 +179,8 @@ export default function OperationalReports({ initialType = 'personnel-deployment
     <section className="op-filter-panel" aria-label="Report filters">
       <div className="op-filter-heading"><h2><AnalysisIcon name="filter" />Report filters</h2><div><span className="op-period-label">{periodLabel}</span>{dirty && <button className="op-text-button" onClick={reset}>Reset filters</button>}<button className="op-button op-refresh" onClick={() => setRevision(n => n + 1)}><AnalysisIcon name="refresh" />Refresh</button></div></div>
       <div className={`op-report-filters${area ? ' is-area' : ''}`}>
-        <label>From · PHT<input type="date" value={filters.start} onChange={e => update('start', e.target.value)} /></label>
-        <label>Until · PHT (exclusive)<input type="date" value={filters.end} onChange={e => update('end', e.target.value)} /></label>
+        <label>From<input type="date" value={filters.start} onChange={e => update('start', e.target.value)} /></label>
+        <label>Until (exclusive)<input type="date" value={filters.end} onChange={e => update('end', e.target.value)} /></label>
         <label className="op-population-field">Record population<select value={filters.kind} onChange={e => update('kind', e.target.value)}>{(area ? [['historical', 'Historical (operational + unclassified)'], ['operational', 'Operational only'], ['unknown', 'Unclassified only'], ['test', 'Test only'], ['drill', 'Drill only'], ['all', 'All kinds']] : [['operational', 'Operational'], ['unknown', 'Unclassified'], ['test', 'Test'], ['drill', 'Drill'], ['all', 'All kinds']]).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>
         {area && <label>Incident source<select value={filters.source} onChange={e => update('source', e.target.value)}><option value="all">All sources</option><option value="imported">BFP imported history</option><option value="other">Other entries</option></select></label>}
       </div>
@@ -173,12 +190,11 @@ export default function OperationalReports({ initialType = 'personnel-deployment
         <label>Station<select value={filters.station_id} onChange={e => update('station_id', e.target.value)}><option value="">All stations</option>{options.stations.map(s => <option key={s.station_id} value={s.station_id}>{s.station_name}</option>)}</select></label>
         <label>Shift<select value={filters.shift} onChange={e => update('shift', e.target.value)}><option value="">All shifts</option>{['Shift A', 'Shift B'].map(s => <option key={s}>{s}</option>)}</select></label>
       </div></details>}
-      <div className="op-filter-footer"><p><AnalysisIcon name="info" />{area ? 'Closed historical incidents. Test and drill records require an explicit population choice.' : 'Blank dates use the latest 12 calendar months. Unclassified history is available through Record population.'}</p>{area && <label className="op-report-check"><input type="checkbox" checked={filters.known_only} onChange={e => update('known_only', e.target.checked)} />Recorded severity only</label>}</div>
     </section>
 
     {(error || exportError) && <div role="alert" className="op-report-error"><AnalysisIcon name="info" /><div><strong>{error ? 'Could not load this report' : 'Could not prepare the export'}</strong><p>{error || exportError}</p></div>{error && <button className="op-button" onClick={() => setRevision(n => n + 1)}>Retry</button>}</div>}
     {loading && <p role="status" className="op-sr-only">Loading report…</p>}
-    {!error && <>
+    {(!error || data) && <>
       <div className="op-section-label"><span>{TYPES[type]}</span><span>{loading ? 'Loading observations' : `${formattedCount(deployed ? personnel.length : rows.length)} ${deployed ? 'personnel' : area ? 'ranked areas' : 'trip observations'}`}</span></div>
       <div className="op-report-stats" aria-label="Report summary">{metrics.map(metric => <KpiCard key={metric.label} label={metric.label} value={metric.value} sub={metric.sub} icon={<AnalysisIcon name={metric.icon} />} accent={metric.accent} loading={loading} />)}</div>
       {deployed && data?.unknown_roster_dispatches > 0 && <aside className="op-data-note"><span className="op-note-icon"><AnalysisIcon name="info" /></span><div><strong>Historical roster gaps</strong><p>{data.unknown_roster_dispatches} dispatches have no preserved historical roster and cannot be attributed to personnel.</p></div><span className="op-evidence is-pending">Evidence unavailable</span></aside>}
@@ -192,11 +208,19 @@ export default function OperationalReports({ initialType = 'personnel-deployment
           {loading ? [0, 1, 2, 3].map(n => <tr key={n} aria-hidden="true">{columns.map(([key]) => <td key={key}><span className="op-cell-skeleton kpi-sk" /></td>)}</tr>) : pageRows.map((row, index) => <tr key={`${row.per_id || row.dispatch_id || row.brgy_id || row.unit_id}:${index}`}>{columns.map(([key]) => <td key={key}><ReportCell row={row} column={key} maxScore={maxScore} /></td>)}</tr>)}
         </tbody></table></div>
         {!loading && !tableRows.length && <div className="op-report-empty"><span><AnalysisIcon name={REPORTS[type].icon} /></span><h3>No observations match these filters.</h3><p>{!area && !deployed ? 'No data is available for comparable trips in this population. Missing historical evidence stays unavailable.' : summaryView ? 'New dispatches preserve personnel assignments. Older crews remain unknown until supported by evidence.' : 'Try a wider date range or another population. Missing historical evidence stays unavailable.'}</p>{dirty && <button className="op-button" onClick={reset}>Reset filters</button>}</div>}
-        <nav className="op-report-pagination" aria-label="Report pages"><span>{loading ? 'Loading records…' : `${tableRows.length ? (currentPage - 1) * 25 + 1 : 0}–${Math.min(currentPage * 25, tableRows.length)} of ${formattedCount(tableRows.length)} ${summaryView ? 'personnel' : 'rows'}`}</span><div><span>Page {currentPage} of {maxPage}</span><button className="op-button op-page-previous" disabled={loading || currentPage === 1} onClick={() => setPage(currentPage - 1)}><AnalysisIcon name="chevron" />Previous</button><button className="op-button" disabled={loading || currentPage === maxPage} onClick={() => setPage(currentPage + 1)}>Next<AnalysisIcon name="chevron" /></button></div></nav>
+        {!loading && !error && tableRows.length > 0 && <nav className="inc-pagination op-report-pagination" aria-label="Report pages">
+          <span className="inc-page-info">{(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, tableRows.length)} of {formattedCount(tableRows.length)}</span>
+          <div className="inc-page-controls">
+            <button type="button" className="inc-page-btn next-prev-btn" aria-label="Previous report page" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>‹</button>
+            {pageNumbers.map((n, i) => n === '…' ? <span key={`ellipsis-${i}`} className="inc-page-ellipsis">…</span>
+              : <button type="button" key={n} className={`inc-page-btn${currentPage === n ? ' active' : ''}`} aria-label={`Report page ${n}`} aria-current={currentPage === n ? 'page' : undefined} onClick={() => setPage(n)}>{n}</button>)}
+            <button type="button" className="inc-page-btn next-prev-btn" aria-label="Next report page" disabled={currentPage >= maxPage} onClick={() => setPage(currentPage + 1)}>›</button>
+          </div>
+        </nav>}
       </section>
-      {data && <details className="op-method-note"><summary><span><AnalysisIcon name="info" />Methodology & data quality</span><AnalysisIcon name="chevron" /></summary><div><p>{data.notice}</p>{area && <p>{data.formula} {data.incident_count} eligible incidents · {data.unassigned_incidents} without an assigned barangay. Ties share a rank.</p>}{!area && !deployed && <p>Mean signed error: <strong>{signedDuration(data.mean_error_seconds)}</strong>. Positive values mean actual travel took longer than predicted.</p>}</div></details>}
+      {data && <details className="op-method-note mo-method"><summary><AnalysisIcon name="info" />Methodology & data quality<AnalysisIcon name="chevron" /></summary><div className="mo-method-content is-single"><p>{data.notice}</p>{area && <p>{data.formula} {data.incident_count} eligible incidents · {data.unassigned_incidents} without an assigned barangay. Ties share a rank.</p>}{!area && !deployed && <p>Mean signed error: <strong>{signedDuration(data.mean_error_seconds)}</strong>. Positive values mean actual travel took longer than predicted.</p>}</div></details>}
     </>}
-    {csv && <CsvReviewModal csv={csv.text} fileName={`${csv.type}.csv`} title={TYPES[csv.type] || 'Personnel Deployment Summary'} onClose={() => setCsv(null)} />}
+    {csv && <CsvReviewModal views={csv.views} initialView={csv.initialView} title={TYPES[csv.type]} onClose={() => setCsv(null)} />}
     </div>
   </section>
 }

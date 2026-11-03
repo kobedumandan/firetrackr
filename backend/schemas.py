@@ -300,6 +300,30 @@ class IncidentUpdate(BaseModel):
     fire_remarks:        str | None = None
 
 
+class IncidentReportSave(BaseModel):
+    """Administrator edits report text/outcome, without changing event clocks."""
+    model_config = ConfigDict(extra="forbid")
+
+    report_id: int | None = Field(default=None, ge=1)
+    narrative: str = Field(min_length=1)
+    cause: str | None = Field(default=None, max_length=255)
+    casualties: str | None = Field(default=None, max_length=255)
+    damage_estimate: str | None = Field(default=None, max_length=100)
+    recommendations: str | None = None
+    remarks: str | None = None
+
+    @model_validator(mode="after")
+    def trim_report_text(self):
+        self.narrative = self.narrative.strip()
+        if not self.narrative:
+            raise ValueError("The report narrative is required.")
+        for field in ("cause", "casualties", "damage_estimate", "recommendations", "remarks"):
+            value = getattr(self, field)
+            if value is not None:
+                setattr(self, field, value.strip() or None)
+        return self
+
+
 class DispatchCreate(BaseModel):
     fire_id:  int
     team_id:  int

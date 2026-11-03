@@ -1,6 +1,6 @@
 """Fire station CRUD."""
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 import state
 from database import get_db
@@ -24,7 +24,8 @@ def get_stations(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    rows = db.query(Station).order_by(Station.station_id).all()
+    rows = (db.query(Station).options(joinedload(Station.commander))
+            .order_by(Station.station_id).all())
     return [_station_dict(r) for r in rows]
 
 

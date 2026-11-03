@@ -130,17 +130,13 @@
 }
 
 /* ── Stat tiles ──────────────────────────────────────────────────────────── */
-.idp-stats,
-.idp-report-stats {
+.idp-stats {
   display: grid;
   gap: 10px;
 }
 .idp-stats {
   grid-template-columns: repeat(4, 1fr);
   margin-top: 18px;
-}
-.idp-report-stats {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 .idp-stat {
@@ -167,11 +163,6 @@
   letter-spacing: 0.2px;
   line-height: 1.15;
   overflow-wrap: anywhere;
-}
-.idp-report-stats .idp-stat-value {
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: -0.1px;
 }
 .idp-stat-sub {
   font-family: var(--font-mono);
@@ -293,15 +284,13 @@
   color: var(--text-secondary);
   text-align: center;
 }
-.idp-aside-empty,
-.idp-report-empty {
+.idp-aside-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
   padding: 14px 0 6px;
 }
-.idp-report-empty { padding: 22px 0 14px; }
 .idp-aside-empty-icon {
   width: 44px;
   height: 44px;
@@ -314,11 +303,6 @@
   opacity: 0.7;
 }
 .idp-aside-empty-icon .material-symbols-outlined { font-size: 22px; }
-
-.idp-report-state {
-  font-size: 11.5px;
-  color: var(--text-secondary);
-}
 
 /* Responding unit cards */
 .idp-units {
@@ -497,107 +481,12 @@
 }
 .idp-icon-btn .material-symbols-outlined { font-size: 15px; }
 
-/* ── Report ──────────────────────────────────────────────────────────────── */
-.idp-author {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  background: var(--bg-base);
-  border: 1px solid var(--border-dim);
-  border-radius: 10px;
-}
-.idp-author-av {
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  font-family: var(--font-span);
-  font-size: 10.8px;
-  font-weight: 700;
-}
-.idp-author-info { flex: 1; min-width: 0; }
-.idp-author-name {
-  font-size: 11.8px;
-  font-weight: 600;
-  letter-spacing: -0.2px;
-  color: var(--text-primary);
-}
-.idp-author-sub {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  color: var(--text-secondary);
-  margin-top: 1px;
-}
-
-/* ── Scene photos ────────────────────────────────────────────────────────── */
-.idp-photo-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
-}
-
-.idp-photo {
-  position: relative;
-  display: block;
-  padding: 0;
-  margin: 0;
-  background: none;
-  border: 1px solid var(--border-dim);
-  border-radius: 12px;
-  overflow: hidden;
-  aspect-ratio: 4 / 3;
-  cursor: zoom-in;
-  transition: border-color 0.15s, transform 0.15s;
-}
-.idp-photo:hover {
-  border-color: var(--border);
-  transform: translateY(-2px);
-}
-.idp-photo img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  transition: transform 0.25s ease;
-}
-.idp-photo:hover img { transform: scale(1.03); }
-
-/* Zoom badge appears on hover — sits over the photo, so it uses the scrim
-   token rather than a page surface. */
-.idp-photo-zoom {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--scrim);
-  color: var(--on-accent);
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.idp-photo-zoom .material-symbols-outlined { font-size: 16px; }
-.idp-photo:hover .idp-photo-zoom { opacity: 1; }
-
 @media (max-width: 1100px) {
   .idp-stats { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .idp-pill-dot { animation: none; }
-  .idp-photo,
-  .idp-photo img { transition: none; }
-  .idp-photo:hover,
-  .idp-photo:hover img { transform: none; }
 }
 
 /* ── In-app photo viewer ─────────────────────────────────────────────────── */

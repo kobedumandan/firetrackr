@@ -5,7 +5,7 @@ in one place rather than being duplicated per router.
 """
 import json
 
-from config import PUBLIC_BASE_URL
+from services.report_photos import report_photo_urls
 from models import (
     FireIncident, GnnConstraint, IncidentReport, ResponseTeam, Station, Truck,
 )
@@ -92,6 +92,7 @@ def _team_dict(t: ResponseTeam) -> dict:
         "shift_name":        t.shift.shift_name if t.shift else "—",
         "truck_id":          t.truck_id,
         "truck_platenum":    t.truck.truck_platenum if t.truck else None,
+        "has_active_dispatch": any(d.dispatch_status in ('dispatched', 'en_route', 'on_scene') for d in t.dispatches),
         "member_count": len(t.members),
         "members":      members,
         "created_at":   t.team_created_at.isoformat() if t.team_created_at else None,
@@ -122,8 +123,8 @@ def _incident_dict(r: FireIncident) -> dict:
 
 
 def _report_photo_url(file_name: str) -> str:
-    """Public URL the mobile app / dashboard can load a stored photo from."""
-    return f"{PUBLIC_BASE_URL}/uploads/report_photos/{file_name}"
+    """A local URL or temporary private-storage URL, after report authorization."""
+    return report_photo_urls([file_name])[0]
 
 
 def _report_dict(r: IncidentReport) -> dict:
@@ -132,19 +133,24 @@ def _report_dict(r: IncidentReport) -> dict:
         f"{author.per_firstname or ''} {author.per_lastname or ''}".strip()
         if author else None
     ) or None
+    if not author and r.admin_author:
+        from services.incident_events import actor_name
+        author_name = actor_name(r.admin_author)
     return {
         "report_id":       r.report_id,
         "fire_id":         r.fire_id,
         "dispatch_id":     r.dispatch_id,
         "author":          author_name,
-        "author_rank":     author.per_rank if author else None,
+        "author_rank":     author.per_rank if author else ("Administrator" if r.author_user_id else None),
+        "author_role":     "personnel" if author else ("admin" if r.author_user_id else None),
+        "author_user_id":  r.author_user_id,
         "cause":           r.report_cause,
         "casualties":      r.report_casualties,
         "damage_estimate": r.report_damage_estimate,
         "narrative":       r.report_narrative,
         "recommendations": r.report_recommendations,
         "submitted_at":    r.report_submitted_at.isoformat() if r.report_submitted_at else None,
-        "photos":          [_report_photo_url(p.file_name) for p in r.photos],
+        "photos":          report_photo_urls([p.file_name for p in r.photos]),
     }
 
 

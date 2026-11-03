@@ -97,7 +97,7 @@ export async function apiFetch(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(!(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       'ngrok-skip-browser-warning': '1',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
@@ -355,7 +355,7 @@ export async function deleteIncident(fireId) {
   }
 }
 
-// The after-action report filed for a closed incident (with photo URLs).
+// The latest after-action report for an incident (with photo URLs).
 // Returns null when no report has been filed yet.
 export async function fetchIncidentReport(fireId) {
   const res = await apiFetch(`/api/incidents/${fireId}/report`)
@@ -364,21 +364,51 @@ export async function fetchIncidentReport(fireId) {
     throw new Error(err.detail || `Failed to fetch incident report (${res.status})`)
   }
   const data = await res.json()
-  const report = data.report
-  // Photo URLs come back pointing at PUBLIC_BASE_URL (the ngrok tunnel, for the
-  // mobile app). The dashboard can't pass ngrok's skip-warning header on a plain
-  // <img>, so rewrite each URL onto our own BASE_URL — same /uploads/... path,
-  // served directly with no interstitial.
+  return dashboardIncidentReport(data.report)
+}
+
+function dashboardIncidentReport(report) {
+  // Local photo URLs use PUBLIC_BASE_URL (possibly an ngrok tunnel). Route only
+  // those uploads through our API; preserve storage hosts and signed queries.
   if (report?.photos?.length) {
     report.photos = report.photos.map((url) => {
       try {
-        return `${BASE_URL}${new URL(url).pathname}`
+        const photo = new URL(url)
+        return photo.pathname.startsWith('/uploads/')
+          ? `${BASE_URL}${photo.pathname}${photo.search}` : url
       } catch {
         return url
       }
     })
   }
   return report
+}
+
+export function notifyIncidentReportUpdated(fireId, incident) {
+  window.dispatchEvent(new CustomEvent('incident-report-updated', { detail: { fireId, incident } }))
+}
+
+export async function saveIncidentReport(fireId, body, photos = []) {
+  let payload = JSON.stringify(body)
+  if (photos.length) {
+    payload = new FormData()
+    payload.append('report', JSON.stringify(body))
+    for (const photo of photos) payload.append('photos', photo, photo.name)
+  }
+  const res = await apiFetch(`/api/incidents/${fireId}/report${photos.length ? '/photos' : ''}`, {
+    method: photos.length ? 'POST' : 'PUT', body: payload,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const detail = typeof data.detail === 'string' ? data.detail
+      : Array.isArray(data.detail) ? data.detail.map(item => item.msg).join('; ') : null
+    throw new Error(detail || `Failed to save incident report (${res.status})`)
+  }
+  const result = { ...data, report: dashboardIncidentReport(data.report) }
+  for (const key of ['teams', 'trucks', 'personnel']) delete _cache[key]
+  invalidateOperationalTimes()
+  notifyIncidentReportUpdated(fireId, result.incident)
+  return result
 }
 
 // Status / alarm / severity changes for the incident timeline, oldest first:
@@ -490,12 +520,14 @@ export async function fetchGnnConstraints() {
 }
 
 // ── Metrics summary (real dashboard aggregates) ─────────────────────────────
-export async function fetchMetricsSummary(period = '1m') {
-  const key = `metrics-summary-${period}`
+export async function fetchMetricsSummary(period = '1m', month = '') {
+  const key = `metrics-summary-${period}${month ? `-${month}` : ''}`
   const cached = _cacheGet(key)
   if (cached) return cached
 
-  const res = await apiFetch(`/api/metrics/summary?period=${period}`)
+  const params = new URLSearchParams({ period })
+  if (month) params.set('month', month)
+  const res = await apiFetch(`/api/metrics/summary?${params}`)
   if (!res.ok) throw new Error(`Failed to fetch metrics summary (${res.status})`)
   const data = await res.json()
   _cacheSet(key, data)

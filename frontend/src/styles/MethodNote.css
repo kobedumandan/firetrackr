@@ -1,0 +1,25 @@
+/* Shared methodology disclosure used by Metrics and Analysis. */
+.mo-method { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-dim); color: var(--method-muted, var(--mo-muted, var(--text-secondary))); font-size: 9px; line-height: 1.5; }
+.mo-method > summary { display: flex; align-items: flex-start; gap: 5px; cursor: pointer; width: fit-content; list-style: none; }
+.mo-method > summary::-webkit-details-marker { display: none; }
+.mo-method > summary > svg { width: 11px; height: 11px; flex-shrink: 0; margin-top: 1px; }
+.mo-method > summary > svg:last-child { margin-left: 4px; }
+.mo-method[open] > summary > svg:last-child { transform: rotate(90deg); }
+.mo-method > .mo-method-content { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: 18px 20px; margin-top: 12px; padding: 16px 18px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); }
+.mo-method-content > section { min-width: 0; }
+.mo-method-content > section + section { padding-left: 20px; border-left: 1px solid var(--border-dim); }
+.mo-method-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.mo-method-heading > span { display: grid; place-items: center; flex-shrink: 0; width: 24px; height: 24px; border-radius: 6px; background: var(--mo-soft, var(--surface-raise)); color: var(--text-secondary); }
+.mo-method-heading svg { width: 13px; height: 13px; }
+.mo-method-heading h3 { margin: 0; color: var(--text-primary); font: 600 11px/1.5 var(--font-condensed); }
+.mo-method-assumptions { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-dim); }
+.mo-method-assumptions h4 { margin: 0 0 6px; color: var(--text-secondary); font: 500 8.8px/1.5 var(--font-condensed); text-transform: uppercase; letter-spacing: .2px; }
+.mo-method p { max-width: 70ch; margin: 0; color: var(--method-muted, var(--mo-muted, var(--text-secondary))); font-size: 10px; line-height: 1.65; }
+.mo-method p + p { margin-top: 8px; }
+.mo-method > .mo-method-content.is-single { grid-template-columns: minmax(0, 1fr); }
+.rp-method-note { --method-muted: var(--rp-muted); margin-bottom: 24px; }
+.op-method-note { --method-muted: var(--op-muted); }
+@container (max-width: 760px) {
+  .mo-method > .mo-method-content { grid-template-columns: 1fr; padding: 14px; gap: 16px; }
+  .mo-method-content > section + section { padding-left: 0; padding-top: 16px; border-left: 0; border-top: 1px solid var(--border-dim); }
+}

@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from config import STALE_MINUTES
 from database import get_db
@@ -14,7 +14,7 @@ from schemas import PersonnelCreate, PersonnelUpdate
 from security import _hash_password, require_admin
 from serializers import _manned_truck_dict
 from services.personnel_navigation import navigation_for
-from services.personnel_arrival import arrival_for, personnel_status
+from services.personnel_arrival import arrivals_for, personnel_status
 from services.tracking_policy import duty, policy as tracking_policy
 
 
@@ -26,7 +26,14 @@ def get_personnel(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    rows = db.query(Personnel).all()
+    # Keep the base roster query intact; batch relationships without reordering it.
+    rows = db.query(Personnel).options(
+        selectinload(Personnel.user),
+        selectinload(Personnel.station),
+        selectinload(Personnel.shift),
+        selectinload(Personnel.devices),
+        selectinload(Personnel.team_memberships).joinedload(ResponseTeamMember.team),
+    ).all()
 
     # Map each team with an active dispatch to its incident reference, so a
     # dispatched/on-scene member can show which incident they're assigned to.
@@ -34,6 +41,7 @@ def get_personnel(
     team_incident = {}
     active_dispatches = (
         db.query(DispatchRecord)
+        .options(joinedload(DispatchRecord.fire_incident))
         .filter(DispatchRecord.dispatch_status.in_(["dispatched", "en_route", "on_scene"]))
         .order_by(DispatchRecord.dispatch_at.desc())
         .all()
@@ -121,7 +129,27 @@ def get_personnel_locations(
     """Dashboard polls this every 10 seconds to refresh personnel markers on the map."""
     now = datetime.now(timezone.utc)
 
-    rows = db.query(CurrentLocation).all()
+    rows = db.query(CurrentLocation).options(
+        selectinload(CurrentLocation.personnel).joinedload(Personnel.shift),
+        selectinload(CurrentLocation.personnel).selectinload(Personnel.team_memberships),
+    ).all()
+    per_ids = [loc.per_id for loc in rows if loc.personnel]
+    assignments = {}
+    if per_ids:
+        for per_id, dispatch in (
+            db.query(ResponseTeamMember.per_id, DispatchRecord)
+            .join(DispatchRecord, DispatchRecord.team_id == ResponseTeamMember.team_id)
+            .options(selectinload(DispatchRecord.dispatch_trucks).joinedload(DispatchTruck.truck))
+            .filter(ResponseTeamMember.per_id.in_(per_ids),
+                    DispatchRecord.dispatch_status.in_(['dispatched', 'en_route', 'on_scene']))
+            .order_by(DispatchRecord.dispatch_at.desc())
+            .all()
+        ):
+            # Duplicate membership rows must not imply multiple deployments.
+            assignments.setdefault(per_id, {})[dispatch.dispatch_id] = dispatch
+    assignments = {per_id: list(dispatches.values()) for per_id, dispatches in assignments.items()}
+    latest = {per_id: dispatches[0] for per_id, dispatches in assignments.items()}
+    arrivals = arrivals_for(db, latest)
     result = []
     for loc in rows:
         per = loc.personnel
@@ -135,20 +163,10 @@ def get_personnel_locations(
         age_minutes = round(age_s / 60, 1)
         is_stale    = age_s > STALE_MINUTES * 60 or not duty(per, now)[0]
 
-        active_dispatch = (
-            db.query(DispatchRecord)
-            .join(ResponseTeamMember,
-                  ResponseTeamMember.team_id == DispatchRecord.team_id)
-            .filter(
-                ResponseTeamMember.per_id == per.per_id,
-                DispatchRecord.dispatch_status.in_(["dispatched", "en_route", "on_scene"]),
-            )
-            .order_by(DispatchRecord.dispatch_at.desc())
-            .first()
-        )
+        active_dispatch = latest.get(per.per_id)
 
         own_navigation = navigation_for(active_dispatch, per.per_id)
-        own_arrival = arrival_for(db, active_dispatch, per.per_id)
+        own_arrival = arrivals.get((active_dispatch.dispatch_id, per.per_id)) if active_dispatch else None
         result.append({
             "per_id":           per.per_id,
             "name":             f"{per.per_firstname or ''} {per.per_lastname or ''}".strip(),
@@ -158,7 +176,8 @@ def get_personnel_locations(
             "recorded_at":      rec_at.isoformat(),
             "age_minutes":      age_minutes,
             "is_stale":         is_stale,
-            'tracking': tracking_policy(db, per, now),
+            'tracking': tracking_policy(db, per, now, dispatches=assignments.get(per.per_id, []),
+                                        arrivals=arrivals),
             "is_deviated":      bool(own_navigation.get('is_deviated')),
             "personnel_status": personnel_status(active_dispatch, own_arrival),
             "personnel_arrived_at": own_arrival.isoformat() if own_arrival else None,

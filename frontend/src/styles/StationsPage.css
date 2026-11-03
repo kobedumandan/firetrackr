@@ -429,10 +429,12 @@
   text-overflow: ellipsis;
 }
 .sta-row-meta > span + span::before {
-  content: "·";
+  content: "|";
   margin: 0 5px;
-  color: var(--text-muted);
+  color: inherit;
+  opacity: 0.45;
 }
+.sta-meta-separator { opacity: 0.45; }
 .sta-row-counts {
   display: flex;
   gap: 8px;

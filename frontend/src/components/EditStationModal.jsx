@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { updateStation } from '../api'
 import '../styles/AppModal.css'
+import '../styles/EditFormModal.css'
 import { phoneError, STATION_TYPES, STATION_STATUSES, statusMeta } from './resourceFormOptions'
 import { ICON_CLOSE } from './incidentFormOptions'
 import { Icon, Field, SectionHead, FormStatus, LockedNote, ReviewChanges } from './incidentForm'
@@ -139,13 +140,18 @@ export default function EditStationModal({ station, onClose, onSaved, stations }
     <>
       {createPortal(
         <div className="apm-overlay" onMouseDown={e => e.target === e.currentTarget && !saving && !reviewing && onClose()}>
-          <div className="apm-panel eim-panel lim-panel-split stn-panel" role="dialog" aria-modal="true" aria-labelledby="esm-title">
+          <div className="apm-panel eim-panel lim-panel-split stn-panel edit-form-modal" role="dialog" aria-modal="true" aria-labelledby="esm-title">
             <div className="eim-header">
               <div className="eim-header-main">
                 <div className="apm-eyebrow">EDIT STATION</div>
                 <div id="esm-title" className="eim-title">{effective.station_name || 'Untitled station'}</div>
                 <div className="apm-subtitle">
-                  {[station.code, statusMeta(STATION_TYPES, initial.station_type).label, initial.station_barangay].filter(Boolean).join(' · ')}
+                  {[station.code, statusMeta(STATION_TYPES, initial.station_type).label, initial.station_barangay].filter(Boolean).map((part, index) => (
+                    <span key={index}>
+                      {index > 0 && <span className="edit-form-separator" aria-hidden="true"> | </span>}
+                      {part}
+                    </span>
+                  ))}
                 </div>
               </div>
               <button className="eim-close" onClick={onClose} aria-label="Close" disabled={saving}>
@@ -167,7 +173,7 @@ export default function EditStationModal({ station, onClose, onSaved, stations }
                   lat={form.station_latitude}
                   lng={form.station_longitude}
                   error={mapError}
-                  emptyText="No location on record. Click the map to set one."
+                  emptyText="No location on record. Click the map to set one"
                 >
                   {moved && (
                     <>
@@ -191,12 +197,13 @@ export default function EditStationModal({ station, onClose, onSaved, stations }
                   isChanged={isChanged}
                   mainStations={mainStations}
                   contactError={contactError}
+                  editing
                 />
 
                 <section className="eim-section">
-                  <SectionHead title="Head of command" desc="Chosen from personnel at this station." changed={isChanged('station_commander_id')} />
+                  <SectionHead title="Head of command" desc="Chosen from personnel at this station" changed={isChanged('station_commander_id')} />
                   {station.personnelList.length === 0 ? (
-                    <LockedNote>No personnel at this station yet. Assign people here first, then pick a commander.</LockedNote>
+                    <LockedNote>No personnel at this station yet. Assign people here first, then pick a commander</LockedNote>
                   ) : (
                     <>
                       <Field label="Station commander" changed={isChanged('station_commander_id')}>

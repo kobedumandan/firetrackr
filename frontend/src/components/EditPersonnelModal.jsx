@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import AppModal from './AppModal'
+import '../styles/EditFormModal.css'
 import { fetchStations, fetchTeams, fetchShifts, updatePersonnel } from '../api'
 import { RANKS, DESIGNATIONS, phoneError, emailError, passwordErrors, ICON_KEY } from './resourceFormOptions'
 import {
@@ -86,6 +87,7 @@ export default function EditPersonnelModal({ personnel, onClose, onSubmit }) {
   const shiftMismatch = team && team.shift_id != null && form.shift_id !== '' && String(team.shift_id) !== form.shift_id
 
   const fullName = `${trimmed.per_firstname} ${trimmed.per_lastname}`.trim()
+  const subtitle = [initial.per_rank, teamName].filter(Boolean)
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -126,16 +128,21 @@ export default function EditPersonnelModal({ personnel, onClose, onSubmit }) {
       <AppModal
         eyebrow="EDIT PERSONNEL"
         title={fullName || 'Unnamed personnel'}
-        subtitle={[initial.per_rank, teamName].filter(Boolean).join(' · ') || null}
+        subtitle={subtitle.length > 0 ? subtitle.map((part, index) => (
+          <span key={index}>
+            {index > 0 && <span className="edit-form-separator" aria-hidden="true"> | </span>}
+            {part}
+          </span>
+        )) : null}
         onClose={onClose}
         width={600}
-        className="eim-panel"
+        className="eim-panel edit-form-modal"
         dismissible={!saving && !reviewing}
       >
         <form onSubmit={handleSubmit} noValidate>
           <div className="eim-body">
             <section className="eim-section">
-              <SectionHead title="Identity" desc="Name and how to reach them." />
+              <SectionHead title="Identity" desc="Name and how to reach them" />
               <div className="eim-row">
                 <Field label="First name" required changed={isChanged('per_firstname')}>
                   <input
@@ -168,7 +175,7 @@ export default function EditPersonnelModal({ personnel, onClose, onSubmit }) {
             </section>
 
             <section className="eim-section">
-              <SectionHead title="Service" desc="Rank, role, station and shift." />
+              <SectionHead title="Service" desc="Rank, role, station and shift" />
               <div className="eim-row">
                 <Field label="Rank" required changed={isChanged('per_rank')}>
                   <select value={form.per_rank} onChange={e => set('per_rank', e.target.value)}>
@@ -198,18 +205,18 @@ export default function EditPersonnelModal({ personnel, onClose, onSubmit }) {
               </div>
               {shiftMismatch && (
                 <Callout>
-                  {teamName} runs on {shiftName(String(team.shift_id))}. Move them to a matching team on the Teams page too.
+                  {teamName} runs on {shiftName(String(team.shift_id))}. Move them to a matching team on the Teams page too
                 </Callout>
               )}
               <LockedNote>
                 {teamName
-                  ? <>Member of <strong>{teamName}</strong>. Team assignments are managed on the Teams page.</>
-                  : <>Not on a team. Add them from the Teams page.</>}
+                  ? <>Member of <strong>{teamName}</strong>. Team assignments are managed on the Teams page</>
+                  : <>Not on a team. Add them from the Teams page</>}
               </LockedNote>
             </section>
 
             <section className="eim-section">
-              <SectionHead title="Account" desc="Mobile app sign-in." changed={isChanged('user_email') || pwdSet} />
+              <SectionHead title="Account" desc="Mobile app sign-in" changed={isChanged('user_email') || pwdSet} />
               <Field label="Email" changed={isChanged('user_email')}>
                 <input
                   type="email"

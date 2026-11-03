@@ -275,6 +275,10 @@
   color: var(--text-secondary);
 }
 
+.lp-separator {
+  color: var(--text-tertiary);
+}
+
 /* ── Hero copy ────────────────────────────────────────────────────────────── */
 
 /* Auto margins on both sides split the free space, so the copy floats midway
@@ -497,7 +501,7 @@
 }
 
 .lp-field-input::placeholder {
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-weight: 400;
 }
 

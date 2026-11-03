@@ -13,9 +13,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 import state
-from config import UPLOAD_ROOT
+from config import REPORT_PHOTO_STORAGE, UPLOAD_ROOT
+from services.report_photos import check_report_photo_storage
 from config import BLACKLIST_REAPER_INTERVAL_SECONDS, WATCHDOG_INTERVAL_SECONDS
 from routers import (
     capstone_reports,
@@ -37,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    await run_in_threadpool(check_report_photo_storage)
     state.main_event_loop = asyncio.get_running_loop()
 
     from services.routing_reload import reload_routing, poll_routing_changes
@@ -102,8 +105,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve uploaded report photos as static files (read-only).
-app.mount("/uploads", StaticFiles(directory=UPLOAD_ROOT), name="uploads")
+# Only local development serves disk copies. Supabase mode must not expose
+# historical local files alongside the private bucket.
+if REPORT_PHOTO_STORAGE == "local":
+    app.mount("/uploads", StaticFiles(directory=UPLOAD_ROOT), name="uploads")
 
 
 # ── Routers ───────────────────────────────────────────────────────────────────

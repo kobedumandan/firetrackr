@@ -177,13 +177,15 @@ python -m alembic upgrade head
 python -m alembic current
 ```
 
-The current migration head in this combined web checkout is `0028`. Revisions
+The current migration head in this combined web checkout is `0033`. Revisions
 from the old feature branch with reused IDs are archived unchanged; see
 [legacy migration reconciliation](backend/alembic/legacy_versions/README.md)
 before upgrading a database previously on `feature/command-map-layers`.
 Main revisions
 `0025`/`0026` retain the original constraint/model registry history; `0027`/`0028`
-add operational timing and response performance. The earlier response-only
+add operational timing and response performance. Revisions `0029`–`0032` add
+constraint schedules, baseline overrides, operation completion and administrator
+reports; `0033` preserves legacy dispatch attribution fields. The earlier response-only
 worktree uses different migrations with overlapping revision numbers: use a fresh
 database or the verified original constraint/model chain, rather than that
 worktree's review database. Refresh **Schemas > public
@@ -307,6 +309,31 @@ rotation. The separate Google 3D viewer has been removed. These styles do not
 use `VITE_GOOGLE_MAPS_API_KEY`; an existing value in your local `.env` can remain
 but is unused. Do not put a Google key in the CARTO setting. Other maps, such
 as metrics and planning, retain their existing behavior.
+
+## Supabase database migration
+
+The configured development API now uses Supabase PostgreSQL/PostGIS and private
+report-photo Storage (2026-11-03). The original local database and migration
+backups are retained. The API and dashboard still run locally; public hosting is
+a separate step.
+
+Follow the [database setup guide](documentation/supabase-database-setup.md) to save
+a separate target connection, verify PostGIS and permissions, copy existing data,
+and cut over with a rollback path. `SUPABASE_DATABASE_URL` is a preparation value;
+the application continues using `DATABASE_URL` until that cutover is performed.
+The connection pool supports `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` and
+`DB_CONNECT_TIMEOUT`. Use the session pooler for the backend's advisory locks.
+
+## Report photo storage
+
+Report photos use local disk by default. For hosted deployments, set up a private
+Supabase bucket using the [step-by-step storage guide](documentation/supabase-storage-setup.md).
+This can be tested before migrating the application database. The backend owns
+uploads and generates temporary viewing links; Supabase secrets stay on the server.
+Copy existing photos with their original filenames before enabling Supabase mode.
+Dispatchers can add photos from the after-action report modal in Incident Details
+using drag and drop or the file picker. JPG, PNG and WebP are supported at up to
+10 MB per photo, with eight photos total including attachments already on the report.
 
 ## Working with a groupmate using branches
 

@@ -1,5 +1,6 @@
 import { useState, useId } from "react";
 import "../styles/RightSidebar.css";
+import "../styles/IncidentsPage.css";
 import "../styles/CommandIncidentPanel.css";
 import AnalysisIcon from "./AnalysisIcon";
 import DispatchModal from "./DispatchModal";
@@ -311,7 +312,7 @@ function AssignedTeam({ dispatch }) {
   const members = [...(dispatch.members || [])].sort((a, b) => Number(isTeamLeader(b)) - Number(isTeamLeader(a)));
   const leader = members.find(isTeamLeader);
   return <article className="dispatch-team-card ci-team-card">
-    <header className="dispatch-team-header"><span className="ci-team-icon"><FireTruckIcon /></span><div className="dispatch-team-meta"><h4 className="dispatch-team-name">{dispatch.team_name || "Unnamed team"}</h4><span className="dispatch-team-station">{dispatch.station_name || "Station not recorded"}{dispatch.team_code ? ` · ${dispatch.team_code}` : ''}</span></div><span className="ci-dispatch-status" data-status={dispatch.dispatch_status}>{readableStatus(dispatch.dispatch_status)}</span></header>
+    <header className="dispatch-team-header"><span className="ci-team-icon"><FireTruckIcon /></span><div className="dispatch-team-meta"><h4 className="dispatch-team-name">{dispatch.team_name || "Unnamed team"}</h4><span className="dispatch-team-station">{dispatch.station_name || "Station not recorded"}{dispatch.team_code && <> <span className="ci-section-separator" aria-hidden="true">|</span> {dispatch.team_code}</>}</span></div><span className="ci-dispatch-status" data-status={dispatch.dispatch_status}>{readableStatus(dispatch.dispatch_status)}</span></header>
     <div className="ci-team-context">{dispatch.truck_platenums?.length > 0 && <span>{dispatch.truck_platenums.join(" · ")}</span>}<span>Dispatched {fmtTime(dispatch.dispatch_at)}{dispatch.dispatch_at ? ' PHT' : ''}</span>{leader && <span className="ci-lead-preview">Team leader · {leader.name || "Name not recorded"}</span>}</div>
     {members.length ? <details className="ci-roster"><summary><span>Team roster<span className="ci-count">{members.length}</span></span><AnalysisIcon name="chevron" /></summary><div className="dispatch-members">{members.map((member) => <div key={member.per_id} className={`dispatch-member-row${isTeamLeader(member) ? ' dispatch-member-leader' : ''}`}><span className="dispatch-member-av">{member.initials || '?'}</span><div className="dispatch-member-info"><span className="dispatch-member-name">{member.name || "Name not recorded"}</span><span className="dispatch-member-rank">{member.rank || "Rank not recorded"}</span></div><span className="ci-member-role">{roleOf(member) || "Role not recorded"}</span></div>)}<p className="ci-roster-note">Current team membership; attendance is not confirmed here.</p></div></details> : <p className="ci-roster-unavailable">Team roster not recorded.</p>}
   </article>;
@@ -342,8 +343,8 @@ function SevChip({ sev }) {
 }
 
 function StatusChip({ status }) {
-  const tone = ["contained", "closed", "on_scene"].includes(status) ? "green" : ["dispatched", "en_route", "pending"].includes(status) ? "amber" : status === "active" ? "fire" : "normal";
-  return <span className={`detail-chip ci-status chip-${tone}`}><span className="ci-status-dot" />{readableStatus(status)}</span>;
+  const statusClass = ["contained", "on_scene"].includes(status) ? "sp-contained" : ["dispatched", "en_route"].includes(status) ? "sp-dispatched" : ["pending", "active"].includes(status) ? "sp-pending" : "sp-closed";
+  return <span className={`status-pill ci-status ${statusClass}`}>{readableStatus(status)}</span>;
 }
 
 export default function RightSidebar({
@@ -422,15 +423,17 @@ export default function RightSidebar({
   const [routeSwitchError, setRouteSwitchError] = useState(null);
 
   if (constraintEditing) {
-    return <div className="right-sidebar-dock right-sidebar-dock--collapsed">
+    return <div className="right-sidebar-dock right-sidebar-dock--collapsed" data-view-mode={viewMode}>
       {viewModeButtons}
-      <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+      <div className="command-map-view-tools">
+        <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+      </div>
     </div>;
   }
 
   if (collapsed) {
     return (
-        <div className="right-sidebar-dock right-sidebar-dock--collapsed ci-dock">
+        <div className="right-sidebar-dock right-sidebar-dock--collapsed ci-dock" data-view-mode={viewMode}>
         <div className="right-sidebar-dock-top">
         <button
           className="right-sidebar-float-btn"
@@ -443,17 +446,19 @@ export default function RightSidebar({
         </button>
         {viewModeButtons}
         </div>
-        <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+        <div className="command-map-view-tools">
+          <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+        </div>
       </div>
     );
   }
 
   return (
     <>
-      <div className="right-sidebar-dock ci-dock">
+      <div className="right-sidebar-dock ci-dock" data-view-mode={viewMode}>
       <aside className="sidebar-right ci-sidebar" aria-label="Incident view">
         <div className="sidebar-tabs">
-          <div className="ci-panel-heading"><span className="ci-eyebrow">Command</span><h2 className="sidebar-section-header">Incident view</h2></div>
+          <div className="ci-panel-heading"><h2 className="sidebar-section-header"><IncidentTabIcon />Incident view</h2></div>
           <button
             className="sidebar-collapse-btn--right"
             onClick={onToggleCollapse}
@@ -476,8 +481,8 @@ export default function RightSidebar({
               <div className="detail-status-row">
                 <SevChip sev={incident.sev} />
                 <span className="detail-chip ci-alarm-chip"><AnalysisIcon name="preparation" />{incident.alarm || "Alarm not recorded"}</span>
+                <span className="ci-report-time"><TimeIcon /><time dateTime={headerTime || undefined} title={`${incident.report_received_at ? "Report received" : "Incident time"}: ${fullTime(headerTime)}`} aria-label={`${incident.report_received_at ? "Report received" : "Incident time"}: ${fullTime(headerTime)}${headerTime ? ' PHT' : ''}`}>{fmtTime(headerTime)}{headerTime ? ' PHT' : ''}</time></span>
               </div>
-              <div className="ci-report-time"><TimeIcon /><span>{incident.report_received_at ? "Report received" : "Incident time"}</span><time dateTime={headerTime || undefined} title={fullTime(headerTime)}>{fmtTime(headerTime)}{headerTime ? ' PHT' : ''}</time></div>
             </div>
 
             <div className="sidebar-tabs--below">
@@ -521,7 +526,7 @@ export default function RightSidebar({
             });
 
             return (
-              <div className="detail-body">
+              <div className="detail-body ci-routing-body">
                 {incidentDispatches.length === 0 && <div className="ci-empty-inline">No teams assigned yet. Route options will appear after dispatch.</div>}
                 {incidentDispatches.length > 0 && (
                   <>
@@ -567,9 +572,9 @@ export default function RightSidebar({
                   const confirming = forceRerouteConfirm === d.dispatch_id;
 
                   return (
-                    <div key={d.dispatch_id}>
+                    <div key={d.dispatch_id} className="ci-route-group">
                       <div className="detail-section-title">
-                        Routes · {teamName}
+                        Routes <span className="ci-section-separator" aria-hidden="true">|</span> {teamName}
                       </div>
 
                       {sorted.map((r) => (
@@ -672,19 +677,18 @@ export default function RightSidebar({
                           </div>
                         ) : (
                           <button
+                            type="button"
                             className="btn-secondary route-reroute-btn"
                             onClick={() =>
                               setForceRerouteConfirm(d.dispatch_id)
                             }
                           >
-                            ↺ Force Reroute
+                            <AnalysisIcon name="refresh" /><span>Force Reroute</span>
                           </button>
                         ))}
                     </div>
                   );
                 })}
-
-                {incidentDispatches.length === 0 && <div className="ci-empty ci-empty--inline"><span><AnalysisIcon name="travel" /></span><h3>No dispatch routes yet</h3><p>Assigned teams and their route choices appear here after dispatch.</p></div>}
 
                 {deviatedPersonnel.map((p) => {
                   const dispatch = incidentDispatches.find(
@@ -693,15 +697,10 @@ export default function RightSidebar({
                   return (
                     <div
                       key={p.per_id}
-                      className="routing-panel"
-                      style={{
-                        marginTop: 10,
-                        borderColor: "rgba(255,176,32,0.4)",
-                      }}
+                      className="routing-panel ci-deviation-panel"
                     >
                       <div
-                        className="routing-title"
-                        style={{ color: "var(--accent-amber, #ffb020)" }}
+                        className="routing-title ci-deviation-title"
                       >
                         ⚠ DEVIATION ACTIVE
                       </div>
@@ -712,8 +711,7 @@ export default function RightSidebar({
                       <div className="routing-row">
                         <span className="routing-row-label">Status</span>
                         <span
-                          className="routing-row-value"
-                          style={{ color: "var(--accent-amber, #ffb020)" }}
+                          className="routing-row-value ci-deviation-value"
                         >
                           Off Route — branch path active
                         </span>
@@ -728,29 +726,14 @@ export default function RightSidebar({
                       )}
 
                       {rerouteConfirm === p.dispatch_id ? (
-                        <div
-                          style={{
-                            marginTop: 10,
-                            padding: "10px",
-                            background: "rgba(255,77,26,0.08)",
-                            borderRadius: 6,
-                            border: "1px solid rgba(255,77,26,0.3)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              color: "var(--accent-fire)",
-                              fontSize: 12,
-                              marginBottom: 8,
-                            }}
-                          >
+                        <div className="route-reroute-confirm">
+                          <div className="route-reroute-warning">
                             ⚠ This replaces the current route entirely. Use only
                             if the branch path is insufficient.
                           </div>
-                          <div style={{ display: "flex", gap: 8 }}>
+                          <div className="route-reroute-actions">
                             <button
                               className="btn-dispatch"
-                              style={{ flex: 1, fontSize: 12 }}
                               disabled={rerouteLoading}
                               onClick={() => {
                                 setRerouteLoading(true);
@@ -765,7 +748,6 @@ export default function RightSidebar({
                             </button>
                             <button
                               className="btn-secondary"
-                              style={{ flex: 1, fontSize: 12 }}
                               onClick={() => setRerouteConfirm(null)}
                             >
                               Cancel
@@ -774,21 +756,15 @@ export default function RightSidebar({
                         </div>
                       ) : (
                         <button
-                          className="btn-secondary"
-                          style={{ width: "100%", marginTop: 10, fontSize: 12 }}
+                          type="button"
+                          className="btn-secondary route-reroute-btn"
                           onClick={() => setRerouteConfirm(p.dispatch_id)}
                         >
-                          ↺ Full Reroute from Current Position
+                          <AnalysisIcon name="refresh" /><span>Full Reroute from Current Position</span>
                         </button>
                       )}
                       {dispatch && (
-                        <div
-                          style={{
-                            color: "var(--text-muted)",
-                            fontSize: 11,
-                            marginTop: 6,
-                          }}
-                        >
+                        <div className="ci-deviation-team">
                           Team: {dispatch.team_name}
                           {dispatch.team_code ? ` · ${dispatch.team_code}` : ""}
                         </div>
@@ -804,7 +780,7 @@ export default function RightSidebar({
           <div className="detail-body ci-incident-body">
             <section className="ci-response-summary" aria-label="Response overview">
               <AnalysisIcon name="travel" />
-              <div><strong>{incidentDispatches.length} {incidentDispatches.length === 1 ? 'team assigned' : 'teams assigned'}</strong><span>{incidentDispatches.length ? `${incidentDispatches.filter(d => d.dispatch_status === 'on_scene').length} on scene · ${incidentDispatches.filter(d => d.dispatch_status === 'en_route').length} en route` : 'No units have been assigned to this incident.'}</span></div>
+              <div><strong>{incidentDispatches.length} {incidentDispatches.length === 1 ? 'Team Assigned' : 'Teams Assigned'}</strong><span>{incidentDispatches.length ? <>{incidentDispatches.filter(d => d.dispatch_status === 'on_scene').length} On Scene <span className="ci-section-separator" aria-hidden="true">|</span> {incidentDispatches.filter(d => d.dispatch_status === 'en_route').length} En Route</> : 'No units have been assigned to this incident.'}</span></div>
               {incidentDispatches.length > 0 && <button className="ci-text-button" onClick={() => { setActiveTab('Routing'); document.getElementById(`${tabId}-Routing`)?.focus(); }}>View routes<AnalysisIcon name="chevron" /></button>}
             </section>
             <section className="ci-section">
@@ -816,7 +792,6 @@ export default function RightSidebar({
                 <div><dt>Reported by</dt><dd>{incident.reporter || 'Not recorded'}</dd></div>
                 <div><dt>Casualties</dt><dd className={incident.casualties && incident.casualties.toLowerCase() !== 'none' ? 'ci-caution' : undefined}>{incident.casualties || 'Not recorded'}</dd></div>
               </dl>
-              <details className="ci-report-details"><summary>Report timestamps <AnalysisIcon name="chevron" /></summary><dl className="ci-facts ci-time-facts"><div><dt>Incident time · PHT</dt><dd>{fullTime(incident.reported_at)}</dd></div><div><dt>Report received · PHT</dt><dd>{fullTime(incident.report_received_at)}</dd></div></dl></details>
             </section>
             {incident.remarks && <section className="ci-section ci-notes"><h4>Incident notes</h4><p>{incident.remarks}</p></section>}
             <section className="ci-section ci-assigned-teams"><h4>Assigned teams<span className="ci-count">{incidentDispatches.length}</span></h4>
@@ -832,7 +807,6 @@ export default function RightSidebar({
         </div>
         {canRespond && (
           <div className="detail-actions ci-action-footer">
-            <span className="ci-action-label">Response actions</span>
             <button
               className="btn-dispatch"
               onClick={() => setShowDispatch(true)}
@@ -855,7 +829,9 @@ export default function RightSidebar({
         )}
       </aside>
       {viewModeButtons}
-      <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+      <div className="command-map-view-tools">
+        <div ref={onLayerToolsHostChange} className="command-map-layer-slot" />
+      </div>
       </div>
 
       {showDispatch && incident && (

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { updateIncident } from '../api'
+import '../styles/EditFormModal.css'
 import {
   STATUSES, SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES, statusMetaOf,
   ICON_CLOSE, ICON_MINUS, ICON_PLUS, ICON_LOCK,
 } from './incidentFormOptions'
 import {
-  Icon, Field, SectionHead, Segmented, StatusSteps, CasualtyPicker, Callout, LockedNote,
+  Icon, Field, SectionHead, Segmented, StatusSteps, Callout,
   ReviewChanges,
 } from './incidentForm'
 
@@ -18,8 +19,6 @@ const FIELD_META = [
   ['fire_structure_type',   'Structure type'],
   ['fire_dispatch_type',    'Dispatch type'],
   ['fire_units_assigned',   'Units assigned'],
-  ['fire_casualties',       'Casualties'],
-  ['fire_remarks',          'Remarks', null, true],
   ['fire_location_name',    'Area / Barangay'],
   ['fire_address',          'Street address'],
   ['fire_reporter_name',    'Reported by'],
@@ -36,28 +35,22 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
     fire_alarm_level:      incident.alarm      || '1st Alarm',
     fire_structure_type:   incident.structure  || 'Residential',
     fire_dispatch_type:    incident.dispatch_type || '',
-    fire_casualties:       incident.casualties || 'None',
     fire_units_assigned:   incident.units      ?? 0,
     fire_reporter_name:    incident.reporter && incident.reporter !== '—' ? incident.reporter : '',
     fire_reporter_contact: '',
-    fire_remarks:          incident.remarks    || '',
   }))
   const [form, setForm] = useState(initial)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const [reviewing, setReviewing] = useState(false)
 
-  const showCasualties = form.fire_status === 'closed' || form.fire_status === 'contained'
-  const showRemarks    = form.fire_status === 'closed'
   const closingNow     = form.fire_status === 'closed' && initial.fire_status !== 'closed'
   const statusMeta     = statusMetaOf(form.fire_status)
 
-  // Values as they'd be saved — gated fields reset when their section is hidden.
+  // Outcome fields are managed in the dedicated after-action report modal.
   const effective = {
     ...form,
     fire_units_assigned: Number(form.fire_units_assigned) || 0,
-    fire_casualties:     showCasualties ? form.fire_casualties : 'None',
-    fire_remarks:        showRemarks ? form.fire_remarks : '',
   }
   // PATCH only what changed; a blank contact means "keep the stored one".
   const changes = Object.fromEntries(
@@ -113,7 +106,7 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
   return (
     <>
     <div className="apm-overlay" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
-      <div className="apm-panel eim-panel" role="dialog" aria-modal="true" aria-labelledby="eim-title">
+      <div className="apm-panel eim-panel edit-form-modal" role="dialog" aria-modal="true" aria-labelledby="eim-title">
 
         <div className="eim-header">
           <div className="eim-header-main">
@@ -136,16 +129,16 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
 
           {/* ── Status progression ── */}
           <section className="eim-section">
-            <SectionHead title="Status" desc="Where this incident is in its lifecycle." changed={isChanged('fire_status')} />
-            <StatusSteps value={form.fire_status} onChange={v => set('fire_status', v)} />
+            <SectionHead title="Status" desc="Where this incident is in its lifecycle" changed={isChanged('fire_status')} />
+            <StatusSteps value={form.fire_status} onChange={v => set('fire_status', v)} hint={statusMeta.hint.replace(/\.$/, '')} />
             {closingNow && (
-              <Callout>When you save, active crews and trucks on this incident are released and it is added to the heatmap.</Callout>
+              <Callout>When you save, active crews and trucks on this incident are released and it is added to the heatmap</Callout>
             )}
           </section>
 
           {/* ── Assessment ── */}
           <section className="eim-section">
-            <SectionHead title="Assessment" desc="How serious the fire is and what's committed to it." />
+            <SectionHead title="Assessment" desc="How serious the fire is and what's committed to it" />
 
             <Field label="Dispatch type" changed={isChanged('fire_dispatch_type')}>
               <select value={form.fire_dispatch_type} onChange={e => set('fire_dispatch_type', e.target.value)}>
@@ -187,35 +180,9 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
             </div>
           </section>
 
-          {/* ── Outcome (unlocks as the incident progresses) ── */}
-          <section className="eim-section">
-            <SectionHead title="Outcome" desc="Recorded once the fire is contained." />
-            {showCasualties ? (
-              <>
-                <Field label="Casualties" changed={isChanged('fire_casualties')}>
-                  <CasualtyPicker value={form.fire_casualties} onChange={v => set('fire_casualties', v)} />
-                </Field>
-                {showRemarks && (
-                  <Field label="Remarks / report" changed={isChanged('fire_remarks')}>
-                    <textarea
-                      placeholder="Cause, investigation findings, or post-incident notes"
-                      value={form.fire_remarks}
-                      onChange={e => set('fire_remarks', e.target.value)}
-                      rows={3}
-                    />
-                  </Field>
-                )}
-              </>
-            ) : (
-              <LockedNote>
-                Set the status to <strong>Contained</strong> or <strong>Closed</strong> to record casualties and remarks.
-              </LockedNote>
-            )}
-          </section>
-
           {/* ── Location ── */}
           <section className="eim-section">
-            <SectionHead title="Location" desc="The pin can't be moved; only the labels can." />
+            <SectionHead title="Location" desc="The pin can't be moved; only the labels can" />
             <div className="eim-row">
               <Field label="Area / Barangay" required changed={isChanged('fire_location_name')}>
                 <input
@@ -243,7 +210,7 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
 
           {/* ── Reporter ── */}
           <section className="eim-section">
-            <SectionHead title="Reporter" desc="Who called it in." />
+            <SectionHead title="Reporter" desc="Who called it in" />
             <div className="eim-row">
               <Field label="Reported by" changed={isChanged('fire_reporter_name')}>
                 <input

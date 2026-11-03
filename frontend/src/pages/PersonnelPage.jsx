@@ -7,6 +7,8 @@ import ConfirmModal from "../components/ConfirmModal";
 import { fetchPersonnel, createPersonnel, deletePersonnel } from "../api";
 import { isOnCurrentShift } from "../utils/shift";
 import useSplitPane from "../hooks/useSplitPane";
+import ExportRegisterModal from "../components/ExportRegisterModal";
+import { createResourceExport } from "../utils/resourceExport";
 
 function ExportIcon() {
   return (
@@ -340,6 +342,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
   const [showAddModal, setShowAddModal] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [exportPreview, setExportPreview] = useState(null);
   const { width: detailWidth, handleProps: resizeHandle } = useSplitPane({ storageKey: "personnel.detailWidth", minMain: 687 });
 
   useEffect(() => {
@@ -463,6 +466,17 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
 
   const selected = shiftedPersonnel.find((p) => p.id === selectedId);
 
+  function openExport() {
+    setExportPreview(createResourceExport("personnel",
+      ["Code", "Name", "Rank", "Status", "Shift", "Station", "Team", "Designation", "Email", "Joined", "Current incident", "Tracking"],
+      filtered.map((p) => [p.id, p.name, p.rank, TAB_LABELS[p.status] ?? p.status, p.shift_name, p.station, p.team_name, p.designation, p.email, p.joined, p.incident, (TRACKING[trackingType(p)] ?? TRACKING.offline).label]),
+      {
+        filters: [["Status", TAB_LABELS[activeStatus] ?? "All"], ["Station", stationFilter || "All"], ["Rank", rankFilter || "All"], ...(search.trim() ? [["Search", search.trim()]] : [])],
+        sort: `${({ id: "Code", name: "Name", rank: "Rank", status: "Status", station: "Station" })[sortCol] ?? sortCol} (${sortDir === 1 ? "ascending" : "descending"})`,
+      },
+    ));
+  }
+
   const emptyMessage = error
     ? `Failed to load personnel: ${error}`
     : "No personnel match your filters";
@@ -488,7 +502,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
               <UnfoldIcon />
             </div>
             <div className="per-header-actions">
-              <button className="per-btn-secondary table-export-btn">
+              <button type="button" className="per-btn-secondary table-export-btn" onClick={openExport} disabled={loading || filtered.length === 0}>
                 <ExportIcon />
                 Export
               </button>
@@ -788,6 +802,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
         </div>
       </div>
 
+      {exportPreview && <ExportRegisterModal resource={exportPreview} onClose={() => setExportPreview(null)} />}
       {showAddModal && (
         <AddPersonnelModal
           onClose={() => setShowAddModal(false)}

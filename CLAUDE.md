@@ -72,7 +72,7 @@ Operational response measurements live in
 [ResponsePerformanceView.jsx](frontend/src/components/ResponsePerformanceView.jsx),
 with incident lifecycle cohorts in `backend/services/response_operations.py` and
 shared timing quality rules in `backend/services/timing_metrics.py`. Apply migrations
-through `0031` before starting this revision. The Analysis sidebar page groups
+through `0033` before starting this revision. The Analysis sidebar page groups
 Response & Operations, Coverage Planning and Operational Reports under shared tabs;
 Metrics contains the overview only. See `frontend/src/pages/AnalysisPage.jsx`;
 Response Performance's service is `backend/services/response_performance.py`. Mobile acknowledgement
@@ -165,7 +165,7 @@ Configuration and default values are catalogued in [KNOWLEDGE.md](KNOWLEDGE.md).
 
 ## Database and migration work
 
-The current chain ends at `0030_baseline_constraint_overrides.py`. Original constraint/model
+The current chain ends at `0033_preserve_legacy_dispatch_attribution.py`. Original constraint/model
 revisions `0025`/`0026` are retained; new `0027` adds operational timing. Do not use
 the earlier response-only review database, whose numeric revision IDs represent
 different migrations. Add a new migration for
@@ -185,8 +185,33 @@ Keep models, migration and affected API/client contracts aligned. Check PostGIS
 SRID/types and both route/dispatch foreign-key paths. Use a disposable database for
 upgrade/downgrade testing. The connection URL comes from `.env` through
 [alembic/env.py](backend/alembic/env.py), not a committed credential in `alembic.ini`.
-Supabase migration remains a [plan](plans-todo/supabase-migration.md); proposed pool
-environment variables are not implemented. Advisory locks need session affinity.
+The configured development API switched to Supabase PostgreSQL/PostGIS on
+2026-11-03; the API and frontend still run locally. See the
+[database setup guide](documentation/supabase-database-setup.md) for verification
+and retained local backups. Revision `0033` preserves legacy dispatch text fields
+without treating them as verified actor identity.
+`DB_POOL_SIZE`, `DB_MAX_OVERFLOW` and `DB_CONNECT_TIMEOUT` are implemented.
+`SUPABASE_DATABASE_URL` is a separate preparation target, not an automatic switch;
+the application uses `DATABASE_URL`. Advisory locks need session affinity, so use
+the TLS Session pooler rather than transaction pooling. Keep `database.py`'s
+explicit per-connection `extra_float_digits=3` hook; startup options alone did not
+override the pooler's rounded floating-point output.
+List reads now batch team relationships and group incident status counts.
+The current Supabase sample uses three SELECTs per team list or incident page,
+excluding authentication; preserve the period-only incident stats semantics.
+Personnel/location lists, dispatch history, stations, fleet, Metrics counters and
+response comparisons also batch their related data. The map feed reuses batched
+personal-arrival and assignment evidence without changing duty/ambiguity rules.
+Keep default tracking-policy calls compatible with mobile callers.
+See [list performance evidence](KNOWLEDGE.md#list-query-performance-2026-11-03).
+Report photos independently support an opt-in private Supabase Storage bucket;
+follow [storage setup](documentation/supabase-storage-setup.md) and copy existing
+filenames before switching `REPORT_PHOTO_STORAGE` from `local` to `supabase`.
+FastAPI continues to own authentication after both database and Storage cutover.
+Dispatcher report edits with new photos use administrator-only multipart POST
+`/api/incidents/{fire_id}/report/photos` (`report` JSON plus `photos` files).
+Text-only edits retain the existing JSON PUT. The edit modal supports drag/drop,
+previews and photo-only changes; the eight-photo limit includes existing attachments.
 
 ## Validation and security reminders
 

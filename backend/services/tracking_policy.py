@@ -35,14 +35,20 @@ def active_dispatches(db, per_id):
         DispatchRecord.dispatch_at.desc(), DispatchRecord.dispatch_id.desc()).all()
 
 
-def policy(db, person, now=None):
+def policy(db, person, now=None, *, dispatches=None, arrivals=None):
+    """Derive tracking policy, optionally reusing a roster's server-side reads."""
     now = now or datetime.now(timezone.utc)
     allowed, reason, start, end = duty(person, now)
-    dispatches = active_dispatches(db, person.per_id) if allowed else []
+    if allowed:
+        dispatches = active_dispatches(db, person.per_id) if dispatches is None else dispatches
+    else:
+        dispatches = []
     if len(dispatches) > 1:
         allowed, reason = False, 'ambiguous_dispatch_assignment'
     dispatch = dispatches[0] if allowed and dispatches else None
-    mode = ('on_scene' if arrival_for(db, dispatch, person.per_id) else 'dispatch') if dispatch else 'standby'
+    arrived = (arrival_for(db, dispatch, person.per_id) if arrivals is None
+               else arrivals.get((dispatch.dispatch_id, person.per_id))) if dispatch else None
+    mode = ('on_scene' if arrived else 'dispatch') if dispatch else 'standby'
     return {'mode': mode if allowed else 'off', 'on_duty': allowed, 'reason': reason,
             'interval_ms': (20000 if mode == 'on_scene' else 3000 if mode == 'dispatch' else 30000) if allowed else None,
             'dispatch_id': dispatch.dispatch_id if dispatch else None,

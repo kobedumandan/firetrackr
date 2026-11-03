@@ -6,6 +6,8 @@ import AddStationModal from "../components/AddStationModal";
 import EditStationModal from "../components/EditStationModal";
 import ConfirmModal from "../components/ConfirmModal";
 import useSplitPane from "../hooks/useSplitPane";
+import ExportRegisterModal from "../components/ExportRegisterModal";
+import { createResourceExport } from "../utils/resourceExport";
 
 function ExportIcon() {
   return (
@@ -70,6 +72,16 @@ function EditIcon() {
 }
 
 const stationKey = (id) => `STA-${String(id).padStart(3, "0")}`;
+
+function MetadataParts({ values }) {
+  const parts = values.filter(Boolean);
+  return parts.length ? parts.map((part, index) => (
+    <span key={index}>
+      {index > 0 && <span className="sta-meta-separator" aria-hidden="true"> | </span>}
+      {part}
+    </span>
+  )) : "—";
+}
 
 function dbToStation(s) {
   return {
@@ -362,9 +374,9 @@ function StationDetail({ s, stations, onSelectStation, onEdit, onDelete, onViewO
                 <span className="sta-line-icon"><Sym name="location_on" /></span>
                 <span className="sta-line-text">
                   <span className="sta-line-name">{sub.name}</span>
-                  <span className="sta-line-sub">{[sub.code, clean(sub.district)].filter(Boolean).join(" · ")}</span>
+                  <span className="sta-line-sub"><MetadataParts values={[sub.code, clean(sub.district)]} /></span>
                 </span>
-                <span className="sta-line-meta">{sub.personnel} people · {sub.trucksList.length} trucks</span>
+                <span className="sta-line-meta">{sub.personnel} people<span className="sta-meta-separator" aria-hidden="true"> | </span>{sub.trucksList.length} trucks</span>
                 {sub.status === "inactive" && <span className="sta-pill sta-pill-muted">Inactive</span>}
                 <span className="sta-line-chev"><Sym name="chevron_right" /></span>
               </button>
@@ -381,7 +393,7 @@ function StationDetail({ s, stations, onSelectStation, onEdit, onDelete, onViewO
               <span className="sta-line-icon"><Sym name="groups" /></span>
               <span className="sta-line-text">
                 <span className="sta-line-name">{t.name}</span>
-                <span className="sta-line-sub">{[t.code, t.shift].filter(Boolean).join(" · ") || "—"}</span>
+                <span className="sta-line-sub"><MetadataParts values={[t.code, t.shift]} /></span>
               </span>
               <span className="sta-line-meta">{t.members} {t.members === 1 ? "member" : "members"}</span>
               <Pill kind="team" status={t.status} />
@@ -429,25 +441,14 @@ function StationDetail({ s, stations, onSelectStation, onEdit, onDelete, onViewO
 
 // ── Export ───────────────────────────────────────────────────────────────────
 
-function exportCsv(rows, stations) {
+function buildStationsExport(rows, stations, scope) {
   const nameOf = (id) => stations.find((s) => s.id === id)?.name || "";
   const header = ["Code", "Name", "Type", "Reports to", "Status", "Barangay", "Address", "Contact", "Commander", "Personnel", "Teams", "Trucks", "Trucks available", "Latitude", "Longitude"];
-  const esc = (v) => {
-    const t = v == null ? "" : String(v);
-    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-  };
-  const lines = rows.map((s) => [
+  return createResourceExport("stations", header, rows.map((s) => [
     s.code, s.name, s.type === "main" ? "Main" : "Sub", s.parent ? nameOf(s.parent) : "",
     s.status, clean(s.district), clean(s.address), clean(s.contact), clean(s.commander),
     s.personnel, s.teamsList.length, s.trucksList.length, trucksReady(s), s.latitude ?? "", s.longitude ?? "",
-  ].map(esc).join(","));
-  const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `stations-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  ]), scope);
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -463,6 +464,7 @@ export default function StationsPage({ onShowOnMap, initialStationId = null }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const [exportPreview, setExportPreview] = useState(null);
   const { width: listWidth, handleProps: resizeHandle } = useSplitPane({
     storageKey: "stations.listWidth", side: "left", initial: 340, min: 260, minMain: 480,
   });
@@ -575,7 +577,10 @@ export default function StationsPage({ onShowOnMap, initialStationId = null }) {
             <UnfoldIcon />
           </div>
           <div className="sta-header-actions">
-            <button className="sta-btn-secondary table-export-btn" onClick={() => exportCsv(filtered, stations)} disabled={filtered.length === 0}>
+            <button type="button" className="sta-btn-secondary table-export-btn" onClick={() => setExportPreview(buildStationsExport(filtered, stations, {
+              filters: [["Type", TAB_LABELS[activeTab]], ["Status", statusFilter || "All"], ...(search.trim() ? [["Search", search.trim()]] : [])],
+              sort: "Current page order",
+            }))} disabled={loading || filtered.length === 0}>
               <ExportIcon />
               Export
             </button>
@@ -679,7 +684,7 @@ export default function StationsPage({ onShowOnMap, initialStationId = null }) {
             <div className="sta-list-state">
               <Sym name="search_off" />
               <span>No stations match these filters.</span>
-              <button type="button" className="sta-link" onClick={() => { setSearch(""); setStatusFilter(""); setActiveTab("all"); }}>
+              <button type="button" className="sta-link" data-compact-action="reset-filter" onClick={() => { setSearch(""); setStatusFilter(""); setActiveTab("all"); }}>
                 Clear filters
               </button>
             </div>
@@ -702,6 +707,7 @@ export default function StationsPage({ onShowOnMap, initialStationId = null }) {
         </div>
       </div>
 
+      {exportPreview && <ExportRegisterModal resource={exportPreview} onClose={() => setExportPreview(null)} />}
       {showAddModal && (
         <AddStationModal
           onClose={() => setShowAddModal(false)}

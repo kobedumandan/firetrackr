@@ -146,10 +146,10 @@ def notify_dispatch_assigned(db: Session, dispatch, incident, team) -> None:
     where = incident.fire_location_name or incident.fire_address or "the incident"
     detail = " · ".join(x for x in (incident.fire_alarm_level, incident.fire_severity) if x)
     title = f"DISPATCH · {detail}" if detail else "DISPATCH"
-    body = f"{team.team_name or 'Your team'} to {where}. Open FireGIS for your route."
+    body = f"{team.team_name or 'Your team'} to {where}. Open FireTrackr for your route."
     sms = (
         f"BFP DISPATCH: {team.team_name or 'Your team'} to {where}"
-        f"{f' ({detail})' if detail else ''}. Open the FireGIS app for your route."
+        f"{f' ({detail})' if detail else ''}. Open the FireTrackr app for your route."
     )
     data = {
         "type":        "dispatch_assigned",

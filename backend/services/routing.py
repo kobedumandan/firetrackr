@@ -15,10 +15,11 @@ import routing_pool
 import state
 from config import (
     CONNECTOR_MERGE_TOLERANCE_M, DEVIATION_THRESHOLD_M, REJOIN_THRESHOLD_M,
+    DEVIATION_MAX_ACCURACY_M, DEVIATION_CONFIRMATION_WINDOW_SECONDS,
     ROUTING_POOL_TIMEOUT,
 )
 from database import SessionLocal
-from models import DispatchRecord, FireIncident, RoadObstruction, Route
+from models import DispatchRecord, FireIncident, LocationLog, RoadObstruction, Route
 from state import broadcast_threadsafe
 
 
@@ -392,6 +393,52 @@ def _recompute_deviation_routing_bg(
         broadcast_threadsafe(payload)
 
 
+def check_location_deviation(
+    db: Session,
+    dispatch: DispatchRecord,
+    per_id: int,
+    lat: float,
+    lon: float,
+    recorded_at: datetime,
+    accuracy_m: float | None,
+    previous_fix: tuple | None,
+    was_deviated: bool = False,
+) -> bool | None:
+    """Confirm automatic deviation with two recent, accurate accepted fixes.
+
+    ``previous_fix`` snapshots CurrentLocation before accepting this sample,
+    rather than using arbitrary history (which includes rejected/older fixes).
+    None means accuracy is insufficient to change state or schedule routing.
+    Explicit navigation requests still use the single-position distance check.
+    """
+    if accuracy_m is None or not 0 <= accuracy_m <= DEVIATION_MAX_ACCURACY_M:
+        return None
+    deviated, _ = _check_deviation(
+        db, dispatch, lat, lon, compute_connector=False, was_deviated=was_deviated
+    )
+    if not deviated or was_deviated:
+        return deviated
+    if previous_fix is None:
+        return False
+    previous_lat, previous_lon, previous_at = previous_fix
+    if previous_at.tzinfo is None:
+        previous_at = previous_at.replace(tzinfo=timezone.utc)
+    gap = (recorded_at - previous_at).total_seconds()
+    if not 0 < gap <= DEVIATION_CONFIRMATION_WINDOW_SECONDS:
+        return False
+    if dispatch.dispatch_at and previous_at < dispatch.dispatch_at:
+        return False
+    previous = db.query(LocationLog).filter(
+        LocationLog.per_id == per_id, LocationLog.recorded_at == previous_at,
+    ).order_by(LocationLog.log_id.desc()).first()
+    if previous is None or previous.accuracy_m is None or not 0 <= previous.accuracy_m <= DEVIATION_MAX_ACCURACY_M:
+        return False
+    confirmed, _ = _check_deviation(
+        db, dispatch, previous_lat, previous_lon, compute_connector=False, was_deviated=False
+    )
+    return confirmed
+
+
 def _check_deviation(
     db: Session,
     dispatch: DispatchRecord,
@@ -403,7 +450,7 @@ def _check_deviation(
     """
     Returns (is_deviated, connector_geojson | None).
     Uses PostGIS geography distance for metre-accurate checks.
-    Buffer zone (50–280 m) preserves the existing deviation state.
+    Buffer zone (10–25 m) preserves the existing deviation state.
 
     When `compute_connector` is False, deviation is still detected (cheap
     PostGIS distance) but the expensive connector routing is skipped — the

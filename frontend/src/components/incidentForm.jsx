@@ -65,7 +65,7 @@ export function Segmented({ options, value, onChange, label }) {
 
 /* Pending → Dispatched → Contained → Closed. Done steps recede, the ongoing
    step is amber, and a closed incident reads as fully done. */
-export function StatusSteps({ value, onChange }) {
+export function StatusSteps({ value, onChange, hint = statusMetaOf(value).hint }) {
   const idx = STATUSES.findIndex(s => s.value === value)
   return (
     <>
@@ -89,7 +89,7 @@ export function StatusSteps({ value, onChange }) {
           )
         })}
       </div>
-      <div className="eim-hint">{statusMetaOf(value).hint}</div>
+      <div className="eim-hint">{hint}</div>
     </>
   )
 }

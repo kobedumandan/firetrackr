@@ -1,10 +1,10 @@
 """Response team CRUD and team membership."""
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db
 from models import (
-    Personnel, ResponseTeam, ResponseTeamMember, Shift, Station, Truck, Users,
+    DispatchRecord, Personnel, ResponseTeam, ResponseTeamMember, Shift, Station, Truck, Users,
 )
 from schemas import TeamCreate, TeamMemberBody, TeamMemberRoleUpdate, TeamUpdate
 from security import require_admin
@@ -19,7 +19,21 @@ def get_teams(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    rows = db.query(ResponseTeam).order_by(ResponseTeam.team_id).all()
+    # Load everything the serializer reads without one query per team/member.
+    rows = (
+        db.query(ResponseTeam)
+        .options(
+            joinedload(ResponseTeam.station),
+            joinedload(ResponseTeam.shift),
+            joinedload(ResponseTeam.truck),
+            selectinload(ResponseTeam.members)
+            .joinedload(ResponseTeamMember.personnel)
+            .joinedload(Personnel.shift),
+            selectinload(ResponseTeam.dispatches),
+        )
+        .order_by(ResponseTeam.team_id)
+        .all()
+    )
     return [_team_dict(r) for r in rows]
 
 
@@ -56,9 +70,18 @@ def update_team(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    team = db.get(ResponseTeam, team_id)
+    # Dispatch creation also locks this team before reserving its truck. Keep the
+    # active-dispatch check and any truck edit in that same serialized order.
+    team = db.query(ResponseTeam).filter_by(team_id=team_id).populate_existing().with_for_update().first()
     if not team:
         raise HTTPException(status_code=404, detail="Team not found.")
+    if "truck_id" in body.model_fields_set and body.truck_id != team.truck_id:
+        active = db.query(DispatchRecord.dispatch_id).filter(
+            DispatchRecord.team_id == team_id,
+            DispatchRecord.dispatch_status.in_(("dispatched", "en_route", "on_scene")),
+        ).first()
+        if active:
+            raise HTTPException(status_code=409, detail="Cannot change a team's truck during an active dispatch.")
     if body.team_name   is not None: team.team_name   = body.team_name
     if body.team_code   is not None: team.team_code   = body.team_code
     if body.team_status is not None and body.team_status != team.team_status:

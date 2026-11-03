@@ -306,6 +306,48 @@
 }
 
 /* Donut */
+.m-donut-chart {
+  position: relative;
+  flex-shrink: 0;
+  width: fit-content;
+}
+
+.m-donut-chart .m-donut { display: block; }
+
+.m-donut-segment {
+  pointer-events: stroke;
+  transition: opacity 150ms ease, stroke-width 150ms ease;
+  outline: none;
+}
+
+.m-donut-segment.is-active { stroke-width: 12; }
+.m-donut-segment.is-muted { opacity: 0.4; }
+.m-donut-segment:focus-visible { stroke-width: 14; }
+
+.m-donut-tooltip {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, calc(-100% - 12px));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  box-shadow: 0 4px 16px #0003;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.m-donut-tooltip span { color: var(--text-secondary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .m-donut-segment { transition: none; }
+}
+
 .m-donut-wrap {
   display: flex;
   flex-direction: column;

@@ -15,7 +15,7 @@ import TeamsPage from './pages/TeamsPage'
 import TrucksPage from './pages/TrucksPage'
 import MetricsPage from './pages/MetricsPage'
 import AnalysisPage from './pages/AnalysisPage'
-import { invalidateOperationalTimes } from './api'
+import { invalidateOperationalTimes, notifyIncidentReportUpdated } from './api'
 import SettingsPage from './pages/SettingsPage'
 import LoginPage from './pages/LoginPage'
 import ToastStack from './components/ToastStack'
@@ -24,9 +24,11 @@ import { useNotifications, readNotifPrefs, NOTIF_STORAGE_KEY } from './hooks/use
 import { fetchActiveIncidents, fetchPersonnel, fetchStations, fetchDispatches, selectRoute, fetchPersonnelLocations, fullReroute, createIncident, fetchReporterSessions, invalidateModelRouting, notifyModelUpdate, WS_URL } from './api'
 import { readMapLayerPrefs, MAP_LAYER_STORAGE_KEY } from './utils/mapLayers'
 import useCommandShortcut from './hooks/useCommandShortcut'
+import useLivePersonnelLocations from './hooks/useLivePersonnelLocations'
 import { replaceDispatchRoutes } from './utils/dispatchRouteUpdates'
 import { isTrackerOffline } from './utils/trackerStatus'
 import { NotificationCursor } from './utils/notificationCursor'
+import { shouldRefreshOperationalData } from './utils/operationalUpdates'
 import './App.css'
 
 const ACTIVE_STATUSES = new Set(['pending', 'active', 'dispatched', 'contained'])
@@ -183,7 +185,9 @@ export default function App() {
   const [stations, setStations]                 = useState([])
   const [dispatchRoutes, setDispatchRoutes]           = useState([])
   const [dispatches, setDispatches]                   = useState([])
-  const [livePersonnelLocations, setLivePersonnelLocations] = useState([])
+  const [livePersonnelLocations, setLivePersonnelLocations] = useLivePersonnelLocations(
+    route.view === 'dashboard' && !showSettings && (activeNav === 'Command' || activeNav === 'Personnel')
+  )
   const [pendingReporterToken, setPendingReporterToken] = useState(null)
   const [reporterReceivedData, setReporterReceivedData] = useState(null)
   const pendingReporterTokenRef = useRef(null)
@@ -442,7 +446,10 @@ export default function App() {
             return
           }
           if (msg.notification_cursor && !notificationCursor.accept(msg.notification_cursor)) return
-          if (/^(incident_|dispatch_|personnel_arrived|report_submitted|route_updated)/.test(msg.type || '')) dataRevision += 1
+          if (/^(incident_|dispatch_|personnel_arrived|report_|route_updated)/.test(msg.type || '')) dataRevision += 1
+          if (msg.type === 'report_submitted' || msg.type === 'report_updated') {
+            notifyIncidentReportUpdated(msg.data.fire_id, msg.data.incident)
+          }
           if (['model_candidate_ready', 'model_training_failed', 'model_training_cancelled', 'model_promoted'].includes(msg.type)) {
             if (msg.type === 'model_promoted') invalidateModelRouting()
             notifyModelUpdate()
@@ -455,7 +462,7 @@ export default function App() {
               })
             }
           }
-          if (/^(operational_times_updated|incident_|dispatch_|route_updated)/.test(msg.type || '')) invalidateOperationalTimes()
+          if (shouldRefreshOperationalData(msg.type)) invalidateOperationalTimes()
           if (['incident_created', 'incident_updated', 'incident_deleted'].includes(msg.type)) {
             setHeatmapRevision(value => value + 1)
           }
@@ -946,7 +953,7 @@ export default function App() {
         alertsOpen={showAlerts}
         onToggleAlerts={toggleAlerts}
       />
-      <main className="app-content" id="main-content">
+      <main className="app-content" id="main-content" data-page={showSettings ? 'Settings' : activeNav}>
       {showSettings ? (
         <SettingsPage
           user={route.user}
@@ -1013,7 +1020,7 @@ export default function App() {
         <div className="main">
           <MapArea
             heatmapRevision={heatmapRevision}
-            cameraControlsHost={mapControlsHost}
+            cameraControlsHost={viewMode === 'normal' ? mapControlsHost : null}
             layerToolsHost={mapLayerToolsHost}
             pickingMode={pickingMode}
             onLocationPicked={handleLocationPicked}

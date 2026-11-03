@@ -7,6 +7,8 @@ import AddTeamModal from "../components/AddTeamModal";
 import EditTeamModal from "../components/EditTeamModal";
 import ConfirmModal from "../components/ConfirmModal";
 import useSplitPane from "../hooks/useSplitPane";
+import ExportRegisterModal from "../components/ExportRegisterModal";
+import { createResourceExport } from "../utils/resourceExport";
 
 function ExportIcon() {
   return (
@@ -117,8 +119,8 @@ function MemberStack({ members, count, max = 4 }) {
   if (!count) return <span className="tea-dim">None</span>;
   return (
     <span className="tea-stack" title={`${count} ${count === 1 ? "member" : "members"}`}>
-      {shown.map((m) => (
-        <span key={m.per_id} className="tea-av xs">{m.initials}</span>
+      {shown.map((m, index) => (
+        <span key={m.per_id} className="tea-av xs" style={{ zIndex: shown.length - index }}>{m.initials}</span>
       ))}
       {count > max && <span className="tea-stack-more">+{count - max}</span>}
     </span>
@@ -336,23 +338,12 @@ function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
 
 // ── Export ───────────────────────────────────────────────────────────────────
 
-function exportCsv(rows) {
+function buildTeamsExport(rows, scope) {
   const header = ["Code", "Name", "Status", "Shift", "Station", "Truck", "Members", "Crew"];
-  const esc = (v) => {
-    const s = v == null ? "" : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const lines = rows.map((t) => [
+  return createResourceExport("teams", header, rows.map((t) => [
     clean(t.team_code), t.team_name, STATUS_LABEL[statusOf(t)], clean(t.shift_name), clean(t.station_name),
     t.truck_platenum, t.member_count, (t.members || []).map((m) => m.name).join("; "),
-  ].map(esc).join(","));
-  const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `teams-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  ]), scope);
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -368,6 +359,7 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [exportPreview, setExportPreview] = useState(null);
   const [sortCol, setSortCol] = useState("team_name");
   const [sortDir, setSortDir] = useState(1);
   const [selectedId, setSelectedId] = useState(null);
@@ -499,7 +491,7 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
     <div className="tea-state">
       <Sym name="search_off" />
       <span>No teams match these filters.</span>
-      <button type="button" className="tea-link" onClick={clearFilters}>Clear filters</button>
+      <button type="button" className="tea-link" data-compact-action="reset-filter" onClick={clearFilters}>Clear filters</button>
     </div>
   ) : null;
 
@@ -514,7 +506,10 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
               <UnfoldIcon />
             </div>
             <div className="tea-header-actions">
-              <button className="tea-btn-secondary table-export-btn" onClick={() => exportCsv(filtered)} disabled={filtered.length === 0}>
+              <button type="button" className="tea-btn-secondary table-export-btn" onClick={() => setExportPreview(buildTeamsExport(filtered, {
+                filters: [["Status", TAB_LABELS[activeStatus] ?? "All"], ["Station", stationFilter ? filtered[0]?.station_name : "All"], ...(search.trim() ? [["Search", search.trim()]] : [])],
+                sort: `${({ team_name: "Name", team_status: "Status", station: "Station", members: "Members" })[sortCol] ?? sortCol} (${sortDir === 1 ? "ascending" : "descending"})`,
+              }))} disabled={loading || filtered.length === 0}>
                 <ExportIcon />
                 Export
               </button>
@@ -780,6 +775,7 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
         </div>
       </div>
 
+      {exportPreview && <ExportRegisterModal resource={exportPreview} onClose={() => setExportPreview(null)} />}
       {showAdd && (
         <AddTeamModal
           onClose={() => setShowAdd(false)}

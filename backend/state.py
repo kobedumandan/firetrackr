@@ -86,7 +86,7 @@ class ConnectionManager:
 NOTIFICATION_EVENTS = frozenset({
     'incident_created', 'incident_updated', 'incident_deleted',
     'personnel_arrived', 'dispatch_arrived', 'dispatch_completed',
-    'report_submitted', 'auto_dispatch_failed', 'model_candidate_ready',
+    'report_submitted', 'report_updated', 'auto_dispatch_failed', 'model_candidate_ready',
     'model_training_failed', 'model_training_cancelled', 'model_promoted',
 })
 
