@@ -381,6 +381,11 @@ class DispatchRecord(Base):
     dispatch_at           = Column(DateTime(timezone=True), default=_now)
     dispatch_arrived_at   = Column(DateTime(timezone=True), nullable=True)
     dispatch_completed_at = Column(DateTime(timezone=True), nullable=True)
+    # Retain legacy text attribution during migration; these fields do not
+    # establish a verified current user/personnel identity.
+    dispatch_arrived_by      = Column(String(20), nullable=True)
+    dispatch_arrived_by_name = Column(String(150), nullable=True)
+    dispatch_recalled_by     = Column(String(150), nullable=True)
     cleared_at            = Column(DateTime(timezone=True))
     dispatch_truck_count  = Column(Integer, default=0)
     acknowledged_at       = Column(DateTime(timezone=True))
