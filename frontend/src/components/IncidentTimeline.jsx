@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { fetchDispatches, fetchIncidentEvents } from "../api";
 
 function clock(iso) {
@@ -53,7 +53,7 @@ function changeRow(ev, hasDispatches) {
       ...base,
       tone: up ? "fire" : "muted",
       title: up ? `Escalated to ${ev.to}` : `Alarm lowered to ${ev.to}`,
-      desc: [ev.from && `from ${ev.from}`, by(ev.actor)].filter(Boolean).join(" · "),
+      desc: [ev.from && `from ${ev.from}`, by(ev.actor)].filter(Boolean),
     };
   }
   if (ev.type === "severity") {
@@ -62,7 +62,7 @@ function changeRow(ev, hasDispatches) {
       ...base,
       tone: up ? "amber" : "muted",
       title: `Severity ${up ? "raised" : "lowered"} to ${ev.to}`,
-      desc: [ev.from && `was ${ev.from}`, by(ev.actor)].filter(Boolean).join(" · "),
+      desc: [ev.from && `was ${ev.from}`, by(ev.actor)].filter(Boolean),
     };
   }
   return null;
@@ -82,7 +82,7 @@ function buildEvents(incident, dispatches, changes, now) {
       at: incident.reported_at,
       tone: "fire",
       title: "Incident reported",
-      desc: [incident.reporter && `via ${incident.reporter}`, initialAlarm].filter(Boolean).join(" · "),
+      desc: [incident.reporter && `via ${incident.reporter}`, initialAlarm].filter(Boolean),
     });
   }
   for (const ev of changes) {
@@ -98,7 +98,7 @@ function buildEvents(incident, dispatches, changes, now) {
         at: d.dispatch_at,
         tone: "amber",
         title: `${team} dispatched`,
-        desc: [d.station_name, trucks].filter(Boolean).join(" · "),
+        desc: [d.station_name, trucks].filter(Boolean),
       });
     }
     if (d.arrived_at) {
@@ -202,7 +202,16 @@ export default function IncidentTimeline({ incident, liveDispatches = [] }) {
                   <span className="itl-title">{e.title}</span>
                   <span className="itl-time">{clock(e.at) ?? (e.live ? "Live" : "—")}</span>
                 </div>
-                {e.desc && <div className="itl-desc">{e.desc}</div>}
+                {(Array.isArray(e.desc) ? e.desc.length > 0 : e.desc) && (
+                  <div className="itl-desc">
+                    {Array.isArray(e.desc) ? e.desc.map((part, index) => (
+                      <Fragment key={index}>
+                        {index > 0 && <> <span className="ci-section-separator" aria-hidden="true">|</span> </>}
+                        {part}
+                      </Fragment>
+                    )) : e.desc}
+                  </div>
+                )}
               </div>
             </li>
           ))}

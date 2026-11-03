@@ -57,7 +57,7 @@
 .ci-team-icon { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 28px; border-radius: 6px; color: var(--text-secondary); background: var(--bg-hover); }
 .ci-team-icon svg { width: 17px; height: 17px; }
 .ci-sidebar .dispatch-team-name { display: block; white-space: normal; overflow-wrap: anywhere; font-size: 11px; line-height: 1.5; margin: 0 0 3px; }
-.ci-sidebar .dispatch-team-station { font-size: 9px; line-height: 1.5; overflow-wrap: anywhere; }
+.ci-sidebar .dispatch-team-station { font-size: 9px; line-height: 1.5; overflow-wrap: anywhere; text-transform: capitalize; }
 .ci-dispatch-status { flex-shrink: 0; padding: 3px 5px; background: var(--bg-hover); border-radius: 4px; color: var(--text-secondary); font-size: 8px; }
 .ci-dispatch-status[data-status="en_route"], .ci-dispatch-status[data-status="dispatched"] { background: var(--accent-amber-dim); color: var(--accent-amber); }
 .ci-dispatch-status[data-status="on_scene"], .ci-dispatch-status[data-status="completed"] { background: var(--accent-green-dim); color: var(--accent-green); }
@@ -86,7 +86,7 @@
 .ci-empty p, .ci-section-empty { margin: 0; color: var(--text-secondary); font-size: 10px; line-height: 1.7; }
 .ci-empty-inline { padding: 15px 0; color: var(--text-secondary); font-size: 11px; line-height: 1.6; }
 .ci-sidebar .detail-section-title { margin: 0 0 var(--ci-gap); color: var(--text-primary); font-size: 11px; text-transform: none; letter-spacing: 0; }
-.ci-section-separator { padding-inline: 2px; color: var(--text-muted); opacity: .5; }
+.ci-sidebar .ci-section-separator { padding-inline: 2px; color: var(--text-muted); opacity: .5; }
 .ci-sidebar .routing-panel { margin: 0 0 var(--ci-gap); padding: var(--ci-gap); background: var(--bg-hover); border: 0; border-radius: 6px; }
 .ci-sidebar .routing-title { margin-bottom: var(--ci-gap); color: var(--text-primary); font-size: 10px; font-weight: 600; }
 .ci-sidebar .routing-title::before { display: none; }
@@ -127,7 +127,7 @@
 .ci-sidebar .itl-dot { box-sizing: border-box; width: 7px; height: 7px; margin-top: 4px; }
 .ci-sidebar .itl-title { font-size: 10px; line-height: 1.4; }
 .ci-sidebar .itl-time { font-size: 8px; line-height: 1.4; }
-.ci-sidebar .itl-desc { margin-top: 2px; font-size: 9px; line-height: 1.4; }
+.ci-sidebar .itl-desc { margin-top: 2px; font-size: 9px; line-height: 1.4; text-transform: capitalize; }
 .ci-sidebar .itl-head { gap: var(--ci-gap); }
 .ci-sidebar .itl-state { padding: var(--ci-gap) 0; font-size: 10px; line-height: 1.5; }
 /* Keep the map tools reachable; short viewports scroll the whole dock if needed. */

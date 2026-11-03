@@ -299,7 +299,9 @@ export default function LoginPage({ onLogin }) {
               Command, route and dispatch <span>from one console.</span>
             </h1>
             <div className="lp-eyebrow lp-spot">
-              Bureau of Fire Protection · Panabo City
+              Bureau of Fire Protection
+              <span className="lp-separator" aria-hidden="true">|</span>
+              Panabo City
             </div>
           </div>
 
@@ -429,7 +431,9 @@ export default function LoginPage({ onLogin }) {
 
           <footer className="lp-footer">
             <div className="lp-copyright">
-              © 2026 FireTrackr · Bureau of Fire Protection. All rights reserved.
+              © 2026 FireTrackr{" "}
+              <span className="lp-separator" aria-hidden="true">|</span>{" "}
+              All rights reserved.
             </div>
           </footer>
         </section>
