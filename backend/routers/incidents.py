@@ -1,7 +1,8 @@
 """Fire incident CRUD and administrator after-action report management."""
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from pydantic import ValidationError
 from sqlalchemy import case, or_
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -338,15 +339,50 @@ async def save_incident_report(
     _auth: Users = Depends(require_admin),
 ):
     """Recover a missing report or correct its text without changing field times."""
+    return await _save_incident_report(fire_id, body, db, _auth)
+
+
+@router.post("/api/incidents/{fire_id}/report/photos")
+async def save_incident_report_with_photos(
+    fire_id: int,
+    report: str = Form(...),
+    photos: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    _auth: Users = Depends(require_admin),
+):
+    """Save dispatcher edits and additional photos together, preserving existing photos."""
+    try:
+        body = IncidentReportSave.model_validate_json(report)
+    except ValidationError as error:
+        raise HTTPException(422, detail=error.errors(include_context=False, include_input=False)) from None
+    uploads = [photo for photo in photos if photo and photo.filename]
+    if not uploads:
+        raise HTTPException(422, 'Choose at least one photo to attach.')
+    return await _save_incident_report(fire_id, body, db, _auth, uploads)
+
+
+async def _save_incident_report(fire_id, body, db, user, photos=()):
     from services.incident_events import actor_name
-    from services.incident_reports import report_closed_at, save_admin_report
+    from services.incident_reports import append_admin_report_photos, report_closed_at, save_admin_report
     from services.report_timing import report_timeline
 
-    report, inc, released, creating = save_admin_report(db, fire_id, body, _auth)
-    db.commit()
+    written_names = []
+    try:
+        report, inc, released, creating = save_admin_report(db, fire_id, body, user, photos_added=len(photos))
+        await append_admin_report_photos(db, report, photos, written_names)
+        # Resolve links before commit so failed storage work cannot partially save
+        # text changes, close an incident or release its responding crews.
+        report_payload = await run_in_threadpool(_report_dict, report)
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        finally:
+            await run_in_threadpool(cleanup_report_photos, written_names)
+        raise
     db.refresh(report)
     db.refresh(inc)
-    report_data = {**_report_dict(report), 'operational_timing': report_timeline(db, report),
+    report_data = {**report_payload, 'operational_timing': report_timeline(db, report),
                    'closed_at': report_closed_at(db, report)}
     incident_data = _incident_dict(inc)
     await manager.broadcast({
@@ -354,7 +390,7 @@ async def save_incident_report(
         'data': {
             'fire_id': inc.fire_id, 'report_id': report.report_id,
             'dispatch_id': report.dispatch_id, 'filed_by': report_data['author'],
-            'edited_by': actor_name(_auth), 'photo_count': len(report.photos),
+            'edited_by': actor_name(user), 'photo_count': len(report.photos),
             'incident': incident_data,
         },
     })
@@ -362,10 +398,6 @@ async def save_incident_report(
     if released:
         await manager.broadcast(released)
     return {'report': report_data, 'incident': incident_data}
-
-
-
-
 
 
 @router.get("/api/incidents/{fire_id}/events")

@@ -1,14 +1,21 @@
 """Administrator report recovery and correction, preserving field attribution."""
 from datetime import datetime, timezone
+from io import BytesIO
+from uuid import uuid4
+import warnings
 
 from fastapi import HTTPException
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func
+from starlette.concurrency import run_in_threadpool
 
-from models import DispatchRecord, FireIncident, IncidentEvent, IncidentReport
+from config import MAX_PHOTO_BYTES, MAX_REPORT_PHOTOS
+from models import DispatchRecord, FireIncident, IncidentEvent, IncidentReport, ReportPhoto
 from services.dispatch import _add_incident_to_heatmap, _complete_dispatch_and_release, _released_payload
 from services.incident_events import record_changes, snapshot
 from services.operational_times import audit, iso
 from services.report_timing import timeline
+from services.report_photos import save_report_photo
 
 
 REPORT_FIELDS = {
@@ -18,6 +25,52 @@ REPORT_FIELDS = {
     'narrative': 'report_narrative',
     'recommendations': 'report_recommendations',
 }
+ADMIN_PHOTO_FORMATS = {
+    'image/jpeg': ('JPEG', '.jpg'),
+    'image/jpg': ('JPEG', '.jpg'),
+    'image/png': ('PNG', '.png'),
+    'image/webp': ('WEBP', '.webp'),
+}
+
+
+def _verify_admin_photo(data, content_type):
+    """Validate image contents before storing a browser attachment."""
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(BytesIO(data)) as image:
+                if image.format != ADMIN_PHOTO_FORMATS[content_type][0]:
+                    raise ValueError('Photo contents do not match its type.')
+                image.verify()
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError,
+            Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise HTTPException(422, 'Each attachment must be a valid JPG, PNG or WebP image.') from None
+
+
+async def append_admin_report_photos(db, report, photos, written_names):
+    """Append inside the locked report transaction; the caller owns compensation."""
+    if not photos:
+        return
+    if len(report.photos) + len(photos) > MAX_REPORT_PHOTOS:
+        raise HTTPException(422, f'A report can have at most {MAX_REPORT_PHOTOS} photos, including existing photos.')
+    for photo in photos:
+        content_type = (photo.content_type or '').lower()
+        if content_type not in ADMIN_PHOTO_FORMATS:
+            raise HTTPException(422, 'Choose JPG, PNG or WebP photos.')
+        if len(photo.filename) > 255:
+            raise HTTPException(422, 'Photo filenames must be no longer than 255 characters.')
+    for photo in photos:
+        content_type = photo.content_type.lower()
+        data = await photo.read(MAX_PHOTO_BYTES + 1)
+        if not data or len(data) > MAX_PHOTO_BYTES:
+            raise HTTPException(422, 'Each photo must be nonempty and no larger than 10 MB.')
+        await run_in_threadpool(_verify_admin_photo, data, content_type)
+        name = f'report{report.report_id}_{uuid4().hex}{ADMIN_PHOTO_FORMATS[content_type][1]}'
+        await run_in_threadpool(save_report_photo, name, data, content_type)
+        written_names.append(name)
+        report.photos.append(ReportPhoto(file_name=name, original_name=photo.filename,
+                                         content_type=content_type))
+    db.flush()
 
 
 def report_closed_at(db, report):
@@ -33,7 +86,7 @@ def report_closed_at(db, report):
     return iso(report.report_submitted_at) if report.per_id is not None else None
 
 
-def save_admin_report(db, fire_id, body, user):
+def save_admin_report(db, fire_id, body, user, *, photos_added=0):
     """Lock and save within the caller's transaction; never rewrite event times."""
     if user.user_role != 'admin':
         raise HTTPException(403, 'Admin access required')
@@ -69,6 +122,7 @@ def save_admin_report(db, fire_id, body, user):
     audit(db, inc, 'report_created' if creating else 'report_edited', now, user,
           source='admin_report', metadata={
               'report_id': report.report_id,
+              'photos_added': photos_added,
               'changes': {key: {'before': before[key], 'after': value}
                           for key, value in after.items() if before[key] != value},
               'outcome_changes': {key: {'before': outcome_before[key], 'after': value}

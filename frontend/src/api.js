@@ -97,7 +97,7 @@ export async function apiFetch(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(!(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       'ngrok-skip-browser-warning': '1',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
@@ -388,8 +388,16 @@ export function notifyIncidentReportUpdated(fireId, incident) {
   window.dispatchEvent(new CustomEvent('incident-report-updated', { detail: { fireId, incident } }))
 }
 
-export async function saveIncidentReport(fireId, body) {
-  const res = await apiFetch(`/api/incidents/${fireId}/report`, { method: 'PUT', body: JSON.stringify(body) })
+export async function saveIncidentReport(fireId, body, photos = []) {
+  let payload = JSON.stringify(body)
+  if (photos.length) {
+    payload = new FormData()
+    payload.append('report', JSON.stringify(body))
+    for (const photo of photos) payload.append('photos', photo, photo.name)
+  }
+  const res = await apiFetch(`/api/incidents/${fireId}/report${photos.length ? '/photos' : ''}`, {
+    method: photos.length ? 'POST' : 'PUT', body: payload,
+  })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     const detail = typeof data.detail === 'string' ? data.detail
