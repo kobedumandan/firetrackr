@@ -17,6 +17,142 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### List-query performance (2026-11-03)
+
+- `GET /api/teams` eagerly loads station, team shift, truck, membership/personnel
+  and personnel shift relationships, alongside the existing batched dispatches.
+  Empty/unassigned teams remain included. The current five-team Supabase sample
+  now takes three SELECTs instead of 28, without per-member queries.
+- `GET /api/incidents` obtains its five status counters in one grouped query,
+  retaining zero-valued keys. Stats still reflect the period before status,
+  severity, alarm and search filters; filtered totals, sorting and pagination
+  retain their prior behavior. A normal page now uses three SELECTs instead
+  of seven, excluding authentication.
+- Original and updated handlers returned identical full payloads in one
+  read-only repeatable-read snapshot, including a filtered incident request.
+  Sample fetch/serialization times were 3.50 -> 0.80 seconds for teams and
+  0.59 -> 0.25 seconds for the incident page. These are individual local-to-cloud
+  measurements excluding HTTP/authentication, not latency guarantees.
+- All 41 focused checks passed on a fresh disposable PostGIS database, covering
+  list query budgets, team details/dispatch flags, period boundaries, filters,
+  pagination, access checks and existing team-truck/report workflows. Live API
+  health and authenticated reads pass; anonymous/personnel list access is denied.
+- The follow-up pass also batches Personnel, current map locations, dispatch
+  routes/crews/trucks, station commanders and fleet stations. Scalar reference
+  loads for the unordered personnel/location base lists use select-in batches
+  so joins do not change their observed return order. Dispatch routes still
+  belong to their individual dispatch and sort by rank with null ranks last.
+- Current map locations batch active assignments and personal-arrival evidence.
+  `arrivals_for` preserves modern-event precedence and verified legacy actor/time
+  checks. Tracking policy accepts optional server-derived batches; other callers
+  retain their existing live-query path. Multiple distinct active dispatches
+  remain ambiguous, duplicate memberships do not create false ambiguity, and
+  a vehicle's arrival still does not establish every crew member's arrival.
+- Metrics current/prior counts and severity totals share one conditional
+  aggregate. Response comparisons join scalar context metadata while retaining
+  batched collections, historical snapshot precedence and first-arrival cohorts.
+  All seven original/updated read handlers returned identical complete payloads
+  in a fixed-clock, read-only repeatable-read cloud snapshot:
+
+  | Read | SELECTs before -> after | Sample seconds before -> after |
+  | --- | --- | --- |
+  | Personnel | 44 -> 7 | 4.16 -> 0.66 |
+  | Current map locations | 43 -> 6 | 5.14 -> 0.53 |
+  | Stations | 2 -> 1 | 0.24 -> 0.10 |
+  | Fleet | 5 -> 1 | 0.44 -> 0.09 |
+  | Metrics summary | 22 -> 15 | 2.31 -> 2.08 |
+  | Response comparison | 30 -> 17 | 4.31 -> 3.24 |
+  | Complete dispatch history | 1,167 -> 4 | 114.08 -> 5.18 |
+
+  Metrics timing is the median of three further paired runs with alternating
+  execution order; the initial single run varied despite fewer queries. Other
+  timings are individual samples, excluding HTTP/authentication. Collection
+  batches can split at larger sizes; these counts describe the current dataset.
+- All 78 focused checks pass in a fresh disposable PostGIS database after this
+  pass. They cover query growth, optional relationships, route ownership/rank,
+  current/prior counters, month boundaries, personal/legacy arrivals, duty,
+  ambiguous assignments, role checks and the earlier team/report workflows.
+  Planning's computed coverage cache and Settings' bounded account/history reads
+  remain in use; the station-read improvement also benefits Planning.
+
+### Supabase database activation (2026-11-03)
+
+- The configured development API now uses Supabase PostgreSQL 17.11 and PostGIS
+  3.3.7 in `extensions`, through the TLS Session pooler on port 5432. The API and
+  frontend still run locally. FastAPI continues to own authentication; private
+  Supabase report-photo Storage remains enabled. `DATABASE_URL` selects the live
+  database; `SUPABASE_DATABASE_URL` alone does not switch it.
+- `database.py` supports `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` and `DB_CONNECT_TIMEOUT`.
+  Unset pool values retain 20/40; the prepared environment uses 8/4 and a 10-second
+  connection timeout. The watchdog/reaper's held raw connections consume slots
+  within that pool, not additional connections outside its maximum.
+- The local PostgreSQL 18.3/PostGIS 3.6.2 source remains available at revision
+  `0032`. A quiet final snapshot copied 54,412 rows across all 28 application
+  tables, preserving IDs, accounts, hashes, revocations and operational history.
+  Every table's count and canonical row checksum matched; 25 sequences and all
+  51 foreign-key definitions were verified. The target uses revision `0033`.
+- Rehearsal uncovered three legacy nullable dispatch attribution columns present
+  only in the source database. The models and additive revision `0033` preserve
+  them, including the recorded historical value. Downgrade refuses to discard
+  non-null history. These text fields are not verified actor references.
+- The session pooler initially returned `extra_float_digits=0`. `database.py`
+  explicitly sets `extra_float_digits=3` on each physical connection, preserving
+  full floating-point precision. Startup options were accepted but ignored.
+- All 29 public application/migration tables have RLS enabled and public,
+  anonymous and authenticated API-role table grants revoked. The backend's
+  database role bypasses RLS, so FastAPI's role/ownership checks remain required.
+  Platform and Storage schemas were preserved.
+- Consistent source dumps, row exports, manifests and private environment backups
+  are retained under `local-backups/`. The application-data restore was rehearsed
+  on a fresh isolated PostGIS cluster, then trialed in a rolled-back cloud
+  transaction before the final import. A full binary archive restore was not run.
+  Reconcile any cloud writes before reverting to the retained local source.
+- Live checks pass: API/database health, copied-account administrator reads,
+  all 323 incident reports, four signed photo downloads matching their private
+  Storage objects, denial of public photo access, and both advisory locks.
+  Anonymous API access and personnel access to administrator incidents are denied.
+  Password login and physical-phone submission were not exercised during cutover.
+- Validation passed 59 isolated report/storage/migration checks plus a separate
+  floating-point round-trip regression check. The application-data import also
+  passed isolated and rolled-back cloud rehearsals before final activation.
+- Backend tests refuse non-loopback targets and strip live Storage credentials.
+  The disposable runner pins both database environment variables to its own new
+  local cluster. See [database setup](documentation/supabase-database-setup.md)
+  for target permissions, PostGIS schemas, copying, verification and cutover.
+
+### Optional Supabase report photo storage (2026-11-02)
+
+- `REPORT_PHOTO_STORAGE=local` preserves disk uploads and the existing URL shape.
+  Supabase mode uses a private `report-photos` bucket through the Storage HTTP API
+  with `httpx`, keeping the existing database `file_name` values as object keys.
+  No database schema change, Supabase Auth integration or client SDK is required.
+- The existing team-leader/membership upload checks and administrator report-read
+  checks run before storage access. The backend owns `SUPABASE_SECRET_KEY` and
+  signs a report's photo URLs in one batch (one-hour expiry by default). The
+  dashboard preserves the remote hostname and signed query; only local `/uploads/`
+  URLs are rewritten to its configured API base.
+- Startup verifies the configured bucket is private. Supabase mode removes the
+  local uploads mount. Completed uploads are compensated on later upload/signing/
+  commit failures; incident deletion attempts storage cleanup after its commit.
+  Cleanup failures are logged; crashes or ambiguous network failures can still
+  leave unreferenced objects. Storage calls from async handlers use the thread pool.
+- Existing local photos must be copied to the bucket root without renaming before
+  switching modes. Reopen/refetch a report after its viewing links expire. See
+  [storage setup](documentation/supabase-storage-setup.md).
+- Live Storage activation on 2026-11-02 verified the private bucket and uploaded
+  the two photos referenced by the local database. Their authenticated and signed
+  downloads match the local bytes; public-object access is denied. All six local
+  files were backed up and retained; four unreferenced files stayed local. The
+  private environment now selects Supabase storage. After the development-server
+  reload, API/database health pass, old local photo URLs return 404 and report
+  reads without authentication return 401. At that stage the database remained local and no
+  report records were changed. Physical-phone submission and visual dashboard
+  acceptance remain unverified; no public app deployment is claimed.
+- Local verification: 42 isolated backend storage/report checks and 23 focused
+  frontend report checks pass, along with Python compilation and the frontend
+  production build. Existing full-project lint/dependency findings remain; see
+  the storage guide for scope and limits.
+
 ### Metrics month selection (2026-11-01)
 
 - Clicking a month in Monthly incident activity filters Alarm levels, Incidents
@@ -65,6 +201,30 @@ Plans and docstrings are cross-checked against handlers and callers.
   it adds the optional administrator author reference, permits reports without
   a personnel author, and expands incident casualty summaries to 255 characters.
   Existing leader-report submission and photo viewing remain supported.
+
+### Dispatcher report photo additions (2026-11-02)
+
+- The after-action report modal in Incident Details supports dragging/dropping or
+  browsing for additional JPG, PNG and WebP photos, with previews and removal of
+  pending selections. Existing attachments remain visible and are preserved.
+  A photo-only edit enables save and appears in the existing review step. Failed
+  saves retain the draft and previews; object URLs are revoked on removal/close.
+- `saveIncidentReport` keeps text-only edits on the existing JSON PUT endpoint.
+  When files are present it sends a multipart POST to
+  `/api/incidents/{fire_id}/report/photos`, with JSON in `report` and repeated
+  `photos` fields. This administrator-only endpoint uses the same locked report
+  save, stale-report guard, incident close/release and notification behavior.
+- The server enforces eight photos total including existing attachments, a
+  10 MiB per-file limit and actual image format verification with Pillow. Report
+  text and additional objects commit together; upload, signing or commit errors
+  roll back the edit and compensate completed new uploads. Existing photos,
+  leader attribution, submission time and operational evidence are preserved.
+  The report audit records the administrator and `photos_added` count. No schema
+  migration or mobile API change is required.
+- Validation uses 57 checks on a disposable PostGIS database with live Storage
+  disabled/mocked, and 35 focused dashboard checks. Synthetic-data browser review
+  covers dark/light layouts, file-drop feedback and a 390px viewport without
+  horizontal overflow. Real report data is not modified by these checks.
 
 ### Team truck assignment during dispatch (2026-10-30)
 
@@ -604,7 +764,7 @@ but its installed behavior cannot.
 | Mapping | Incident/station/personnel markers, heatmap, region boundaries, constraint layers, routes and obstructions | Panabo is production; New Corella is a reduced local-development dataset |
 | Location/rerouting | Personnel location history/current position, membership checks, truck synchronization, deviations, connectors/rebuilds and stale-driver fallback | Mobile updates plus WS events; dashboard also polls every 10 seconds |
 | Reporter location | Admin sends PhilSMS link or receives a dry-run link; public page posts GPS; map receives broadcast/poll result | Sessions live only in memory; token expiry/registration enforcement is absent |
-| After-action reports | Assigned team leader submits narrative/details and scene photos after containment; incident closes and resources are released | Photos stored on local disk and served publicly |
+| After-action reports | Assigned team leader submits narrative/details and scene photos after containment; dispatcher can recover or edit reports and append photos | Configured private Supabase Storage with signed viewing links; local disk remains the code default |
 | Notifications | Dashboard toasts, bell/history panel, configurable event alerts and WebAudio chime; backend Expo dispatch push with SMS fallback | Browser preferences persist; history is session memory, not a DB notification log |
 | Metrics | Period totals/deltas, severity/containment counts, monthly/per-barangay data, first-arrival response averages | Missing measurements produce null/empty results rather than calibrated predictions |
 | Coverage planning | 3/5/8-minute service areas, barangay coverage-gap tables, refresh and CSV export | Descriptive reachability, not station placement optimization |
@@ -669,7 +829,7 @@ Sources: [api.js](frontend/src/api.js), [App.jsx](frontend/src/App.jsx),
 ## Database structure and relationships
 
 [models.py](backend/models.py) defines the schema; [Alembic versions](backend/alembic/versions/)
-define migration history. The combined web chain ends at `0029` (constraint severity/schedules).
+define migration history. The combined web chain ends at `0033` (legacy dispatch attribution preservation).
 Original `0025` adds constraint segment identities and `0026` adds the model registry;
 both were applied to the original checkout's configured local database on 2026-10-19.
 New `0027` adds operational timing. The original local database was backed up and
@@ -686,7 +846,7 @@ PostGIS must already be enabled; migration files do not create the extension.
 | `devices`, `location_logs`, `current_locations` | Devices reference personnel; historical logs can have a null device for mobile updates. Current location is keyed by personnel ID and includes source/time/battery. |
 | `fire_incidents`, `barangay_boundaries`, `heatmap_data` | Incident coordinates/status/details link to confirming user and optional barangay; boundaries are PostGIS `POLYGON`, SRID 4326. Heatmap rows link to incidents. |
 | `dispatch_records`, `dispatch_trucks`, `routes` | Dispatch links incident/team/selected route. Truck assignments record manning personnel. Routes reference incident and owning dispatch, with path, ranking, ETA and origin. |
-| `incident_reports`, `report_photos` | Reports link incident, optional dispatch and personnel author; photo metadata cascades with a report, bytes live on disk. |
+| `incident_reports`, `report_photos` | Reports link incident, optional dispatch and personnel/admin author; photo metadata cascades with a report, bytes use configured local disk or private Supabase Storage. |
 | `incident_events` | Status/alarm/severity transitions link incident/user and retain actor display text. |
 | `road_obstructions`, `gnn_constraints` | Obstruction point/type/expiry and custom constraint polylines; both record creator/activity. |
 | `push_tokens` | Expo token is the primary key, assigned to personnel with platform/sound settings; reassigned when a different user registers the same phone token. |
@@ -698,10 +858,10 @@ explicitly disambiguate them. Do not delete/rebuild routes without respecting bo
 
 Incident-to-barangay assignment uses a spatial point-in-polygon query. Coverage
 uses the configured barangay GeoJSON asset, while API geodata uses database boundary
-rows; keep seeded data and file assets consistent. Current DB pool limits are fixed
-at 20 connections plus 40 overflow per engine/process, with pre-ping/recycle.
-Neither configurable Supabase pool sizing nor a dedicated test DB setting is
-implemented in `database.py`.
+rows; keep seeded data and file assets consistent. `DB_POOL_SIZE` and
+`DB_MAX_OVERFLOW` configure each process's pool, with pre-ping/recycle and
+`DB_CONNECT_TIMEOUT`. Unset values retain 20/40; the configured cloud environment
+uses 8/4. Local test helpers use an isolated loopback database and reject cloud targets.
 
 The fire-history heatmap reads closed incidents linked to `heatmap_data`.
 `GET /api/heatmap` preserves `lat`, `lng`, and `weight`, adds `fire_id` and
@@ -1216,9 +1376,11 @@ for a requested verified audit.
   registration/expiry lifecycle; dashboard tokens are timestamp-derived rather than
   cryptographically random. Browser geolocation generally needs HTTPS outside
   localhost; phone reachability depends on the configured public backend URL.
-- Uploaded report photos have count/size and client MIME restrictions and randomized
-  stored filenames, but are public static files; MIME validation is not content
-  verification. Storage is neither Supabase Storage nor a durable remote object store.
+- Report photos use randomized object names, count/size limits and private
+  Supabase signed links when configured; local mode serves public static files.
+  Dispatcher JPG/PNG/WebP additions are decoded with Pillow before upload; the
+  older team-leader upload path still relies on MIME/size checks. Temporary links
+  remain usable by their holders until expiry.
 - WebSocket sessions, reporter state and caches are not shared between workers or
   durable across restarts. Single-worker real-time operation is the current safe
   architectural assumption; routing pool subprocesses are separate from Uvicorn workers.
@@ -1241,7 +1403,7 @@ for a requested verified audit.
 
 | Item | Current evidence |
 | --- | --- |
-| Supabase database migration | [Plan](plans-todo/supabase-migration.md); SQLAlchemy URL can target PostgreSQL hosting, but deployed host/settings cannot be established from source. Proposed pool sizing/timeouts/test safeguards are absent. |
+| Public API/frontend hosting | Database and private photos moved to Supabase on 2026-11-03; API/frontend hosting remains local. See [database setup](documentation/supabase-database-setup.md). |
 | Lightning retraining/challenger promotion | Local registry/retrain/review/promotion/rollback APIs and offline training are implemented; the admin Settings Model UI is wired; Lightning and scheduling remain planned. See [plan](plans-todo/gnn-retraining-lightning.md). |
 | Applying drawn constraints to routing | Custom map CRUD is implemented; engine-cost integration is outstanding. |
 | Shared real-time state across API workers | Warning in [run.py](backend/run.py); no shared pub/sub/session store implemented. |

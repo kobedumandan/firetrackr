@@ -27,7 +27,7 @@ of implementation. Keep these documents current when contracts or workflows chan
 | [backend/routing_setup.py](backend/routing_setup.py), [routing_pool.py](backend/routing_pool.py) | Common engine construction and independent routing worker processes |
 | [backend/auto_dispatch.py](backend/auto_dispatch.py), [coverage_engine.py](backend/coverage_engine.py) | Team ranking and station reachability math |
 | [backend/data/](backend/data/), [ai/models/](backend/ai/models/) | GIS inputs, constraint exports/style/weights, model checkpoints |
-| [backend/uploads/](backend/uploads/) | Local report photo bytes; database stores photo metadata |
+| [backend/services/report_photos.py](backend/services/report_photos.py), [uploads/](backend/uploads/) | Private Supabase report objects or local development photos; database stores stable filenames |
 | [frontend/src/App.jsx](frontend/src/App.jsx), [api.js](frontend/src/api.js) | Dashboard orchestration, session WebSocket, REST client and request caches |
 | [frontend/src/pages/](frontend/src/pages/), [components/](frontend/src/components/) | Screens, maps, forms, modals and notifications |
 | [frontend/src/hooks/](frontend/src/hooks/), [utils/](frontend/src/utils/) | Browser preferences, sessions, notifications and document exports |
@@ -51,8 +51,11 @@ remain process-local: retain one Uvicorn worker for coherent real-time behavior.
   and leaflet.heat. PDF/Word exports use jsPDF, pdfjs-dist and docx.
 - JWT via `jose`, PBKDF2 password hashing, WebSocket events, PhilSMS and Expo push.
   See the dependency gaps in [KNOWLEDGE.md](KNOWLEDGE.md) before claiming a clean setup.
-- Supabase is a database-hosting plan; Supabase Auth/Storage/client SDK are not
-  implemented here. RL/SUMO code exists but is disabled by default.
+- The configured development API uses Supabase PostgreSQL/PostGIS through its
+  TLS Session pooler and private Supabase Storage for report photos. The API and
+  frontend still run locally. Storage is opt-in via `REPORT_PHOTO_STORAGE=supabase`;
+  local disk is the code default. FastAPI owns auth; no Supabase client SDK is required.
+  RL/SUMO code exists but is disabled by default.
 
 ## Coding standards
 
@@ -138,18 +141,23 @@ DOCX and CSV agree on the incident register.
 
 Change ORM models and add a reviewed Alembic migration together; do not edit applied
 historical migrations or replace them with `create_all()`. The checked-in chain
-is `0001` through `0031`. Revisions `0025`/`0026` preserve the original constraint
+is `0001` through `0033`. Revisions `0025`/`0026` preserve the original constraint
 and model registry history; `0027`/`0028` add operational timing and response
 performance; `0029` adds optional narrow severity and traffic schedules; `0030`
 adds nullable baseline override targets and their active uniqueness guard.
 Revision `0031` adds attributed duty location logs, dispatch clearance and the
 independent operation-completion timestamp; legacy attribution stays unknown.
+Revision `0032` permits administrator-authored incident reports. Revision `0033`
+preserves three nullable legacy dispatch attribution columns found in the source
+database; those text values do not establish verified actor identity.
 Review generated diffs, spatial types, indexes, foreign
 keys, cascades and circular route/dispatch relationships. Enable PostGIS before
 migrating; no migration provisions it. Use a disposable database to validate
 schema/data changes. Seeds and `--clear` utilities write/delete data: review inputs
 and target database before running them. Do not run them against a live deployment
 as a routine check. Advisory locks require session-preserving connections.
+Keep the per-connection `extra_float_digits=3` hook: the managed session pooler
+otherwise returned rounded floating-point values, including coordinates.
 
 ### AI, GIS and routing
 

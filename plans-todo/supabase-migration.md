@@ -1,13 +1,26 @@
 # Plan: moving the database from local Postgres to Supabase
 
-**Scope:** only the database moves to Supabase. Login stays in FastAPI (JWT + blacklist), the backend still runs on the local machine behind ngrok, and report photos stay in `backend/uploads/` on disk.
+> Historical design notes. Follow the current
+> [database setup guide](../documentation/supabase-database-setup.md) for execution.
+> The configured development API switched to Supabase on 2026-11-03 after a
+> snapshot-consistent backup, isolated rehearsal, target protection and full-table
+> checksum verification. The cloud schema is at `0033`; the retained local source
+> remains at `0032` with its existing legacy columns. Public API/frontend hosting
+> remains a separate step.
+> The older command examples below require rechecking against actual target
+> privileges, extension schemas and seeded rows; do not execute them verbatim.
+
+**Scope:** this plan covers the database migration. Login stays in FastAPI (JWT + blacklist).
+Report photos now separately support a private Supabase Storage bucket; follow
+[storage setup](../documentation/supabase-storage-setup.md) for that step. Local disk
+remains the default until storage is configured. Backend hosting is a separate step.
 
 ## What this migration touches
 
 | Item | Where | Why it matters |
 |---|---|---|
 | Connection string | `DATABASE_URL` in `backend/.env`, read by [database.py](../backend/database.py) and [alembic/env.py](../backend/alembic/env.py) | This is the only switch. No code has the host hardcoded. |
-| Pool size 20 + 40 overflow | [database.py](../backend/database.py) (`create_engine`) | That's up to 60 connections per process, which is more than Supabase allows on small plans. |
+| Configurable connection pool | [database.py](../backend/database.py) (`create_engine`) | Unset defaults remain 20 + 40 overflow; the prepared 8 + 4 pool must fit the actual project's connection budget. Held advisory-lock leases count within this total. |
 | Advisory locks on connections held open | [services/watchdog.py](../backend/services/watchdog.py), [services/token_cleanup.py](../backend/services/token_cleanup.py) | These need session mode. They break on the transaction pooler (port 6543). |
 | PostGIS | `brgy_polygon` Geometry in [models.py](../backend/models.py), plus `ST_DWithin`/`::geography` in [services/routing.py](../backend/services/routing.py) | The extension has to be on before migration 0015 runs. No migration creates it. |
 | Tests | [tests/conftest.py](../backend/tests/conftest.py) | Once `.env` points at Supabase, pytest would write test data into the production database. |
