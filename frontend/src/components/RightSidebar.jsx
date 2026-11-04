@@ -313,8 +313,8 @@ function AssignedTeam({ dispatch }) {
   const leader = members.find(isTeamLeader);
   return <article className="dispatch-team-card ci-team-card">
     <header className="dispatch-team-header"><span className="ci-team-icon"><FireTruckIcon /></span><div className="dispatch-team-meta"><h4 className="dispatch-team-name">{dispatch.team_name || "Unnamed team"}</h4><span className="dispatch-team-station">{dispatch.station_name || "Station not recorded"}{dispatch.team_code && <> <span className="ci-section-separator" aria-hidden="true">|</span> {dispatch.team_code}</>}</span></div><span className="ci-dispatch-status" data-status={dispatch.dispatch_status}>{readableStatus(dispatch.dispatch_status)}</span></header>
-    <div className="ci-team-context">{dispatch.truck_platenums?.length > 0 && <span>{dispatch.truck_platenums.join(" · ")}</span>}<span>Dispatched {fmtTime(dispatch.dispatch_at)}{dispatch.dispatch_at ? ' PHT' : ''}</span>{leader && <span className="ci-lead-preview">Team leader · {leader.name || "Name not recorded"}</span>}</div>
-    {members.length ? <details className="ci-roster"><summary><span>Team roster<span className="ci-count">{members.length}</span></span><AnalysisIcon name="chevron" /></summary><div className="dispatch-members">{members.map((member) => <div key={member.per_id} className={`dispatch-member-row${isTeamLeader(member) ? ' dispatch-member-leader' : ''}`}><span className="dispatch-member-av">{member.initials || '?'}</span><div className="dispatch-member-info"><span className="dispatch-member-name">{member.name || "Name not recorded"}</span><span className="dispatch-member-rank">{member.rank || "Rank not recorded"}</span></div><span className="ci-member-role">{roleOf(member) || "Role not recorded"}</span></div>)}<p className="ci-roster-note">Current team membership; attendance is not confirmed here.</p></div></details> : <p className="ci-roster-unavailable">Team roster not recorded.</p>}
+    <div className="ci-team-context">{dispatch.truck_platenums?.length > 0 && <span>{dispatch.truck_platenums.join(" · ")}</span>}<span>Dispatched {fmtTime(dispatch.dispatch_at)}{dispatch.dispatch_at ? ' PHT' : ''}</span>{leader && <span className="ci-lead-preview">Team Leader<span className="ci-lead-separator" aria-hidden="true"> | </span>{leader.name || "Name Not Recorded"}</span>}</div>
+    {members.length ? <details className="ci-roster"><summary><span>Team Roster<span className="ci-count">{members.length}</span></span><AnalysisIcon name="chevron" /></summary><div className="dispatch-members">{members.map((member) => <div key={member.per_id} className={`dispatch-member-row${isTeamLeader(member) ? ' dispatch-member-leader' : ''}`}><span className="dispatch-member-av">{member.initials || '?'}</span><div className="dispatch-member-info"><span className="dispatch-member-name">{member.name || "Name not recorded"}</span><span className="dispatch-member-rank">{member.rank || "Rank not recorded"}</span></div><span className="ci-member-role">{roleOf(member) || "Role not recorded"}</span></div>)}<p className="ci-roster-note">Current team membership; attendance is not confirmed here.</p></div></details> : <p className="ci-roster-unavailable">Team roster not recorded.</p>}
   </article>;
 }
 
@@ -458,7 +458,7 @@ export default function RightSidebar({
       <div className="right-sidebar-dock ci-dock" data-view-mode={viewMode}>
       <aside className="sidebar-right ci-sidebar" aria-label="Incident view">
         <div className="sidebar-tabs">
-          <div className="ci-panel-heading"><h2 className="sidebar-section-header"><IncidentTabIcon />Incident view</h2></div>
+          <div className="ci-panel-heading"><h2 className="sidebar-section-header"><IncidentTabIcon />Incident View</h2></div>
           <button
             className="sidebar-collapse-btn--right"
             onClick={onToggleCollapse}

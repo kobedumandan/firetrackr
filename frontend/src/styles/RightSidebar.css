@@ -171,6 +171,7 @@
   flex-shrink: 0;
 }
 .sidebar-section-header {
+  text-transform: capitalize;
   color: var(--text-secondary);
   padding-left: 6px;
   font-size: 11px;

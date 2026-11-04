@@ -10,7 +10,7 @@
 .ci-sidebar .sidebar-collapse-btn--right { width: 23px; height: 23px; border-color: var(--border-dim); }
 .ci-sidebar .detail-header { padding: 0; margin: 0 0 var(--ci-gap); border-radius: 0; background: transparent; }
 .ci-sidebar .detail-tag { align-items: center; margin-bottom: var(--ci-gap); gap: var(--ci-gap); }
-.ci-incident-id { font: 9px var(--font-mono); color: var(--text-secondary); overflow-wrap: anywhere; }
+.ci-incident-id { font: 8px var(--font-mono); color: color-mix(in srgb, var(--text-primary) 45%, var(--page-default-base)); overflow-wrap: anywhere; }
 .ci-sidebar .detail-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 0; font: 600 18px/1.25 var(--font-condensed); letter-spacing: -.3px; overflow-wrap: anywhere; }
 .ci-address { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 1px 0 0; font-size: 10px; line-height: 1.4; color: var(--text-secondary); overflow-wrap: anywhere; }
 .ci-sidebar .detail-status-row { align-items: center; min-height: var(--ci-row-height); gap: 4px 8px; margin: 0; }
@@ -62,7 +62,9 @@
 .ci-dispatch-status[data-status="en_route"], .ci-dispatch-status[data-status="dispatched"] { background: var(--accent-amber-dim); color: var(--accent-amber); }
 .ci-dispatch-status[data-status="on_scene"], .ci-dispatch-status[data-status="completed"] { background: var(--accent-green-dim); color: var(--accent-green); }
 .ci-team-context { display: flex; flex-direction: column; gap: 4px; padding: 0 var(--ci-inset) var(--ci-inset); color: var(--text-secondary); font-size: 9px; line-height: 1.5; overflow-wrap: anywhere; }
-.ci-lead-preview { color: var(--text-primary); }
+.ci-lead-preview { color: var(--text-primary); text-transform: capitalize; }
+.ci-lead-separator { color: color-mix(in srgb, var(--text-primary) 30%, var(--page-default-base)); }
+.ci-roster :is(summary, .dispatch-member-info, .ci-member-role) { text-transform: capitalize; }
 .ci-roster { border-top: 1px solid var(--border-dim); }
 .ci-roster summary { box-sizing: border-box; min-height: var(--ci-row-height); padding: 0 var(--ci-inset); color: var(--text-primary); }
 .ci-roster summary:hover { color: var(--accent-fire); }

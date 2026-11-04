@@ -15,12 +15,12 @@ export default function HeatmapPanel({ range, onRangeChange, count, status, onRe
   }
   return <section className="heatmap-panel command-view-panel" aria-label="Fire history heatmap">
     <div className="command-view-heading">
-      <span><MapControlIcon name="heatmap" />Fire history</span>
+      <span><MapControlIcon name="heatmap" />Fire History</span>
       <span className="command-view-badge heatmap-view-badge">HEATMAP</span>
     </div>
     <div className="heatmap-panel-body">
       <div className="heatmap-summary" aria-busy={status === 'loading'}>
-        <div className="heatmap-summary-heading"><span>Closed incidents</span></div>
+        <div className="heatmap-summary-heading"><span>Closed Incidents</span></div>
         <strong>{status === 'loading' ? '…' : status === 'error' ? '—' : count.toLocaleString()}</strong>
       </div>
       <div className="heatmap-presets" role="group" aria-label="Heatmap date presets">{[0, 30, 365].map(days => <button key={days} type="button" aria-pressed={selectedDays === days} onClick={() => preset(days)}>{days ? `Last ${days} days` : 'All time'}</button>)}</div>
@@ -38,8 +38,7 @@ export default function HeatmapPanel({ range, onRangeChange, count, status, onRe
       <div className="heatmap-status" role={status === 'error' ? 'alert' : 'status'}>
         {status === 'loading' ? 'Updating fire history...' : status === 'error' ? 'Fire history could not load.' : count ? 'Historical concentration, not predicted fire risk.' : 'No closed incidents match this region and period.'}
       </div>
-      {count > 0 && <p className="constraint-help">Hover an incident location on the heatmap for details. Click for more.</p>}
-      <button type="button" className="heatmap-refresh" onClick={onRefresh} disabled={status === 'loading'}>{status === 'error' ? 'Retry' : 'Refresh data'}</button>
+      <button type="button" className="heatmap-refresh" onClick={onRefresh} disabled={status === 'loading'}>{status === 'error' ? 'Retry' : 'Refresh Data'}</button>
     </div>
   </section>
 }

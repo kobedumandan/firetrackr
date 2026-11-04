@@ -1,6 +1,11 @@
 import { inRing } from './heatmap'
 import { roadConstraintColor } from './mapOverlayColors'
 
+export function constraintTitleCase(value) {
+  return value.replace(/\p{L}[\p{L}\p{M}'’]*/gu, word => /^(gat|gnn|qgis|pnm)$/i.test(word)
+    ? word.toUpperCase() : word[0].toLocaleUpperCase() + word.slice(1).toLocaleLowerCase())
+}
+
 export function constraintLayerId(feature) {
   const p = feature.properties || {}
   return p.custom ? `custom:${p.constraint_id}` : `segment:${p.segment_uid ?? p.road_id ?? JSON.stringify(feature.geometry?.coordinates)}`

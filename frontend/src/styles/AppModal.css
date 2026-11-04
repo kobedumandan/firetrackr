@@ -38,6 +38,10 @@
   flex-shrink: 0;
 }
 
+.apm-panel :is(.apm-title, .eim-title, .cfm-title) {
+  text-transform: capitalize;
+}
+
 .apm-eyebrow {
   font-family: var(--font-mono);
   font-size: 9.8px;

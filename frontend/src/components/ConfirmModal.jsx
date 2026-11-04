@@ -13,6 +13,7 @@ const ICONS = {
  * Reusable confirmation dialog (destructive actions, sign out).
  *
  * Props:
+ *   className    – optional panel class for scoped styling
  *   eyebrow      – small mono label above the title (default "CONFIRM")
  *   title        – heading text
  *   message      – body text / node describing the consequence
@@ -24,6 +25,7 @@ const ICONS = {
  *   onClose      – fn to dismiss the dialog
  */
 export default function ConfirmModal({
+  className = "",
   eyebrow = "CONFIRM",
   title = "Are you sure?",
   message,
@@ -57,7 +59,7 @@ export default function ConfirmModal({
 
   return createPortal(
     <div className="apm-overlay cfm-overlay" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="apm-panel cfm-panel" role="alertdialog" aria-modal="true" aria-labelledby="cfm-title" aria-describedby="cfm-message">
+      <div className={`apm-panel cfm-panel${className ? ` ${className}` : ''}`} role="alertdialog" aria-modal="true" aria-labelledby="cfm-title" aria-describedby="cfm-message">
         <div className="cfm-head">
           <span className="cfm-badge">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" className="cfm-badge-icon" fill="currentColor" aria-hidden="true">

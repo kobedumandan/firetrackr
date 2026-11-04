@@ -657,12 +657,41 @@
 .gnn-legend-item > span:nth-child(2) { flex: 1; min-width: 0; }
 .gnn-legend-item strong { color: var(--text-primary); font-weight: 500; font-variant-numeric: tabular-nums; }
 .gnn-legend-swatch { width: 12px; height: 3px; border-radius: 2px; flex: none; }
-.gnn-legend-count { font-size: 9px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.gnn-legend-count { font-size: 9px; color: color-mix(in srgb, var(--text-primary) 60%, var(--page-default-base)); font-variant-numeric: tabular-nums; }
 .gnn-legend-count strong { color: var(--text-primary); font-weight: 500; }
 
 /* Constraint drawing banner. */
 .constraint-draw-banner {
-  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  top: 14px;
+  max-width: calc(100% - 28px);
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border-color: var(--border-dim);
+  border-radius: 8px;
+  background: var(--page-default-base);
+  color: color-mix(in srgb, var(--text-primary) 55%, var(--page-default-base));
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: normal;
+  white-space: normal;
+  box-shadow: var(--shadow-xs);
+  pointer-events: none;
+}
+.constraint-banner-title { color: color-mix(in srgb, var(--text-primary) 75%, var(--page-default-base)); font-weight: 500; }
+.constraint-banner-count { padding: 1px 5px; border: 1px solid var(--border-dim); border-radius: 4px; background: var(--surface-raise); font-size: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.map-area--constraint-editing .constraint-draw-banner { left: calc(50% + 181px); max-width: calc(100% - 404px); }
+@media (max-width: 850px) {
+  .map-area--constraint-editing .constraint-draw-banner { left: calc(50% + 157px); max-width: calc(100% - 356px); }
+}
+@media (max-width: 520px) {
+  .map-area--constraint-editing .constraint-draw-banner { left: 50%; max-width: calc(100% - 28px); }
 }
 
 .banner-action {
@@ -688,9 +717,10 @@
 
 /* ── Constraint tools in the shared incident/camera dock ──────────── */
 .constraint-editor { display: flex; flex-direction: column; width: 100%; min-width: 0; max-height: min(320px, 45vh); padding: 11px; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--page-default-base); color: var(--text-primary); box-shadow: var(--shadow-md); pointer-events: auto; }
-.constraint-editor-body { display: flex; flex-direction: column; gap: 7px; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.constraint-editor-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 7px; min-height: 0; overflow: hidden; }
 .constraint-editor-body > * { flex-shrink: 0; }
-.constraint-editor-body::-webkit-scrollbar, .constraint-list-scroll::-webkit-scrollbar { display: none; }
+.constraint-editor-body > .gnn-legend { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.constraint-editor-body::-webkit-scrollbar, .constraint-list-scroll::-webkit-scrollbar, .gnn-legend::-webkit-scrollbar { display: none; }
 .constraint-section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 34px; gap: 8px; color: var(--text-secondary); font-size: 9px; }
 .constraint-section-note { color: var(--text-muted); font-size: 8px; }
 .constraint-editor-types { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
@@ -698,7 +728,6 @@
 .constraint-draw-btn:hover:not(:disabled) { background: var(--accent-fire-hover); border-color: var(--accent-fire-hover); box-shadow: 0 0 20px rgba(var(--accent-fire-rgb), 0.4); }
 .constraint-draw-btn:disabled { opacity: .45; cursor: not-allowed; }
 .constraint-type-icon { display: grid; place-items: center; width: 23px; height: 26px; flex: none; border-radius: 5px; color: var(--constraint-color); background: color-mix(in srgb, var(--constraint-color) 10%, transparent); }
-.constraint-help { margin: 0; font-size: 9px; line-height: 1.5; color: var(--text-secondary); }
 .constraint-drawing-hint { display: flex; flex-direction: column; gap: 7px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel); font-size: 10px; }
 .constraint-drawing-hint small { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 9px; }
 .constraint-drawing-actions { display: flex; gap: 5px; }
@@ -706,6 +735,8 @@
 .constraint-drawing-actions button:hover:not(:disabled), .constraint-load-state button:hover { background: var(--bg-hover); }
 .constraint-drawing-actions button:disabled { opacity: .4; cursor: default; }
 .constraint-load-state { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 9px; border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: 10px; }
+.constraint-load-message { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.constraint-load-message > .apm-spinner { flex: 0 0 auto; width: 12px; height: 12px; border-width: 1.5px; border-color: var(--border); border-top-color: currentColor; }
 .constraint-list { padding-top: 8px; border-top: 1px solid var(--border); }
 .constraint-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 5px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-primary); font-size: 9px; font-variant-numeric: tabular-nums; }
 .constraint-list-scroll { max-height: 80px; overflow-y: auto; scrollbar-width: none; }

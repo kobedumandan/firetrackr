@@ -33,7 +33,7 @@ import { constraintFeatures } from "../utils/commandMapData";
 import { dispatchRouteProgress } from "../utils/routeProgress";
 import { openConstraintPopup } from "../utils/constraintPopup";
 import ConstraintLayersPanel from "./ConstraintLayersPanel";
-import { baselineConstraintForEdit, buildConstraintLayers, constraintLayerId } from "../utils/constraintLayers";
+import { baselineConstraintForEdit, buildConstraintLayers, constraintLayerId, constraintTitleCase } from "../utils/constraintLayers";
 import HeatmapIncidents from "./HeatmapIncidents";
 import { useHeatmap } from "../hooks/useHeatmap";
 import { EMPTY_HEATMAP, filterHeatmapPoints, heatmapSurface } from "../utils/heatmap";
@@ -693,16 +693,16 @@ function GnnLegend({ data }) {
   const items = (data?.meta?.legend || []).filter((it) => it.type !== "normal");
 
   return (
-    <section className="gnn-legend" aria-label="Predicted road constraints">
+    <section className="gnn-legend" aria-label="Predicted road constraints" tabIndex={0}>
       <div className="constraint-section-heading">
-        <span>{data?.meta?.model || "GAT"} predictions</span>
-        <span className="gnn-legend-count"><strong>{(data?.meta?.constrained ?? 0).toLocaleString()}</strong> / {(data?.meta?.total ?? 0).toLocaleString()} roads</span>
+        <span>{data?.meta?.model || "GAT"} Predictions</span>
+        <span className="gnn-legend-count"><strong>{(data?.meta?.constrained ?? 0).toLocaleString()}</strong> / {(data?.meta?.total ?? 0).toLocaleString()} Roads</span>
       </div>
       <div className="gnn-legend-items">
         {items.map((it) => (
           <div key={it.type} className="gnn-legend-item">
             <span className="gnn-legend-swatch" style={{ background: it.color }} />
-            <span>{it.label}</span><strong>{(it.count ?? 0).toLocaleString()}</strong>
+            <span>{constraintTitleCase(it.label)}</span><strong>{(it.count ?? 0).toLocaleString()}</strong>
           </div>
         ))}
       </div>
@@ -736,7 +736,7 @@ function ObstructionPanel({
   return (
     <section className="obstruction-panel command-view-panel" aria-label="Road obstructions">
       <div className="command-view-heading">
-        <span><MapControlIcon name="obstructions" />Road obstructions</span>
+        <span><MapControlIcon name="obstructions" />Road Obstructions</span>
         <span className="command-view-badge obstruction-view-badge">ROADS</span>
       </div>
 
@@ -765,7 +765,7 @@ function ObstructionPanel({
 
         <div className="obstruction-panel-list">
           <div className="obstruction-list-title">
-            <span>Active on map</span><span className="obstruction-count">{obstructions.length}</span>
+            <span>Active On Map</span><span className="obstruction-count">{obstructions.length}</span>
           </div>
           {obstructions.length === 0 ? (
             <div className="obstruction-list-empty"><span>No active obstructions</span><small>New obstructions will appear here.</small></div>
@@ -811,10 +811,10 @@ function CloseIcon() {
 
 function ConstraintEditorPanel({ data, loadError, onRetry, editing, onToggleEdit, blocked }) {
   return <section className="constraint-editor command-view-panel" aria-label="GAT constraints">
-    <div className="command-view-heading"><span><MapControlIcon name="constraints" />GAT constraints</span><span className="command-view-badge constraint-view-badge">GAT</span></div>
+    <div className="command-view-heading"><span><MapControlIcon name="constraints" />GAT Constraints</span><span className="command-view-badge constraint-view-badge">GAT</span></div>
     <div className="constraint-editor-body">
-      {data ? <GnnLegend data={data} /> : <div className="constraint-load-state" role="status"><span>{loadError ? 'Could not load road constraints.' : 'Loading road constraints...'}</span>{loadError && <button type="button" onClick={onRetry}>Retry</button>}</div>}
-      <button type="button" className="constraint-draw-btn" style={{ '--constraint-color': 'var(--accent-fire)' }} disabled={blocked || (!data && !editing)} aria-pressed={editing} onClick={onToggleEdit}>{editing ? 'Done editing' : 'Edit constraints'}</button>
+      {data ? <GnnLegend data={data} /> : <div className="constraint-load-state" role="status"><span className="constraint-load-message">{!loadError && <span className="apm-spinner" aria-hidden="true" />}{loadError ? 'Could not load road constraints.' : 'Loading road constraints...'}</span>{loadError && <button type="button" onClick={onRetry}>Retry</button>}</div>}
+      <button type="button" className="constraint-draw-btn" style={{ '--constraint-color': 'var(--accent-fire)' }} disabled={blocked || (!data && !editing)} aria-pressed={editing} onClick={onToggleEdit}>{editing ? 'Done Editing' : 'Edit Constraints'}</button>
     </div>
   </section>;
 }
@@ -1249,8 +1249,10 @@ export default function MapArea({
         </div>
       )}
 
-      {isSelecting && !pickingMode && <div className="map-pick-banner constraint-draw-banner" style={{ borderColor: selectionColor }}>
-        {CONSTRAINT_TYPES.find(t => t.id === selectionType)?.label} / {selectedEdges.length} selected / Click a road to select or deselect
+      {isSelecting && !pickingMode && <div className="map-pick-banner constraint-draw-banner">
+        <span className="constraint-banner-title">{CONSTRAINT_TYPES.find(t => t.id === selectionType)?.label}</span>
+        <span className="constraint-banner-count">{selectedEdges.length} selected</span>
+        <span>Click a road to select or deselect</span>
       </div>}
 
       {/* Obstruction placement banner */}
@@ -1802,7 +1804,7 @@ export default function MapArea({
         onRetry={() => { setGnnAttempt(value => value + 1); setBarangayAttempt(value => value + 1); }}
         notice={constraintNotice} locationError={barangayError}
       />}
-      {exitConstraintMode && <ConfirmModal title="Discard selected edges?" message="Your unsaved road selection will be discarded when you leave editing mode. Saved constraints remain unchanged." confirmLabel="Discard and exit" onConfirm={finishConstraintMode} onClose={() => setExitConstraintMode(false)} />}
+      {exitConstraintMode && <ConfirmModal className="constraint-confirm-dialog" title="Discard selected edges?" message="Your unsaved road selection will be discarded when you leave editing mode. Saved constraints remain unchanged." confirmLabel="Discard and exit" onConfirm={finishConstraintMode} onClose={() => setExitConstraintMode(false)} />}
 
       {/* Constraint save dialog */}
       {showSaveDialog && (
@@ -1846,6 +1848,7 @@ export default function MapArea({
         return (
           <ConfirmModal
             eyebrow={c.baseline_segment_uid ? 'RESTORE ROAD' : 'DELETE CONSTRAINT'}
+            className="constraint-confirm-dialog constraint-delete-dialog"
             title={c.baseline_segment_uid ? 'Restore the original road condition?' : `Delete ${c.name ? `"${c.name}"` : "this constraint"}?`}
             details={[
               { label: "Type", value: info?.label || c.constraint_type.replaceAll('_', ' ') },
