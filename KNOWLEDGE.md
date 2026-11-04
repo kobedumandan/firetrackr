@@ -17,6 +17,14 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### Hosted dashboard startup and availability (2026-11-05)
+
+- Command startup and WebSocket recovery request
+  `GET /api/dispatch?active_incidents_only=true`. The optional server filter keeps
+  dispatches whose incident is pending, active, dispatched or contained, including
+  completed/recalled crews belonging to those incidents. Full and per-incident
+  history remain the default for other callers. Administrator access is required.
+
 ### Coverage and retraining resource limits (2026-11-04)
 
 - Cold isochrone/gap requests and overlapping forced refreshes share one coverage

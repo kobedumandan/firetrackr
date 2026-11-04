@@ -292,6 +292,10 @@ Frontend environment variables are embedded at build time; rebuild after changin
 them. The frontend build is written to `frontend/dist/`; the Python backend runs
 directly and does not have a separate build step.
 
+Command requests `/api/dispatch?active_incidents_only=true` so closed-incident
+routes and crew history do not delay the live map. Incident details retain the
+full history; all dispatch statuses for an open incident remain available.
+
 ### Command map styles
 
 Use **Map style** at the top left of the Command map to choose **Light**,

@@ -443,8 +443,11 @@ export async function fetchIncidentEvents(fireId) {
 }
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
-export async function fetchDispatches(fireId) {
-  const res = await apiFetch(fireId != null ? `/api/dispatch?fire_id=${fireId}` : '/api/dispatch')
+export async function fetchDispatches(fireId, { activeIncidentsOnly = false } = {}) {
+  const query = new URLSearchParams()
+  if (fireId != null) query.set('fire_id', fireId)
+  if (activeIncidentsOnly) query.set('active_incidents_only', 'true')
+  const res = await apiFetch(`/api/dispatch${query.size ? `?${query}` : ''}`)
   if (!res.ok) throw new Error(`Failed to fetch dispatches (${res.status})`)
   return res.json()
 }

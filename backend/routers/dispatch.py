@@ -151,6 +151,7 @@ def get_dispatches(
     fire_id: int | None = None,
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
+    active_incidents_only: bool = False,
 ):
     q = db.query(DispatchRecord).options(
         joinedload(DispatchRecord.fire_incident),
@@ -162,6 +163,10 @@ def get_dispatches(
     )
     if fire_id:
         q = q.filter(DispatchRecord.fire_id == fire_id)
+    if active_incidents_only:
+        q = q.filter(DispatchRecord.fire_incident.has(
+            FireIncident.fire_status.in_(["pending", "active", "dispatched", "contained"])
+        ))
     rows = q.order_by(DispatchRecord.dispatch_at.desc()).all()
     def _dispatch_routes(r):
         # Routes owned by this specific dispatch, ordered by rank

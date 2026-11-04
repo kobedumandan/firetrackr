@@ -349,7 +349,7 @@ export default function App() {
       ))
       .catch(() => {})
 
-    fetchDispatches().then(rows => {
+    fetchDispatches(null, { activeIncidentsOnly: true }).then(rows => {
       setDispatches(rows)
       setDispatchRoutes(_routesFromDispatchRows(rows))
     }).catch(() => {})
@@ -381,7 +381,7 @@ export default function App() {
     async function recoverDashboard(ws, attempt = 0) {
       const revision = dataRevision
       const results = await Promise.allSettled([
-        fetchActiveIncidents(), fetchDispatches(), fetchPersonnelLocations(), fetchReporterSessions(),
+        fetchActiveIncidents(), fetchDispatches(null, { activeIncidentsOnly: true }), fetchPersonnelLocations(), fetchReporterSessions(),
       ])
       if (destroyed || socket !== ws || ws.readyState !== WebSocket.OPEN) return
       if (revision !== dataRevision) {
@@ -609,7 +609,7 @@ export default function App() {
               ? { ...row, is_deviated, connector_geojson, deviation_detected_at } : row))
           } else if (msg.type === 'route_updated') {
             if (Array.isArray(msg.data.routes)) setDispatchRoutes(prev => replaceDispatchRoutes(prev, msg.data))
-            else fetchDispatches().then(rows => setDispatchRoutes(_routesFromDispatchRows(rows))).catch(console.error)
+            else fetchDispatches(null, { activeIncidentsOnly: true }).then(rows => setDispatchRoutes(_routesFromDispatchRows(rows))).catch(console.error)
           } else if (msg.type === 'dispatch_rerouted') {
             const { dispatch_id, fire_id, routes = [] } = msg.data
             setDispatchRoutes(prev => {
@@ -875,7 +875,7 @@ export default function App() {
 
     const ad = result?.auto_dispatch
     if (ad?.status === 'dispatched') {
-      fetchDispatches().then(rows => {
+      fetchDispatches(null, { activeIncidentsOnly: true }).then(rows => {
         setDispatches(rows)
         // Same builder as the initial load — this used to be a hand-copied
         // duplicate that forgot isGnn, which is why auto-dispatched routes
