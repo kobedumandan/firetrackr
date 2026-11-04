@@ -1,0 +1,60 @@
+# Trial API only. The dashboard and Supabase database/storage stay separate.
+# See documentation/render-free-trial.md before connecting a database.
+services:
+  - type: web
+    name: firetrackr-api-free-trial
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    autoDeployTrigger: "off"
+    buildCommand: python -m pip install --no-cache-dir -r requirements.txt
+    startCommand: python run.py
+    healthCheckPath: /health
+    envVars:
+      - key: HOST
+        value: "0.0.0.0"
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: ROUTING_POOL_SIZE
+        value: "0"
+      - key: REGION
+        value: panabo
+      - key: GNN_INFERENCE_MODE
+        value: exported
+      - key: USE_RL
+        value: "false"
+      - key: USE_SUMO
+        value: "false"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
+      - key: NUMEXPR_NUM_THREADS
+        value: "1"
+      - key: GDAL_NUM_THREADS
+        value: "1"
+      - key: DB_POOL_SIZE
+        value: "4"
+      - key: DB_MAX_OVERFLOW
+        value: "2"
+      - key: DB_CONNECT_TIMEOUT
+        value: "10"
+      - key: SEND_SMS
+        value: "false"
+      - key: DISPATCH_SMS_FALLBACK
+        value: "false"
+      - key: REPORT_PHOTO_STORAGE
+        value: supabase
+      - key: SUPABASE_REPORT_PHOTO_BUCKET
+        value: report-photos
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
