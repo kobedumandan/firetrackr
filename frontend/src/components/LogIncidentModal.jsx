@@ -3,6 +3,7 @@ import AppModal from './AppModal'
 import { IntakeSection, IntakeDisclosure, IntakeReceipt } from './IncidentIntakeSection'
 import { manilaInput } from '../utils/operationalTimes'
 import { fetchTeams } from '../api'
+import { useIncidentBarangay } from '../hooks/useIncidentBarangay'
 import {
   SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES,
   ICON_CLOSE, ICON_TRUCK, ICON_PLUS, ICON_PIN, ICON_WARN, ICON_HISTORY,
@@ -54,6 +55,9 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
   const [allTeams, setAllTeams]     = useState([])
   const [units, setUnits]           = useState([])   // array of team objects
   const [unitSelect, setUnitSelect] = useState('')
+  const { detecting, hint: barangayHint, markEdited } = useIncidentBarangay(
+    form.fire_latitude, form.fire_longitude, setForm, 'fire_location_name',
+  )
 
   useEffect(() => {
     if (mode !== 'past') return
@@ -76,6 +80,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
   ].filter(Boolean)
 
   function set(field, value) {
+    if (field === 'fire_location_name') markEdited()
     setError(null)
     setForm(prev => ({ ...prev, [field]: value }))
   }
@@ -114,7 +119,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (submitting.current) return
+    if (submitting.current || detecting) return
     if (!hasPin) {
       setError('Pick the incident location on the map.')
       return
@@ -172,11 +177,17 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
         <div className="lim-layout">
           {/* ── Left rail: map picker ── */}
           <aside className="lim-rail-map intake-location" aria-label="Incident location" inert={saving}>
-            <IntakeSection icon={ICON_PIN} title="Location" desc="Pin the incident, then name the area">
+            <IntakeSection icon={ICON_PIN} title="Location" desc="Pin the incident to detect its barangay">
             <MapPicker
               lat={form.fire_latitude}
               lng={form.fire_longitude}
-              onChange={(lat, lng) => { setError(null); setForm(prev => ({ ...prev, fire_latitude: lat, fire_longitude: lng })) }}
+              onChange={(lat, lng) => {
+                setError(null)
+                setForm(prev => ({
+                  ...prev, fire_latitude: lat, fire_longitude: lng,
+                  fire_location_name: prev.fire_latitude === '' || (prev.fire_latitude === lat && prev.fire_longitude === lng) ? prev.fire_location_name : '',
+                }))
+              }}
               onBoundsError={setMapError}
             />
             <PinStatus
@@ -188,14 +199,17 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
             <div className="eim-row">
               <Field label="Area / Barangay" required>
                 <input
-                  placeholder="e.g. Brgy. San Francisco, Panabo"
+                  placeholder="Filled automatically from the map pin"
                   aria-label="Area / Barangay"
+                  aria-describedby="lim-barangay-hint"
+                  aria-busy={detecting}
                   form="lim-form"
                   required
                   value={form.fire_location_name}
                   onChange={e => set('fire_location_name', e.target.value)}
                   data-autofocus
                 />
+                <span id="lim-barangay-hint" className="frm-hint" aria-live="polite">{barangayHint}</span>
               </Field>
               <Field label="Street / landmark">
                 <input
@@ -353,12 +367,12 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
         {error && <div className="apm-error intake-error" role="alert">{error}</div>}
 
         <div className="eim-footer">
-          <span className={`eim-changes ${missing.length || futureTime ? '' : 'ready'}`} role="status">
-            {futureTime ? 'Incident time is in the future' : missing.length ? `Still needed: ${missing.join(' and ')}` : 'Ready to log'}
+          <span className={`eim-changes ${detecting || missing.length || futureTime ? '' : 'ready'}`} role="status">
+            {detecting ? 'Detecting barangay…' : futureTime ? 'Incident time is in the future' : missing.length ? `Still needed: ${missing.join(' and ')}` : 'Ready to log'}
           </span>
           <div className="eim-footer-actions">
             <button type="button" className="apm-btn-cancel" onClick={onClose} disabled={saving}>Cancel</button>
-            <button type="submit" form="lim-form" className="apm-btn-submit" disabled={saving || missing.length > 0 || futureTime}>
+            <button type="submit" form="lim-form" className="apm-btn-submit" disabled={saving || detecting || missing.length > 0 || futureTime}>
               {saving ? <><span className="apm-spinner" /> Logging…</> : isPast ? 'Record incident' : 'Log incident'}
             </button>
           </div>

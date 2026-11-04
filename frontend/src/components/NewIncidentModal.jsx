@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import AppModal from './AppModal'
 import { IntakeSection, IntakeDisclosure, IntakeReceipt } from './IncidentIntakeSection'
 import { manilaInput } from '../utils/operationalTimes'
+import { useIncidentBarangay } from '../hooks/useIncidentBarangay'
 import '../styles/AppModal.css'
 import { SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES, ICON_PIN, ICON_BOLT, ICON_WARN } from './incidentFormOptions'
 import { Icon, Field, Segmented } from './incidentForm'
@@ -35,15 +36,21 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState(null)
   const submitting = useRef(false)
+  const { detecting, hint: barangayHint, detectedName, markEdited } = useIncidentBarangay(
+    location[0], location[1], setForm, 'locationName',
+  )
 
-  function set(field, val) { setForm(f => ({ ...f, [field]: val })); setError(null) }
+  function set(field, val) {
+    if (field === 'locationName') markEdited()
+    setForm(f => ({ ...f, [field]: val })); setError(null)
+  }
 
   const fromReporter = form.locationSource === 'report'
   const missing = form.locationName.trim() ? [] : ['area name']
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (missing.length || submitting.current) return
+    if (missing.length || submitting.current || detecting) return
     submitting.current = true
     setSaving(true)
     try {
@@ -86,7 +93,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
           <fieldset className="intake-fields" disabled={saving}>
 
           {/* ── Location ── */}
-          <IntakeSection icon={ICON_PIN} title="Location" desc={fromReporter ? 'Pinned from the reporter\'s phone.' : 'Pin placed | Add the area name'}>
+          <IntakeSection icon={ICON_PIN} title="Location" desc={fromReporter ? 'Pinned from the reporter\'s phone.' : 'Confirm the pin and barangay'}>
             <div className="eim-coords pinned nim-pin">
               <Icon d={ICON_PIN} />
               <span className="eim-coords-val">{location[0].toFixed(5)}, {location[1].toFixed(5)}</span>
@@ -95,7 +102,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
                 <button
                   type="button"
                   className="eim-link-btn nim-pin-move"
-                  onClick={() => onRepick(form)}
+                  onClick={() => onRepick({ ...form, locationName: form.locationName === detectedName ? '' : form.locationName })}
                   disabled={saving}
                 >
                   Move pin
@@ -105,13 +112,16 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
             <div className="eim-row">
               <Field label="Area / Barangay" required>
                 <input
-                  placeholder="e.g. Brgy. San Francisco, Panabo"
+                  placeholder="Filled automatically from the map pin"
                   value={form.locationName}
                   onChange={e => set('locationName', e.target.value)}
                   aria-label="Area / Barangay"
+                  aria-describedby="nim-barangay-hint"
+                  aria-busy={detecting}
                   required
                   data-autofocus
                 />
+                <span id="nim-barangay-hint" className="frm-hint" aria-live="polite">{barangayHint}</span>
               </Field>
               <Field label="Street / landmark">
                 <input
@@ -209,12 +219,12 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
         {error && <div className="apm-error intake-error" role="alert">{error}</div>}
 
         <div className="eim-footer">
-          <span className={`eim-changes ${missing.length ? '' : 'ready'}`} role="status">
-            {missing.length ? `Still needed: ${missing.join(' and ')}` : 'Ready to log'}
+          <span className={`eim-changes ${detecting || missing.length ? '' : 'ready'}`} role="status">
+            {detecting ? 'Detecting barangay…' : missing.length ? `Still needed: ${missing.join(' and ')}` : 'Ready to log'}
           </span>
           <div className="eim-footer-actions">
             <button type="button" className="apm-btn-cancel" onClick={onCancel} disabled={saving}>Cancel</button>
-            <button type="submit" form="nim-form" className="apm-btn-submit" disabled={saving || missing.length > 0}>
+            <button type="submit" form="nim-form" className="apm-btn-submit" disabled={saving || detecting || missing.length > 0}>
               {saving ? <><span className="apm-spinner" /> Logging…</> : form.autoDispatch ? 'Log & dispatch' : 'Log incident'}
             </button>
           </div>
