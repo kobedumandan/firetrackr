@@ -1759,5 +1759,7 @@ and observed field dispatch/arrival measurements. Do not record secret values he
   atomically. Existing model directories retain the normal integrity checks.
 - A disposable PostGIS cold-start check with registered `v1`, an empty model
   cache, one drawn road constraint and mocked private storage passes routing,
-  coverage, HTTP and WebSocket checks. The actual private upload remains pending
-  operator approval. See [Render trial](documentation/render-free-trial.md).
+  coverage, HTTP and WebSocket checks. With operator approval, the 1.3 MiB `v1`
+  bundle was published privately and an actual cloud download into an empty cache
+  passed manifest and all six artifact hash checks. Registry records were not
+  changed. See [Render trial](documentation/render-free-trial.md).

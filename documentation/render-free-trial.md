@@ -121,7 +121,11 @@ unregistered baseline or overwrites an existing model directory.
 
 New trained versions need explicit publication too; automatic archival after
 retraining is not implemented. Runtime model recovery never creates buckets or
-uploads artifacts. The actual `v1` publication remains pending operator approval.
+uploads artifacts. With operator approval on November 4, 2026, the verified `v1`
+archive (1,358,449 bytes) was published to the private `model-artifacts` bucket.
+An actual HTTPS download into a new empty local cache passed manifest and all six
+artifact hash checks. Model-registry records were not changed. Hosted routing
+activation still needs the updated backend deployed on Render.
 
 ## Before the hosted trial
 
