@@ -338,13 +338,13 @@ export default function PlanningPage() {
 
   useEffect(() => {
     // Keep the selected band and its rows together; ignore superseded replies.
-    if (refreshing) return;
+    if (refreshing || !iso) return;
     let alive = true;
     fetchCoverageGaps(minutes)
       .then((r) => { if (alive) setGapResult({ key: gapKey, rows: r?.gaps || [] }); })
       .catch((e) => { if (alive) setGapResult({ key: gapKey, error: e?.message || "Could not load barangay coverage." }); });
     return () => { alive = false; };
-  }, [minutes, refreshing, gapRetry, gapKey]);
+  }, [minutes, refreshing, gapRetry, gapKey, iso]);
 
   useEffect(() => {
     fetchBarangays()

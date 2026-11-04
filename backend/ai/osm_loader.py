@@ -16,22 +16,22 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import networkx as nx
+
 from .graph_builder import RoadNetworkGraph
 from .config import Config
 
 logger = logging.getLogger(__name__)
 
-try:
-    import osmnx as ox
-    _OSMNX_AVAILABLE = True
-except ImportError:
-    _OSMNX_AVAILABLE = False
-    logger.warning("osmnx not installed. Run: pip install osmnx")
-
 
 def _require_osmnx():
-    if not _OSMNX_AVAILABLE:
-        raise RuntimeError("osmnx is required. Run: pip install osmnx")
+    # Panabo uses QGIS. Importing OSMnx here would also keep its plotting stack
+    # resident in every API worker, even when no OSM operation is requested.
+    try:
+        import osmnx as ox
+    except ImportError as exc:
+        raise RuntimeError("osmnx is required. Run: pip install osmnx") from exc
+    return ox
 
 
 def download_road_network(
@@ -39,7 +39,7 @@ def download_road_network(
     cache_path: Path = Config.OSM_GRAPHML,
     network_type: str = "drive",
     force_download: bool = False,
-) -> "ox.MultiDiGraph":
+) -> nx.MultiDiGraph:
     """
     Fetch or load the OSM road network for the given place.
 
@@ -55,7 +55,7 @@ def download_road_network(
     Returns:
         A networkx MultiDiGraph with speed and travel_time edge attributes.
     """
-    _require_osmnx()
+    ox = _require_osmnx()
     cache_path = Path(cache_path)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
 

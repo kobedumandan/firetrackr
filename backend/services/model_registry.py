@@ -20,6 +20,7 @@ from models import ModelVersion
 from services.label_snapshot import build_snapshot, read_database_snapshot, write_snapshot
 from services.model_artifacts import verify_artifacts, sha256, read_json
 from services.retrain_runner import LocalRunner, RunnerUnavailable
+from services.resource_limits import serialized_memory_work
 
 logger = logging.getLogger(__name__)
 _REGISTRY_LOCK_KEY = 74120933
@@ -66,6 +67,7 @@ def serialize_version(row):
     return payload
 
 
+@serialized_memory_work
 def registry_summary(db):
     champion = db.query(ModelVersion).filter_by(status="champion").one_or_none()
     training = db.query(ModelVersion).filter_by(status="training").one_or_none()
@@ -173,7 +175,8 @@ def retrain_runner(job_id=None):
     raise RegistryError("RETRAIN_RUNNER must be local or modal", 503)
 
 
-def start_retrain(db, actor):
+@serialized_memory_work
+def _reserve_retrain(db, actor):
     registry_lock(db)
     if db.query(ModelVersion).filter_by(status="training").first():
         raise RegistryError("A retrain is already active")
@@ -204,14 +207,20 @@ def start_retrain(db, actor):
     # Persist the job identity before spawning. A web-process crash after submit
     # can therefore be recovered by another worker without launching a second job.
     db.commit()
+    return row, runner, snapshot_dir, directory
+
+
+def start_retrain(db, actor):
+    # Drop large snapshot locals and release the memory lock before cloud I/O.
+    row, runner, snapshot_dir, directory = _reserve_retrain(db, actor)
     try:
-        runner.submit(snapshot_dir, directory, version=version, job_id=job_id)
+        runner.submit(snapshot_dir, directory, version=row.version, job_id=row.job_id)
     except RunnerUnavailable:
         # The request may have reached Modal before the connection dropped.
         # Keep the reservation and recover by job ID instead of launching twice.
-        logger.warning("Retrain acknowledgement pending for %s; polling its reserved job", version)
+        logger.warning("Retrain acknowledgement pending for %s; polling its reserved job", row.version)
     except Exception:
-        logger.exception("Retrain submission failed for %s", version)
+        logger.exception("Retrain submission failed for %s", row.version)
         row.status = "failed"
         row.error = "Retrain could not start; inspect the server log and runner configuration."
         db.commit()

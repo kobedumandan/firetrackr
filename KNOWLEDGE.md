@@ -17,6 +17,30 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### Coverage and retraining resource limits (2026-11-04)
+
+- Cold isochrone/gap requests and overlapping forced refreshes share one coverage
+  computation per API process. Planning waits for initial isochrones before asking
+  for gaps. Station/model invalidation advances a revision; an in-flight result
+  cannot repopulate the cache after its inputs change. A racing computation retries
+  current inputs once, then returns a retryable 503 if they keep changing.
+- Coverage, model-summary/snapshot preparation, routing-overlay construction and
+  replacement graph builds share a thread lock to avoid overlapping large temporary
+  allocations. Ordinary reads and health checks do not take it. Retrain submission
+  releases the lock and snapshot locals before cloud I/O; durable job reservation,
+  acknowledgement recovery and candidate review/promotion behavior stay intact.
+- Panabo no longer imports OSMnx and its plotting dependencies during API startup.
+  The OSM adapter imports them on demand; the production QGIS road source is unchanged.
+- Validation uses a new disposable loopback PostGIS database, the actual registered
+  v1 bundle and mock private storage. Four simultaneous coverage requests previously
+  performed four computations and reached 682.26 MiB resident memory on Windows.
+  The final screen performs one and peaks at 481.50 MiB across coverage, mocked
+  retrain preparation and routing/reload, with OSMnx/Matplotlib absent. Thirteen
+  standalone regressions and two existing isolated inactive-station checks pass.
+  Actual cloud training was not submitted;
+  only snapshot preparation and a mocked runner were exercised. These local samples
+  do not prove Linux container memory use or sustained hosted-load safety.
+
 ### List-query performance (2026-11-03)
 
 - `GET /api/teams` eagerly loads station, team shift, truck, membership/personnel

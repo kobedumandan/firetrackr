@@ -16,6 +16,7 @@ from config import ROUTING_POOL_SIZE
 from routing_setup import build_routing_engine
 import routing_pool
 from services.model_source import constraint_paths, resolve_champion
+from services.resource_limits import memory_work_lock, serialized_memory_work
 
 logger = logging.getLogger(__name__)
 _reload_lock = asyncio.Lock()
@@ -42,7 +43,8 @@ def _read_overlay(db, model_source=None, force=False):
     if style_path and style_path.exists():
         with open(style_path, encoding="utf-8") as source:
             style = json.load(source)
-    return signature, overlay_features(rows, load_segment_index(path), style)
+    with memory_work_lock:
+        return signature, overlay_features(rows, load_segment_index(path), style)
 
 
 def _read_deployment(force=False):
@@ -75,6 +77,7 @@ def discard_replacement(engine, pool):
             logger.exception("Unused routing engine cleanup failed")
 
 
+@serialized_memory_work
 def _build_replacement(features, register_gym, model_source=None):
     engine = build_routing_engine(register_gym=register_gym, custom_constraints=features, model_source=model_source)
     if engine is None:
@@ -112,7 +115,7 @@ def install_replacement(signature, features, source, engine, pool):
     state.routing_generation += 1
     state.gnn_constraints_cache = None
     state.constraint_style_cache = None
-    state.coverage_cache = None
+    state.invalidate_coverage()
     _loaded_signature = signature
     if old_pool is not None:
         try:

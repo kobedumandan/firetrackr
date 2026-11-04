@@ -10,6 +10,7 @@ import asyncio
 from collections import deque
 from copy import deepcopy
 import logging
+from threading import Lock
 from uuid import uuid4
 
 from fastapi import WebSocket
@@ -29,6 +30,16 @@ routing_generation = 0                 # Prevent in-flight readers caching an ol
 gnn_constraints_cache: "tuple | None" = None  # (generation, response)
 constraint_style_cache: "tuple | None" = None  # (generation, source, style)
 coverage_cache: "dict | None" = None
+coverage_revision = 0
+coverage_cache_lock = Lock()
+
+
+def invalidate_coverage():
+    """Prevent a concurrent computation from publishing pre-change coverage."""
+    global coverage_cache, coverage_revision
+    with coverage_cache_lock:
+        coverage_revision += 1
+        coverage_cache = None
 
 
 class ConnectionManager:

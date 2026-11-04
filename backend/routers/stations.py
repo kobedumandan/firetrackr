@@ -16,7 +16,7 @@ router = APIRouter(tags=["stations"])
 def _invalidate_coverage():
     """Coverage is computed from station positions and status, and cached per
     process; any station write makes that cache stale."""
-    state.coverage_cache = None
+    state.invalidate_coverage()
 
 
 @router.get("/api/stations")

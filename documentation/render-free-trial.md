@@ -69,6 +69,44 @@ model training and sustained load were not tested.
   `SUPABASE_MODEL_BUCKET` bucket (default `model-artifacts`) before road overlays
   are read. The backend reuses its existing Supabase server credentials.
 
+## Concurrent coverage and retrain preparation — November 4, 2026
+
+The restart investigation reproduced four concurrent cold coverage computations
+on a new disposable local database with registered `v1`. The initial Windows
+resource screen reached **682.26 MiB** resident memory across that scenario.
+Previously, simultaneous isochrone/gap requests could each allocate a complete
+set of geometry intermediates before any request populated the cache.
+
+The API now shares one computation across concurrent callers and serializes it
+with model-summary/snapshot preparation and routing graph replacement. A cache
+revision prevents a computation from publishing stale station/model inputs.
+Planning also waits for its initial isochrones before requesting gap rows.
+Snapshot locals are released before retrain cloud submission. OSMnx and its
+plotting dependencies are loaded only for an actual OSM operation, keeping them
+out of Panabo's normal QGIS startup.
+
+The final local screen performed **one** coverage computation for all four
+requests. Peak resident memory was **394.70 MiB** during cold concurrent coverage,
+**368.71 MiB** during mocked retrain preparation, and **481.50 MiB** across the
+complete routing/reload scenario (483.37 MiB private committed memory). All 24
+HTTP checks, WebSocket checks, and two existing inactive-station regressions
+passed; 13 additional standalone concurrency/import/submission checks passed.
+The final report is `.simulation-results/render-free-20261104T105532Z/report.json`.
+
+Run the expanded local screen with:
+
+```powershell
+& .\backend\venv\Scripts\python.exe .\backend\tests\profile_render_free.py --registered-model --runtime-regressions
+```
+
+This exercises simultaneous coverage, model summary, a real Parquet snapshot,
+mocked job submission, routing/reload, WebSocket behavior and inactive-station
+checks. The database and private storage are isolated/mocked; no actual training
+is launched. Windows measurements remain distinct from Linux cgroup memory.
+The hosted restart logs establish the request/restart timing but do not include
+an explicit out-of-memory event. Confirm the deployed service's memory metrics
+and restart reason before claiming the host-level cause or a safe load limit.
+
 ## Registered-model cold-start validation — November 4, 2026
 
 The first hosted service reported healthy API/database status but offline routing.
