@@ -65,6 +65,63 @@ model training and sustained load were not tested.
 - `backend/.python-version` selects the latest Python 3.12 patch; the local test
   used 3.12.10. The Linux dependency installation still needs a Render build.
 - Report photos use the existing private Supabase storage implementation.
+- Missing registered model bundles are restored from the private
+  `SUPABASE_MODEL_BUCKET` bucket (default `model-artifacts`) before road overlays
+  are read. The backend reuses its existing Supabase server credentials.
+
+## Registered-model cold-start validation — November 4, 2026
+
+The first hosted service reported healthy API/database status but offline routing.
+Its database selected `v1`; that version's bundle existed only in the ignored local
+model directory. The original empty-registry local test did not cover this case.
+
+After adding private model restoration, a separate local PostGIS test registered
+the actual verified `v1` manifest, inserted one synthetic drawn road constraint,
+and started with an empty model cache. Mock private storage supplied the exact
+local bundle. Routing came online as `v1`; all 18 HTTP checks and WebSocket checks
+passed, including graph replacement and recalculating coverage. Only two storage
+requests occurred (private-bucket metadata and bundle download); graph reload used
+the cache. Peak sampled Windows resident memory was 484.35 MiB. This still is not
+a Render CPU or Linux container-memory measurement.
+
+Thirteen isolated checks cover publication, cached versions, exact artifact
+identity, tampering, incorrect version/digest, traversal, size limits and rejecting
+public model buckets. The local regression command is:
+
+```powershell
+& .\backend\venv\Scripts\python.exe .\backend\tests\profile_render_free.py --registered-model
+```
+
+The complete result is
+`.simulation-results/render-free-20261104T074620Z/report.json`. This test performs
+no live storage uploads or database writes outside its new local cluster.
+
+## Publishing a model bundle
+
+Publication is an explicit operator action, separate from API startup. From
+`backend/`, run the following with the version and manifest digest already
+registered in `model_versions`:
+
+```text
+python publish_model_bundle.py --version v1 --manifest-sha256 REGISTERED_DIGEST
+```
+
+The command verifies the local bundle and resulting archive, then creates the
+private model bucket only if absent and uploads without overwriting any object.
+An existing public bucket is rejected. No registry/database records are changed.
+Credentials stay in backend environment settings; the archive contains only the
+model checkpoint, constraint export, feature/split/scores/validation metadata and
+manifest. It does not contain `.env` or account/incident records.
+
+Objects use `VERSION/MANIFEST_SHA256.zip`. Recovery requires a private bucket,
+limits downloads to 64 MiB and unpacked files to 128 MiB, accepts only the expected
+regular filenames, verifies the registered manifest and every file digest, checks
+the version, and publishes the cache atomically. It never switches to an
+unregistered baseline or overwrites an existing model directory.
+
+New trained versions need explicit publication too; automatic archival after
+retraining is not implemented. Runtime model recovery never creates buckets or
+uploads artifacts. The actual `v1` publication remains pending operator approval.
 
 ## Before the hosted trial
 
@@ -79,12 +136,13 @@ model training and sustained load were not tested.
 3. Use a PostgreSQL/PostGIS schema matching the application (currently `0033`).
    Supabase's TLS **Session pooler** is required by the held session advisory locks;
    retain `sslmode=require`. Do not substitute transaction pooling.
-4. Verify the active model's immutable bundle is available on the host. The
+4. Publish the active model's verified bundle to the private model bucket. The
    default road and baseline constraint assets are tracked, but
-   `backend/ai/models/versions/` is gitignored. A database champion record pointing
-   at an absent bundle prevents routing initialization. The configured remote
-   database could not be inspected during this trial because its connection timed
-   out, so its current champion is unverified.
+   `backend/ai/models/versions/` is gitignored. Missing versions are downloaded at
+   routing initialization; a missing/unpublished or invalid bundle fails closed.
+   A read-only metadata check confirmed the configured database's champion is
+   `v1` and its manifest digest matches the local verified bundle. Earlier direct
+   database connectivity from the agent timed out; HTTPS metadata access worked.
 5. Set `PUBLIC_BASE_URL` to the assigned `https://...onrender.com` API URL before
    exercising reporter links. The local default is not a deployed reporter URL.
 6. For the first dashboard test, keep Vite at `http://localhost:5173`, which the
@@ -92,10 +150,11 @@ model training and sustained load were not tested.
    URL and `VITE_REGION=panabo` in that shell. No local `.env` edit is needed.
    A separately hosted dashboard needs its exact origin added to backend CORS.
 
-Do not run model retraining/promotion as part of this Free trial: its local job
-files and model versions do not survive service restarts, redeploys or idle sleep.
-Keep training elsewhere and plan durable model artifact retrieval before testing
-model lifecycle features. In-memory reporter sessions are also lost on restart.
+Do not run model retraining/promotion as part of this Free trial: local job files
+do not survive restarts, redeploys or idle sleep, and new model versions must be
+published explicitly before another host can retrieve them. Keep training
+elsewhere. Registered published bundles can be restored after a restart;
+in-memory reporter sessions are still lost.
 
 ## Hosted acceptance
 

@@ -50,6 +50,8 @@ services:
         value: supabase
       - key: SUPABASE_REPORT_PHOTO_BUCKET
         value: report-photos
+      - key: SUPABASE_MODEL_BUCKET
+        value: model-artifacts
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
