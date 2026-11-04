@@ -66,6 +66,7 @@ if REPORT_PHOTO_STORAGE not in {"local", "supabase"}:
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
 SUPABASE_SECRET_KEY = (os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")).strip()
 SUPABASE_REPORT_PHOTO_BUCKET = os.getenv("SUPABASE_REPORT_PHOTO_BUCKET", "report-photos").strip()
+SUPABASE_MODEL_BUCKET = os.getenv("SUPABASE_MODEL_BUCKET", "model-artifacts").strip()
 REPORT_PHOTO_URL_TTL_SECONDS = int(os.getenv("REPORT_PHOTO_URL_TTL_SECONDS", "3600"))
 if not 60 <= REPORT_PHOTO_URL_TTL_SECONDS <= 86400:
     raise ValueError("REPORT_PHOTO_URL_TTL_SECONDS must be between 60 and 86400.")

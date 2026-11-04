@@ -301,3 +301,14 @@ Revision 0029 adds nullable `narrow_severity` and `traffic_schedule`. Legacy NUL
 values retain prior behavior. On the configured legacy database, the fields were
 applied additively with a backup and original-value verification; the legacy
 Alembic stamp remains unchanged. Do not blindly stamp/upgrade that database.
+
+## Model bundles on ephemeral hosts
+
+Routing restores absent registered versions from the private Supabase
+`SUPABASE_MODEL_BUCKET` bucket (default `model-artifacts`) using existing backend
+Supabase credentials. Publication is explicit: from `backend/`, run
+`python publish_model_bundle.py --version v1 --manifest-sha256 REGISTERED_DIGEST`.
+The uploader verifies the bundle, creates only a missing private bucket, and does
+not overwrite objects or alter model-registry records. Runtime recovery checks
+the registered manifest and file hashes before atomically installing its cache.
+See [Render trial](documentation/render-free-trial.md) for limits and validation.

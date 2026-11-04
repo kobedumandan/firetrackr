@@ -1745,3 +1745,21 @@ and observed field dispatch/arrival measurements. Do not record secret values he
   fallback popup. Heatmap incident detail popups remain available. Incident and
   obstruction cards share the constraint hover-card typography and surface style.
   Camera and Actions panels share the same 9.8px bottom offset.
+
+### Registered model restoration on ephemeral hosts (2026-11-04)
+
+- Routing restores missing registered bundles from private Supabase model storage
+  before reading constraint overlays. `SUPABASE_MODEL_BUCKET` defaults to
+  `model-artifacts`; existing backend Supabase credentials are reused.
+- `backend/publish_model_bundle.py` explicitly publishes a verified local bundle
+  without overwriting storage objects or changing registry records. Startup only
+  downloads; it does not publish or change bucket settings.
+- Cache installation verifies the registered manifest digest, every file hash
+  and version, bounds archive sizes, rejects unsafe entries, and installs
+  atomically. Existing model directories retain the normal integrity checks.
+- A disposable PostGIS cold-start check with registered `v1`, an empty model
+  cache, one drawn road constraint and mocked private storage passes routing,
+  coverage, HTTP and WebSocket checks. With operator approval, the 1.3 MiB `v1`
+  bundle was published privately and an actual cloud download into an empty cache
+  passed manifest and all six artifact hash checks. Registry records were not
+  changed. See [Render trial](documentation/render-free-trial.md).

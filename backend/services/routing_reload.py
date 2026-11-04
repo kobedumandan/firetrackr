@@ -49,6 +49,9 @@ def _read_deployment(force=False):
     from database import SessionLocal
     with SessionLocal() as db:
         source = resolve_champion(db)
+        if source:
+            from services.model_bundle_store import ensure_model_bundle
+            ensure_model_bundle(source["version"], source["manifest_sha256"])
         signature, features = _read_overlay(db, source, force)
         if features is not None and source:
             from services.model_artifacts import verify_artifacts
