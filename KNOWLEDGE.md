@@ -19,6 +19,10 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ### Hosted dashboard startup and availability (2026-11-05)
 
+- The login health indicator allows 30 seconds per request and retries temporary
+  fetch failures, startup HTML and gateway errors within its 90-second recovery
+  window. Sustained failures say status is unavailable rather than asserting that
+  the API is down. Sign-in remains available; database failures retain their own state.
 - Command startup and WebSocket recovery request
   `GET /api/dispatch?active_incidents_only=true`. The optional server filter keeps
   dispatches whose incident is pending, active, dispatched or contained, including

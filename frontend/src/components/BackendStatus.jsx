@@ -5,7 +5,7 @@ const STATUS_COPY = {
   waiting: ['Backend starting or reconnecting', 'Waiting for a response. The server may be waking up. We’ll retry automatically.'],
   online: ['Backend online', 'Server and database are ready for sign-in.'],
   degraded: ['Backend partially available', 'Server is online, but the database is unavailable. Retrying automatically.'],
-  unreachable: ['Backend unreachable', 'The browser could not confirm the server status. Check your connection or try again.'],
+  unreachable: ['Backend status unavailable', 'This browser could not confirm the server status. Check your connection or try signing in.'],
   offline: ['You’re offline', 'Reconnect to the internet to check the backend.'],
 }
 

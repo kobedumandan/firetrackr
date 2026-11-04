@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchBackendHealth } from '../api'
 
-const REQUEST_TIMEOUT = 15000
+const REQUEST_TIMEOUT = 30000
 const SLOW_RESPONSE = 4000
 const STARTUP_WINDOW = 90000
 
@@ -54,9 +54,11 @@ export function useBackendStatus() {
         waitingSince = null
       } catch (error) {
         if (disposed || controller !== request) return
-        // A timeout cannot prove that the server is booting rather than down.
-        const mayBeStarting = request.signal.aborted || [502, 503, 504].includes(error?.status)
-        nextStatus = mayBeStarting && Date.now() - waitingSince < STARTUP_WINDOW ? 'waiting' : 'unreachable'
+        // A browser fetch failure can also hide a hosting gateway's cold-start
+        // response. Retry it before concluding that status cannot be checked.
+        const retryable = request.signal.aborted || error instanceof TypeError
+          || error instanceof SyntaxError || [502, 503, 504].includes(error?.status)
+        nextStatus = retryable && Date.now() - waitingSince < STARTUP_WINDOW ? 'waiting' : 'unreachable'
       } finally {
         if (controller === request) {
           clearTimeout(slowTimer)
