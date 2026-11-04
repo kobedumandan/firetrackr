@@ -764,8 +764,8 @@ Reporter phone ── public /report/{token} GPS page ────────�
                                                               └─ PhilSMS / Expo push services
 ```
 
-[main.py](backend/main.py) registers routers, localhost CORS and `/uploads`, then
-loads routing, starts a worker pool and schedules background maintenance.
+[main.py](backend/main.py) registers routers, explicit dashboard CORS and `/uploads`,
+then loads routing, starts a worker pool and schedules background maintenance.
 [state.py](backend/state.py) holds process-local connections, sessions and caches.
 Request handlers use synchronous SQLAlchemy sessions; reusable behavior is in
 [services](backend/services/). PostgreSQL advisory locks prevent duplicate watchdog
@@ -1422,8 +1422,10 @@ for a requested verified audit.
 - WebSocket sessions, reporter state and caches are not shared between workers or
   durable across restarts. Single-worker real-time operation is the current safe
   architectural assumption; routing pool subprocesses are separate from Uvicorn workers.
-- CORS is hardcoded to `http://localhost:5173`. Deployment origins and reverse-proxy/
-  TLS configuration must be confirmed externally. API docs are enabled by default.
+- CORS explicitly allows `http://localhost:5173` and
+  `https://firetrackr-dashboard.onrender.com`. Other dashboard origins require an
+  explicit configuration change. Reverse-proxy/TLS configuration must be confirmed
+  externally. API docs are enabled by default.
 - New Corella lacks predicted constraints and barangay polygons; no reachable operational
   station yields no coverage. Region switches share the same database and do not
   isolate old Panabo records.

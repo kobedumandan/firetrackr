@@ -283,9 +283,10 @@ npm run lint       # ESLint
 
 Log in with the admin account created by `seed_admin.py`.
 
-Use `http://localhost:5173` for development; this is the origin allowed by the
-backend's current CORS configuration. Vite preview normally uses port 4173, so
-to test the built frontend with the API, stop the dev server first and run
+Use `http://localhost:5173` for development. Backend CORS also allows the deployed
+dashboard at `https://firetrackr-dashboard.onrender.com`. Vite preview normally
+uses port 4173, so to test the built frontend with the API, stop the dev server
+first and run
 `npm run preview -- --port 5173 --strictPort`. The backend must remain running.
 Frontend environment variables are embedded at build time; rebuild after changing
 them. The frontend build is written to `frontend/dist/`; the Python backend runs

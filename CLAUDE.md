@@ -159,7 +159,8 @@ npm run dev
 ```
 
 Set `VITE_API_BASE_URL=http://localhost:8000` for a local API. Vite normally serves
-at `http://localhost:5173`, the only origin explicitly allowed by current CORS.
+at `http://localhost:5173`. CORS explicitly allows that origin and the deployed
+dashboard at `https://firetrackr-dashboard.onrender.com`.
 Production build/preview commands are `npm run build` and `npm run preview`.
 Configuration and default values are catalogued in [KNOWLEDGE.md](KNOWLEDGE.md).
 

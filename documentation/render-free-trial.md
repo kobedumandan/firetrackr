@@ -190,7 +190,9 @@ activation still needs the updated backend deployed on Render.
 6. For the first dashboard test, keep Vite at `http://localhost:5173`, which the
    current CORS policy permits. Start it with `VITE_API_BASE_URL` set to the Render
    URL and `VITE_REGION=panabo` in that shell. No local `.env` edit is needed.
-   A separately hosted dashboard needs its exact origin added to backend CORS.
+   The CORS allowlist also includes `https://firetrackr-dashboard.onrender.com`;
+   deploy the updated backend before using that hosted dashboard. Other frontend
+   origins need their exact origin added explicitly.
 
 Do not run model retraining/promotion as part of this Free trial: local job files
 do not survive restarts, redeploys or idle sleep, and new model versions must be
