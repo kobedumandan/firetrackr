@@ -424,6 +424,110 @@
   color: var(--text-secondary);
 }
 
+/* Backend availability below the sign-in button, including on small screens. */
+.lp-backend-status {
+  --backend-color: var(--accent-blue);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  margin-top: 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.lp-backend-status.is-online {
+  --backend-color: var(--accent-green);
+}
+
+.lp-backend-status.is-waiting,
+.lp-backend-status.is-degraded {
+  --backend-color: var(--accent-amber);
+}
+
+.lp-backend-status.is-unreachable,
+.lp-backend-status.is-offline {
+  --backend-color: var(--accent-fire);
+}
+
+.lp-backend-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.lp-backend-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.8px;
+  line-height: 1.5;
+}
+
+.lp-backend-heading strong {
+  font-weight: 600;
+}
+
+.lp-backend-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--backend-color);
+}
+
+.is-checking .lp-backend-dot,
+.is-waiting .lp-backend-dot {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+  border: 2px solid color-mix(in srgb, var(--backend-color) 25%, transparent);
+  border-top-color: var(--backend-color);
+  animation: lp-spin 0.8s linear infinite;
+}
+
+.lp-backend-copy p {
+  margin: 5px 0 0;
+  font-size: 9.8px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.lp-backend-retry {
+  flex-shrink: 0;
+  padding: 3px 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 9.8px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.lp-backend-retry:hover:enabled {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.lp-backend-retry:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 4px;
+}
+
+.lp-backend-retry:disabled {
+  color: var(--text-tertiary);
+  cursor: wait;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-checking .lp-backend-dot,
+  .is-waiting .lp-backend-dot {
+    animation: none;
+  }
+}
+
 /* ── Alert ────────────────────────────────────────────────────────────────── */
 
 .lp-alert {

@@ -806,7 +806,21 @@ Apply migration `0024` before running the updated backend.
 
 ## Backend/frontend integration
 
-- API base URL is `VITE_API_BASE_URL` (default `http://localhost:8000`). WS URL is
+- The login page checks public `/health` without credentials or cached responses.
+  It shows checking, starting/reconnecting, API/database online, database unavailable,
+  unreachable and browser-offline states, plus a manual check button. Slow requests
+  show a waiting state after four seconds; each request times out after 15 seconds.
+  Timeouts/gateway startup errors retry every five seconds for 90 seconds before
+  showing unreachable; browser/network and invalid-response errors show unreachable
+  immediately. After 90 seconds of failures checks retry every 15 seconds. Healthy
+  checks repeat every 30 seconds. In development the health request uses Vite's
+  same-origin `/health` proxy targeting `VITE_API_BASE_URL`, or the local API when
+  unset; hosted production checks use the configured API directly. Checks pause
+  while the tab is hidden and are canceled on unmount. A waiting state cannot prove
+  that the backend is booting; `/health` is served only after startup completes.
+  Online here means API/database availability, not routing-engine readiness.
+- API base URL is `VITE_API_BASE_URL` (default same origin, using Vite's local
+  API, health, upload and WebSocket proxies in development). WS URL is
   derived by converting HTTP to WS and appending `/ws`.
 - Requests use bearer `bfp_token` from localStorage and the ngrok skip-warning
   header. A non-login 401 clears local credentials and reloads the page.

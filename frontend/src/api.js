@@ -4,7 +4,30 @@ import { createAsyncCache } from './utils/asyncCache'
 // FastAPI. That keeps login working whether the dashboard was opened through
 // localhost, 127.0.0.1, or another development hostname. Deployments that host
 // the API elsewhere can still provide VITE_API_BASE_URL.
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '')
+
+// Public, uncached probe: stale sign-in tokens must not affect availability checks.
+export async function fetchBackendHealth(signal) {
+  // Vite forwards this to the configured API, including hosted development APIs.
+  // This avoids browser CORS/preflight failures masquerading as a cold start.
+  const url = import.meta.env.DEV ? '/health' : `${BASE_URL}/health`
+  const tunnel = /^https?:\/\/[^/]+\.ngrok(?:-free)?\.(?:app|dev|io)(?::\d+)?\//i.test(url)
+  const response = await fetch(url, {
+    signal,
+    cache: 'no-store',
+    credentials: 'omit',
+    headers: tunnel ? { 'ngrok-skip-browser-warning': '1' } : {},
+  })
+  if (!response.ok) {
+    throw Object.assign(new Error(`Backend health check failed (${response.status})`), { status: response.status })
+  }
+  const health = await response.json()
+  if (health?.api !== 'ok' || !['ok', 'unavailable'].includes(health.database)) {
+    throw new Error('Invalid backend health response')
+  }
+  return health
+}
+
 const constraintCache = createAsyncCache({ ttl: 5 * 60 * 1000 })
 const operationalCache = createAsyncCache({ ttl: 30000 })
 export function invalidateOperationalTimes() {

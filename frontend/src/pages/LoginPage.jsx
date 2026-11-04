@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { apiFetch } from "../api";
+import BackendStatus from "../components/BackendStatus";
 import "../styles/LoginPage.css";
 
 function EmailIcon() {
@@ -260,6 +261,8 @@ export default function LoginPage({ onLogin }) {
         onLogin(data.user);
       } else if (res.status === 403) {
         setAlert("This account is for field personnel. Sign in with the FireTrackr mobile app instead.");
+      } else if (res.status >= 500) {
+        setAlert("The server is temporarily unavailable. Please wait and try again.");
       } else {
         setErrors({ email: true, password: true });
         setAlert("Invalid credentials. Please check your email and password.");
@@ -427,6 +430,8 @@ export default function LoginPage({ onLogin }) {
                 "Sign in"
               )}
             </button>
+
+            <BackendStatus />
           </form>
 
           <footer className="lp-footer">
