@@ -453,14 +453,17 @@ function buildStationsExport(rows, stations, scope) {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-export default function StationsPage({ onShowOnMap, initialStationId = null }) {
+export default function StationsPage({ onShowOnMap, initialStationId = null, onStationChange }) {
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [selectedId, setSelectedId] = useState(() => initialStationId == null ? null : stationKey(initialStationId));
+  const [localSelectedId, setSelectedId] = useState(() => initialStationId == null ? null : stationKey(initialStationId));
+  const selectedId = onStationChange
+    ? (initialStationId == null ? stations[0]?.id : stationKey(initialStationId))
+    : localSelectedId;
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [deleting, setDeleting] = useState(null);
@@ -558,12 +561,20 @@ export default function StationsPage({ onShowOnMap, initialStationId = null }) {
   }, [stations, search, statusFilter, activeTab]);
 
   const selected = stations.find((s) => s.id === selectedId) || null;
+  function selectStation(id) {
+    setSelectedId(id);
+    const station = stations.find(s => s.id === id);
+    if (station) onStationChange?.(station.numericId);
+  }
   // Nesting only makes sense when both kinds are listed and nothing is being searched.
   const flat = activeTab !== "all" || search.trim() !== "";
 
   async function confirmDelete() {
     await deleteStation(deleting.numericId);
-    if (selectedId === deleting.id) setSelectedId(null);
+    if (selectedId === deleting.id) {
+      setSelectedId(null);
+      onStationChange?.(null);
+    }
     await loadStations();
   }
 
@@ -689,7 +700,7 @@ export default function StationsPage({ onShowOnMap, initialStationId = null }) {
               </button>
             </div>
           ) : (
-            <StationTree list={filtered} stations={stations} selectedId={selectedId} onSelect={setSelectedId} flat={flat} />
+            <StationTree list={filtered} stations={stations} selectedId={selectedId} onSelect={selectStation} flat={flat} />
           )}
         </div>
 
@@ -699,7 +710,7 @@ export default function StationsPage({ onShowOnMap, initialStationId = null }) {
           <StationDetail
             s={selected}
             stations={stations}
-            onSelectStation={setSelectedId}
+            onSelectStation={selectStation}
             onEdit={() => setShowEditModal(true)}
             onDelete={() => setDeleting(selected)}
             onViewOnMap={() => onShowOnMap?.(selected)}

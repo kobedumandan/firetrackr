@@ -24,6 +24,8 @@ import { useNotifications, readNotifPrefs, NOTIF_STORAGE_KEY } from './hooks/use
 import { fetchActiveIncidents, fetchPersonnel, fetchStations, fetchDispatches, selectRoute, fetchPersonnelLocations, fullReroute, createIncident, fetchReporterSessions, invalidateModelRouting, notifyModelUpdate, WS_URL } from './api'
 import { readMapLayerPrefs, MAP_LAYER_STORAGE_KEY } from './utils/mapLayers'
 import useCommandShortcut from './hooks/useCommandShortcut'
+import useAppNavigation from './hooks/useAppNavigation'
+import { PAGE_PATHS } from './utils/appNavigation'
 import useLivePersonnelLocations from './hooks/useLivePersonnelLocations'
 import { replaceDispatchRoutes } from './utils/dispatchRouteUpdates'
 import { isTrackerOffline } from './utils/trackerStatus'
@@ -118,20 +120,23 @@ function getInitialRoute() {
   const token = localStorage.getItem('bfp_token')
   const user  = localStorage.getItem('bfp_user')
   if (token && user) {
-    return { view: 'dashboard', user: JSON.parse(user) }
+    try {
+      const savedUser = JSON.parse(user)
+      if (savedUser && typeof savedUser === 'object') return { view: 'dashboard', user: savedUser }
+    } catch { /* A damaged saved session should still reach the login page. */ }
   }
   return { view: 'login' }
 }
 
 export default function App() {
   const [route, setRoute] = useState(getInitialRoute)
+  const { page, navigate, back } = useAppNavigation(route.view === 'dashboard')
+  const activeNav = page.nav || 'Command'
+  const analysisTab = page.tab || 'response'
+  const showSettings = !!page.settings
 
   // ── Dashboard-only state ───────────────────────────────────────────────────
-  const [activeNav, setActiveNav]                 = useState('Command')
-  const [analysisTab, setAnalysisTab]             = useState('response')
   const [reviewIncident, setReviewIncident]       = useState(null)
-  const [reviewStationId, setReviewStationId] = useState(null)
-  const [showSettings, setShowSettings]           = useState(false)
   const [selectedIncident, setSelectedIncident]   = useState(null)
   // Persisted: without this the dashboard snapped back to dark on every
   // reload, so picking Light in Settings never survived a refresh.
@@ -242,8 +247,7 @@ export default function App() {
     if (!inc) return
     closeAlerts()
     setConstraintEditing(false)
-    setShowSettings(false)
-    setActiveNav('Command')
+    navigate(PAGE_PATHS.Command)
     handleSelectIncident(inc.id)
     if (inc.latitude != null && inc.longitude != null) {
       setMapFocus({ lat: inc.latitude, lng: inc.longitude, nonce: Date.now() })
@@ -287,13 +291,25 @@ export default function App() {
 
   const navigateToPage = useCallback(nav => {
     setConstraintEditing(false)
-    setActiveNav(nav)
+    navigate(PAGE_PATHS[nav])
     setReviewIncident(null)
-    setShowSettings(false)
     setFocusedPersonnel(null)
     setMapFocus(null)
-  }, [])
+  }, [navigate])
   useCommandShortcut(navigateToPage, route.view === 'dashboard')
+
+  useEffect(() => {
+    function onHistoryNavigation() {
+      setConstraintEditing(false)
+      setPickingMode(false)
+      setPickedLocation(null)
+      setIncidentDefaults(null)
+      setShowLocationRequest(false)
+      setShowAlerts(false)
+    }
+    window.addEventListener('popstate', onHistoryNavigation)
+    return () => window.removeEventListener('popstate', onHistoryNavigation)
+  }, [])
 
   // Auto-select the first incident when the list loads or changes
   useEffect(() => {
@@ -320,39 +336,45 @@ export default function App() {
   useEffect(() => {
     if (route.view !== 'dashboard') return
 
-    setLoadingIncidents(true)
-    setLoadingPersonnel(true)
+    let cancelled = false
+    // Let StrictMode discard its first setup before any HTTP work is sent.
+    Promise.resolve().then(() => {
+      if (cancelled) return
+      setLoadingIncidents(true)
+      setLoadingPersonnel(true)
 
-    fetchActiveIncidents()
-      .then(data => {
-        const active = data.filter(i => ACTIVE_STATUSES.has(i.status))
-        // Seed the diff baseline, silently — everything already open at login
-        // is history, not news.
-        const snap = new Map()
-        data.forEach(i => snap.set(i.fire_id, { alarm: i.alarm, status: i.status, loc: i.loc }))
-        incidentSnapRef.current = snap
-        setActiveIncidents(active)
-        setLoadingIncidents(false)
-      })
-      .catch(() => { setLoadingIncidents(false) })
+      fetchActiveIncidents()
+        .then(data => {
+          if (cancelled) return
+          const active = data.filter(i => ACTIVE_STATUSES.has(i.status))
+          // Seed the diff baseline silently; existing incidents are history.
+          const snap = new Map()
+          data.forEach(i => snap.set(i.fire_id, { alarm: i.alarm, status: i.status, loc: i.loc }))
+          incidentSnapRef.current = snap
+          setActiveIncidents(active)
+          setLoadingIncidents(false)
+        })
+        .catch(() => { if (!cancelled) setLoadingIncidents(false) })
 
-    fetchPersonnel()
-      .then(data => { setPersonnel(data); setLoadingPersonnel(false) })
-      .catch(() => { setLoadingPersonnel(false) })
-    fetchStations().then(setStations).catch(() => {})
+      fetchPersonnel()
+        .then(data => { if (!cancelled) { setPersonnel(data); setLoadingPersonnel(false) } })
+        .catch(() => { if (!cancelled) setLoadingPersonnel(false) })
+      fetchStations().then(data => { if (!cancelled) setStations(data) }).catch(() => {})
 
-    // Rehydrate reporter pins (WS only pushes new events, so a reload would
-    // otherwise lose already-received locations).
-    fetchReporterSessions()
-      .then(sessions => setReporterLocations(
-        sessions.map(s => ({ token: s.token, coords: s.coords, mobile: s.phone || '' }))
-      ))
-      .catch(() => {})
+      // Rehydrate reporter pins; WebSocket messages only push new locations.
+      fetchReporterSessions()
+        .then(sessions => {
+          if (!cancelled) setReporterLocations(sessions.map(s => ({ token: s.token, coords: s.coords, mobile: s.phone || '' })))
+        })
+        .catch(() => {})
 
-    fetchDispatches(null, { activeIncidentsOnly: true }).then(rows => {
-      setDispatches(rows)
-      setDispatchRoutes(_routesFromDispatchRows(rows))
-    }).catch(() => {})
+      fetchDispatches(null, { activeIncidentsOnly: true }).then(rows => {
+        if (cancelled) return
+        setDispatches(rows)
+        setDispatchRoutes(_routesFromDispatchRows(rows))
+      }).catch(() => {})
+    })
+    return () => { cancelled = true }
   }, [route.view]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Persistent WebSocket — connects on login, closes only on logout ───────
@@ -648,7 +670,7 @@ export default function App() {
       ws.onerror = () => ws.close()
     }
 
-    connect()
+    Promise.resolve().then(() => { if (!destroyed) connect() })
 
     // In production this runs only when route.view leaves 'dashboard' (i.e.
     // logout) — navigating between inner pages (activeNav) never triggers it.
@@ -667,15 +689,19 @@ export default function App() {
   // ── 10-second live-location poll (TODO: replace with WebSocket push when scaling requires it) ──
   useEffect(() => {
     if (route.view !== 'dashboard') return
-    let cancelled = false
+    let cancelled = false, polling = false
 
     async function poll() {
+      await Promise.resolve()
+      if (cancelled || polling || document.hidden) return
+      polling = true
       try {
         const rows = await fetchPersonnelLocations()
         if (cancelled) return
         detectNewlyOffline(rows)
         setLivePersonnelLocations(rows)
       } catch { /* non-fatal */ }
+      finally { polling = false }
     }
 
     poll()
@@ -925,6 +951,7 @@ export default function App() {
     localStorage.removeItem('bfp_token')
     localStorage.removeItem('bfp_user')
     setRoute({ view: 'login' })
+    navigate('/login', { replace: true })
   }
 
   // ── Login page ────────────────────────────────────────────────────────────
@@ -945,7 +972,7 @@ export default function App() {
         onNavChange={navigateToPage}
         theme={theme}
         onThemeToggle={toggleTheme}
-        onOpenSettings={() => { setConstraintEditing(false); setShowSettings(s => !s) }}
+        onOpenSettings={() => { setConstraintEditing(false); if (showSettings) back(PAGE_PATHS.Command); else navigate('/settings') }}
         showingSettings={showSettings}
         user={route.user}
         onLogout={handleLogout}
@@ -971,15 +998,28 @@ export default function App() {
           onAccountUpdate={handleAccountUpdate}
         />
       ) : activeNav === 'Metrics' ? (
-        <MetricsPage onOpenAnalysis={() => { setAnalysisTab('response'); navigateToPage('Analysis') }} />
+        <MetricsPage onOpenAnalysis={() => navigateToPage('Analysis')} />
       ) : activeNav === 'Analysis' ? (
-        <AnalysisPage theme={theme} tab={analysisTab} onTabChange={setAnalysisTab} onOpenIncident={incident => { setReviewIncident(incident); setActiveNav('Incidents') }} />
+        <AnalysisPage
+          theme={theme}
+          tab={analysisTab}
+          onTabChange={tab => navigate(`/analysis/${tab}`)}
+          detailView={page.detail || null}
+          onDetailChange={detail => {
+            if (!detail) back(`/analysis/${analysisTab}`)
+            else navigate(`/analysis/response/${detail.kind === 'incident' ? 'incidents' : 'dispatches'}/${detail.id}${detail.fireId ? `?incident=${detail.fireId}` : ''}`)
+          }}
+          onOpenIncident={incident => { setReviewIncident(incident); navigate(`/incidents/${incident.fire_id}`) }}
+        />
       ) : activeNav === 'Incidents' ? (
         <IncidentsPage
           theme={theme}
           initialIncident={reviewIncident}
+          incidentId={page.incidentId || null}
+          onOpenIncident={incident => navigate(`/incidents/${incident.fire_id}`)}
+          onCloseIncident={deleted => deleted ? navigate(PAGE_PATHS.Incidents, { replace: true }) : back(PAGE_PATHS.Incidents)}
           onShowOnMap={(inc) => {
-            setActiveNav('Command')
+            navigateToPage('Command')
             handleSelectIncident(inc.id)
             setMapFocus({ lat: inc.latitude, lng: inc.longitude, nonce: Date.now() })
           }}
@@ -988,7 +1028,7 @@ export default function App() {
         <PersonnelPage
           livePersonnelLocations={livePersonnelLocations}
           onShowOnMap={(perId) => {
-            setActiveNav('Command')
+            navigateToPage('Command')
             setFocusedPersonnel({ per_id: perId, nonce: Date.now() })
           }}
         />
@@ -996,15 +1036,16 @@ export default function App() {
         <TeamsPage
           refreshKey={rosterNonce}
           onShowOnMap={(t) => {
-            setActiveNav('Command')
+            navigateToPage('Command')
             setMapFocus({ lat: t.station_latitude, lng: t.station_longitude, nonce: Date.now() })
           }}
         />
       ) : activeNav === 'Stations' ? (
         <StationsPage
-          initialStationId={reviewStationId}
+          initialStationId={page.stationId || null}
+          onStationChange={stationId => navigate(stationId ? `/stations?station=${stationId}` : PAGE_PATHS.Stations)}
           onShowOnMap={(s) => {
-            setActiveNav('Command')
+            navigateToPage('Command')
             setMapFocus({ lat: s.latitude, lng: s.longitude, nonce: Date.now() })
           }}
         />
@@ -1012,7 +1053,7 @@ export default function App() {
         <TrucksPage
           refreshKey={rosterNonce}
           onShowOnMap={(t) => {
-            setActiveNav('Command')
+            navigateToPage('Command')
             setMapFocus({ lat: t.truck_latitude, lng: t.truck_longitude, nonce: Date.now() })
           }}
         />
@@ -1030,7 +1071,7 @@ export default function App() {
             newIncidents={loggedIncidents}
             reporterLocations={reporterLocations}
             stations={stations}
-            onViewStation={stationId => { setReviewStationId(stationId); navigateToPage('Stations') }}
+            onViewStation={stationId => navigate(`/stations?station=${stationId}`)}
             personnel={personnel}
             livePersonnelLocations={livePersonnelLocations}
             dispatchRoutes={dispatchRoutes}

@@ -17,7 +17,77 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### Dashboard URL navigation (2026-11-06)
+
+- Screen selection follows browser paths: `/command`, `/metrics`,
+  `/analysis/response`, `/analysis/coverage`, `/analysis/reports`, `/incidents`,
+  `/personnel`, `/teams`, `/stations`, `/trucks` and `/settings`. The browser
+  History API records screen changes and handles Back/Forward without restarting
+  App's shared session WebSocket. Re-selecting the same screen adds no entry.
+- Incident details use `/incidents/{fire_id}`; Analysis details use
+  `/analysis/response/incidents/{fire_id}` or
+  `/analysis/response/dispatches/{dispatch_id}?incident={fire_id}`. Analysis keeps
+  its underlying workspace mounted while viewing details, preserving table state
+  and focus on return. Station selection uses `/stations?station={station_id}`.
+- Administrator-only `GET /api/incidents/{fire_id}` returns the existing incident
+  JSON shape (404 when absent), allowing bookmarks outside the register's current
+  page/filters. `/api/incidents/active` retains its earlier static route ordering.
+- Signed-out bookmarks redirect to `/login?next=...`; successful login restores
+  only recognised local destinations. Logout replaces the current URL with
+  `/login`, and protected browser-history entries still require a session.
+  Root/unknown paths fall back to Command or login. HTTP access checks remain
+  server-side. The public backend `/report/{token}` GPS pages are unchanged.
+- Vite development/preview serve the SPA for deep paths. Production static
+  hosting must rewrite application paths to `/index.html` (HTTP 200); see
+  [frontend setup](frontend/README.md). This change does not update live hosting.
+
 ### Hosted dashboard startup and availability (2026-11-05)
+
+- Development REST and WebSocket traffic uses the Vite page's origin, with
+  `VITE_API_BASE_URL` selecting the proxy target. Production still uses the
+  configured public API origin. This avoids local hostname/port CORS failures.
+- Concurrent Metrics, coverage and Response & Operations reads share pending
+  requests. Analysis reads remain uncached after completion; cancelling a page
+  cancels its own consumer without aborting another page's shared read. Metrics
+  and coverage retain their two-minute caches, with session keys and invalidation
+  protecting against stale refresh responses. StrictMode's discarded initial
+  dashboard setup sends no requests; GPS polls cannot overlap or run in hidden tabs.
+- The stale-driver watchdog performs synchronous database and route work in
+  an awaited worker thread, with the session created/closed there. WebSocket
+  broadcasts stay on the event loop, and shutdown waits for a running scan.
+  Four standalone fake-session checks cover liveness during a blocked query,
+  cancellation cleanup, fresh GPS and stale route rebuilding. A health request
+  completes within a 200 ms test deadline while that fake query remains blocked;
+  this does not establish hosted latency or memory limits.
+
+- Incident intake explains severity as overall incident seriousness used by
+  sorting and reporting across operation types. Fire alarm selection, structure
+  type and alarm escalation apply to Firefighting Operations; other known
+  dispatch types save NULL alarm/structure values and display "Not applicable"
+  in the general incident views.
+  Legacy records with no dispatch type retain their existing alarm controls.
+- Choosing Other for structure type reveals a required description (100-character
+  limit). Both intake forms save the entered text in `fire_structure_type`;
+  editing reopens custom values as Other without changing the stored value.
+- Fire Metrics, the fire heatmap and fire-prone-area rankings share a fire-only
+  population: Firefighting Operations, or an explicit `response_kind=fire` when
+  dispatch type is absent. Known non-fire operations and unclassified records
+  remain in the incident register and general response analysis, but do not
+  affect fire counts, response KPIs, chart breakdowns or concentration weights.
+  Existing historical imports already declare Firefighting Operations. New
+  non-fire closures do not create heatmap points; existing points are filtered
+  on read, without deleting any incident history.
+
+- Metrics replaces the six-month shortcut with an inclusive Philippine-calendar
+  date range. `GET /api/metrics/summary` accepts `period=custom`, `date_from` and
+  `date_to` (YYYY-MM-DD); both dates are required, ordered and cannot be future
+  dates. KPIs, monthly activity and breakdowns use this window; a chart-month
+  selection intersects it. Exports retain the selected dates.
+- Reporter links default to the configured API origin, with optional
+  `VITE_PUBLIC_BASE_URL`. SMS uses backend `PUBLIC_BASE_URL`, falling back to
+  `RENDER_EXTERNAL_URL` on Render. Vite proxies reporter pages and API/WebSocket
+  traffic to its configured backend. Update any deployed public-URL override
+  when moving hosts.
 
 - The login health indicator allows 30 seconds per request and retries temporary
   fetch failures, startup HTML and gateway errors within its 90-second recovery
@@ -422,9 +492,14 @@ Plans and docstrings are cross-checked against handlers and callers.
   online phone. When fresh driver GPS is available after departure, switching
   recalculates from that position. Position routing snaps to the
   current directed road segment, includes its remaining distance/time and carries
-  incoming-edge context into ALT to prevent immediate mid-road reversal. Recent
-  movement disambiguates direction on bidirectional roads. Before departure,
-  station-origin selection remains supported.
+  incoming-edge context into ALT to prevent reversing over the partial edge just
+  traversed. Updated 2026-11-04: recalculation compares both available directions
+  on two-way roads and selects the lower-cost route, restoring direction-independent
+  planning. Recent GPS movement no longer locks the starting direction or triggers
+  a turnaround loop. One-way roads and active obstructions remain enforced; the
+  geometry still begins at the current GPS fix. Before departure, station-origin
+  selection remains supported. School/private-access restrictions are not encoded
+  in the current road graph, so this does not exclude all campus shortcuts.
 - Explicit forced planning uses the station when driver GPS is unavailable.
   A manning driver's first accepted fix, or a returning driver's fix after an
   offline period, automatically replaces the plan with driver-to-incident routes,
@@ -509,6 +584,10 @@ Plans and docstrings are cross-checked against handlers and callers.
   notes, and expandable team rosters replace the flat detail list. Team cards show
   station, truck, dispatch status and the team leader; rosters describe current
   membership rather than confirmed incident attendance.
+  Incident IDs use smaller, dimmer text. Leader previews separate the title and
+  name with a dim pipe; leader, roster and sidebar headings use title case.
+  Obstruction and heatmap view/summary headings and Refresh Data use title case;
+  the redundant map helper paragraph is removed.
 - Incident time and report receipt are separate fields; panel and timeline clocks
   use Philippine time. Unknown severity is neutral, closed incidents show their
   actual status and terminal incidents offer no response actions. Existing dispatch,
@@ -573,7 +652,7 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 - Analysis now has Response & Operations, Coverage Planning and Operational Reports
   tabs. The first combines incident lifecycle cards/stages/trends and incident
-  records with dispatch/team comparisons, quality counts, route revisions and
+  records with dispatch/team comparisons, quality counts and
   independently paginated full filtered incident/dispatch CSV reviews.
   Dispatch observations also have table-only team, response-quality and
   initial/reinforcement filters. These intersect the analysis filters and selected
@@ -595,25 +674,53 @@ Plans and docstrings are cross-checked against handlers and callers.
   Demo timelines disable team/assignment controls because they imply no actual
   assignments. Incident page results use the same bounded, refresh-aware cache
   for quick resets; resetting clears its month and other table filters.
-  Incident record View actions open a separate Response Analysis page using the
-  Incident Details layout. Its back button returns to the same mounted analysis
-  workspace, preserving table filters, pagination and scroll position. The page
-  shares route evidence, stage/unit selection, milestone confirmation and live
-  refresh behavior with the legacy operational-timing modal. Dispatch Records
-  links open the Dispatch Details page; Back restores the same response analysis
-  unit/stage selection, milestone form, scroll position and focused link.
-  Dispatch observation View actions open a separate Dispatch Details page using
-  the same detail shell, hero metrics, context sidebar and section panels. Back
-  restores the mounted table's refinements, pagination, expansion, scroll and
-  focused View button. The page includes dispatch milestones, actor attribution,
-  interval quality, responder tracks and selectable saved route revisions, plus
-  the incident-register link. Operational evidence events refresh its loaded
-  detail in place. The page and legacy modal component share the saved-route
-  revision viewer.
+  Incident and dispatch table View actions open the same Response Analysis page;
+  a dispatch link preselects that assignment. Older dispatch-ID-only entry points
+  resolve the parent incident into the same review. The first-arrival metric has
+  the strongest visual emphasis, beside incident-wide operation and suppression
+  summaries. These totals remain unchanged when selecting a dispatch.
+  Incident details appear directly below those metrics: address, barangay,
+  incident occurrence and report receipt times, dispatch type, alarm, severity,
+  structure, reporter and casualties, with expandable remarks. The operational
+  detail payload includes the shared `incident_record` serializer, so these
+  fields and the register link remain available without any dispatch assignment.
+  A single dispatch selector scopes the assignment context, recorded timeline,
+  truck travel/ETA comparison and responder map. Multiple trucks within an
+  assignment have a separate vehicle selector. Dispatch evidence, interval
+  quality, actor attribution, unit metrics, operational audit events and verified
+  milestone entry sit in expandable supporting sections.
+  Dispatch evidence groups the interval-quality comparison beside recorded
+  actors and assignment context, with selected-truck timings and audit events
+  below. On narrow screens, durations and quality badges stack within each row;
+  missing attribution and current-metadata provenance remain explicit.
+  The incident lifecycle has its own expandable evidence section. The page uses
+  the shared details shell without the former context sidebar or nested dispatch
+  page. Back restores the mounted table's filters, pagination, expansion, scroll
+  and focused View button. Operational evidence refreshes loaded details in place.
+  The combined review omits the generated-route history panel, keeping recorded
+  responder GPS and the selected-route ETA comparison as the route evidence.
+  Preserved route revisions remain available in the legacy dispatch modal.
+  Verified milestone entry groups the event, classification and occurrence fields
+  beside a live scope/time preview. The form labels Philippine time explicitly,
+  preserves failed submissions for retry and shows inline save feedback, while
+  reusing its existing confirmation API contracts and idempotency keys.
+  Selecting a recorded milestone prefills its Philippine timestamp and the
+  incident classification. The time remains editable; unchanged values make no
+  request, and Keep recorded time restores the stored value after an edit.
+  Administrators save timestamp corrections through
+  `PATCH /api/operational-times/{fire_id}/milestones`, supplying the previous
+  occurrence time for conflict detection. This also handles recorded dispatch
+  clearance and classification times; classification values remain locked.
+  Corrections preserve chronological order and append an attributed event with
+  the old/new time, retaining original events and incident/dispatch status.
+  A mirrored dispatch arrival follows its corrected truck aggregate so response
+  metrics do not keep using a superseded time. Independent crew arrival evidence
+  remains preserved. Original confirmation/mobile/report writers still reject
+  timestamp replacement. Historical operations can be corrected without reopening.
   Response Analysis's single Responder Route History map also offers an optional vehicle-GPS
-  layer when dispatch-unit GPS paths are available. Team/member filters scope
+  layer when dispatch-unit GPS paths are available. Dispatch/member filters scope
   that layer without changing personal GPS counts or timings. Vehicle timing
-  and selected-route ETA comparisons remain in the Response Timeline section.
+  and selected-route ETA comparisons appear before the map.
   Operational trend points include a `breakdown` (common-cohort count, mean
   stage `seconds`, and metric `values`/`counts`), so chart selections update stage distribution for that timeframe.
   Selecting the same timeframe again restores the full-window distribution.
@@ -783,7 +890,9 @@ Request handlers use synchronous SQLAlchemy sessions; reusable behavior is in
 [services](backend/services/). PostgreSQL advisory locks prevent duplicate watchdog
 and token-reaper loops across server workers. They do not share WebSocket events.
 
-The frontend uses React state for screen selection, not React Router. Pages and
+The frontend uses URL paths and the browser History API for screen selection,
+through [useAppNavigation.js](frontend/src/hooks/useAppNavigation.js) and
+[appNavigation.js](frontend/src/utils/appNavigation.js). Pages and
 modals call [api.js](frontend/src/api.js), while [App.jsx](frontend/src/App.jsx)
 owns a persistent session WebSocket, event reconciliation and location polling.
 The personnel client is not included here; its backend support can be verified,
@@ -1131,8 +1240,50 @@ constraint editing.
 Visibility is local to the editing view. The editor uses a panel with
 constraint-type buttons, a searchable road list and
 collapsible location/source/sort filters. Active filters can be cleared together;
-the recent list stays ordered newest first. Rows show constraint and source badges,
+the recent list stays ordered newest first. Rows show source-first, title-case
+badges (Predicted with High Confidence/For Review, or Baseline with its road type),
 visibility controls and a selected-road inspector with severity or traffic hours.
+Updated 2026-11-04: compact inline type buttons and tighter workspace controls
+leave more room for roads. Tools, the road list and the height-limited inspector
+scroll separately, so expanded filters or selected details do not hide the list.
+The workspace uses the constraints editor's page background; type controls omit
+the help text/editing-mode badge, and list titles omit the extra road icon.
+Selected rows use a neutral grey fill/border. The selected-road inspector is an
+inset rounded card without a nested tinted road wrapper or heading icon; model
+prediction buckets use the name Predicted Constraint and retain their separate
+High Confidence/For Review type. In the map's constraints view, the legend scrolls
+independently so Edit constraints stays visible and keyboard-reachable.
+List titles use title case. Prediction confidence suffixes use a muted pipe and
+status instead of parentheses; panel and row dividers use a dimmer neutral token.
+Prediction edit and active-filter controls use the fire accent; saved-source badges use the
+green theme accent and title-case labels. Button labels and prediction confidence
+text are smaller, and inspector help text is quieter. Inspector/legend scrollbars
+are hidden while their content remains scrollable and the edit action stays visible.
+Saved-constraint Edit uses a filled fire button; Remove uses a neutral outline and
+hover, with the fire eyebrow reserved for its deletion confirmation.
+Remove/Restore depends on the saved constraint ID rather than the selectable-road
+catalog's readiness; drawing and open edit/save dialogs still lock the action.
+The constraint load state shows a small animated circle while loading and Retry
+after a failed load.
+Search/filter typography is smaller and muted, and Done uses a slimmer button.
+Add and edit dialogs share the deletion confirmation's badge/header treatment;
+constraint modal eyebrows are smaller and grey, with fire on deletion. Shared
+modal header titles use title case. Road-name placeholders are dimmer. Context labels, list counts and
+constraint-view headings, legend labels and edit buttons use title case. Add/edit
+descriptions share the same info row. Hidden rows are greyed out; the legend's
+constrained count is bright with dimmer neutral totals and Roads text. Condition,
+severity and day selections use neutral grey; active switches use the fire accent.
+Section headings and help text are subdued. Selected cards/days have a subtle
+grey border and fill; unselected
+options use the modal's base background. Description and hint rows share a small,
+muted info icon, text and divider. The traffic schedule
+groups day and hour controls in rounded cards without the timezone label; the footer
+note is grey. The context tag and full-width weekday row use smaller typography
+and controls. Layer notice banners are removed; draft selection feedback appears
+inside the neutral draft card, and loading errors retain Retry in the list.
+Draft headings use smaller title-case text without a dot. Active add-type buttons use the fire
+accent; the map drawing banner uses neutral surfaces and small text.
+Save behavior, validation and the stored road/traffic values are unchanged.
 The panel supports both themes and scrolls within smaller viewports. It selects
 authoritative QGIS road chains between connected junctions/dead ends rather than
 drawing polylines.
@@ -1270,6 +1421,13 @@ and interprets entered occurrence and receipt times in Asia/Manila. Switching
 back to live mode clears historical status/outcome values. Saving prevents
 duplicate submission and dismissing the modal; a failed request retains the
 draft for retry. Moving the map pin continues to pass the draft to the parent.
+Both intake forms fill Area / Barangay from the existing `/api/barangays`
+boundary polygons when a pin is selected, including reporter GPS. Moving the pin
+detects the new barangay; quick entry drops the previous automatic name from its
+draft while retaining other details. Names remain editable, and edits made while
+boundaries load survive the response. Polygon holes and boundary edges are
+excluded, matching the backend's spatial assignment. Missing boundaries or an
+unmatched pin show a manual-entry hint; submission waits for an active lookup.
 New intake defaults to Minor severity. Receipt details offer Now and Unknown
 actions; Unknown keeps the receipt timestamp empty rather than inferring one.
 
@@ -1467,7 +1625,7 @@ for a requested verified audit.
 ## Operational Time Analysis
 
 The administrator sidebar's **Analysis** page includes an **Operational Times** tab
-beside Response Performance and Coverage Planning. It uses the existing React state-based navigation,
+beside Response Performance and Coverage Planning. It uses dashboard URL navigation,
 KpiCard, form fields, modal shell, theme tokens and Leaflet maps. Metrics calculations,
 Planning coverage and the routing/ETA algorithms retain their existing behavior.
 Metrics keeps this branch's receipt-based response key and exposes a separate verified
@@ -1659,18 +1817,20 @@ and unattributed historical location logs never manufacture personal histories.
 Generated plans are optional dashed overlays, separate from the coloured personal
 GPS paths. The Response Analysis page consolidates vehicle GPS into an optional
 layer on that map; its timeline no longer contains a second map. The legacy
-timing modal retains its expandable vehicle context, and dispatch drill-downs
-retain expandable generated-route revisions. Active dispatch locations refresh
+timing modal retains its expandable vehicle context, and the legacy dispatch
+modal retains expandable generated-route revisions. Active dispatch locations refresh
 every ten seconds.
 The Response Analysis page and legacy timing modal use a left-side roster of member toggle buttons:
 selecting a member focuses their attributed GPS route and recording metrics;
-selecting them again restores all members in the selected team scope. Team buttons
-also refine the roster. Personal metrics show the GPS recording window, usable
+selecting them again restores all members in the selected team scope. The page's
+dispatch selector scopes its roster and map; the legacy modal retains its own
+team filter. Personal metrics show the GPS recording window, usable
 sample count, displayed segments and excluded fixes, rather than inferred travel
-or arrival. Selecting a member switches the separate vehicle timing section to
-their dispatch. Incident first-arrival and overall-operation summaries remain
-incident-wide. The page uses the Incident Details shell, hero and context sidebar;
-the legacy modal retains its shared header/footer. Both support dashboard themes;
+or arrival. In the legacy modal, selecting a member switches vehicle timing to
+their dispatch. The combined page uses an explicit truck selector for assignments
+with multiple vehicles. Incident first-arrival and overall-operation summaries
+remain incident-wide. The page uses the shared details shell, an incident summary
+and a dispatch review; the legacy modal retains its shared header/footer. Both support dashboard themes;
 narrow screens show a horizontally scrollable member row above the map.
 Gaps over 120 seconds, coordinates outside valid ranges, accuracy worse than 35 m,
 and jumps over 200 km/h break the displayed line; points with unknown accuracy

@@ -164,6 +164,12 @@ dashboard at `https://firetrackr-dashboard.onrender.com`.
 Production build/preview commands are `npm run build` and `npm run preview`.
 Configuration and default values are catalogued in [KNOWLEDGE.md](KNOWLEDGE.md).
 
+Dashboard screens now have URL paths, including `/command`, `/incidents/42` and
+`/analysis/coverage`. Back/Forward follows screen navigation; deep links require
+login. Restart the backend for the new administrator-only
+`GET /api/incidents/{fire_id}` bookmark read. Production static hosting must serve
+`/index.html` with HTTP 200 for application paths; see [frontend setup](frontend/README.md).
+
 ## Database and migration work
 
 The current chain ends at `0033_preserve_legacy_dispatch_attribution.py`. Original constraint/model

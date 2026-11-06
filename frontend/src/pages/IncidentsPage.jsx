@@ -7,7 +7,7 @@ import ConfirmModal from "../components/ConfirmModal";
 import ExportRegisterModal from "../components/ExportRegisterModal";
 import IncidentDetailsPage from "./IncidentDetailsPage";
 import { SeverityBadge, StatusPill, formatReported } from "../components/incidentUi";
-import { fetchIncidents, createIncident, deleteIncident } from "../api";
+import { fetchIncident, fetchIncidents, createIncident, deleteIncident } from "../api";
 
 function ExportIcon() {
   return (
@@ -55,7 +55,7 @@ const PERIODS = [
   { key: "year", label: "This Year" },
 ];
 
-export default function IncidentsPage({ onShowOnMap, initialIncident = null, theme = "dark" }) {
+export default function IncidentsPage({ onShowOnMap, initialIncident = null, theme = "dark", incidentId, onOpenIncident, onCloseIncident }) {
   const [incidents, setIncidents] = useState([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({
@@ -71,6 +71,7 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
   // When set, the full-page incident details view replaces the list. Holds the
   // incident itself so the view survives a list refetch that drops the row.
   const [detailsIncident, setDetailsIncident] = useState(initialIncident);
+  const [linkedIncident, setLinkedIncident] = useState(null);
   const [showLogModal, setShowLogModal] = useState(false);
   const [editingIncident, setEditingIncident] = useState(null);
   const [deletingIncident, setDeletingIncident] = useState(null);
@@ -150,6 +151,23 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
     };
   }, [query]);
 
+  // A URL can point to an incident outside the current filters or list page.
+  // Keep row snapshots for immediate navigation, and fetch only when needed.
+  const detailsId = incidentId === undefined ? detailsIncident?.fire_id : incidentId;
+  const detailsView = detailsId == null ? null : (
+    incidents.find(row => row.fire_id === detailsId)
+    ?? (detailsIncident?.fire_id === detailsId ? detailsIncident : null)
+    ?? (linkedIncident?.fireId === detailsId ? linkedIncident.incident : null)
+  );
+  useEffect(() => {
+    if (incidentId == null || detailsView) return;
+    let cancelled = false;
+    fetchIncident(incidentId)
+      .then(incident => { if (!cancelled) setLinkedIncident({ fireId: incidentId, incident }); })
+      .catch(error => { if (!cancelled) setLinkedIncident({ fireId: incidentId, error: error.message }); });
+    return () => { cancelled = true; };
+  }, [incidentId, detailsView]);
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const paginated = incidents;
 
@@ -202,12 +220,14 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
     setDetailsIncident((prev) =>
       prev && prev.fire_id === updated.fire_id ? updated : prev
     );
+    setLinkedIncident(prev => prev?.fireId === updated.fire_id ? { fireId: updated.fire_id, incident: updated } : prev);
     setEditingIncident(null);
   }
 
   function handleReportSaved(updated) {
     setIncidents(previous => previous.map(row => row.fire_id === updated.fire_id ? updated : row));
     setDetailsIncident(previous => previous?.fire_id === updated.fire_id ? updated : previous);
+    setLinkedIncident(previous => previous?.fireId === updated.fire_id ? { fireId: updated.fire_id, incident: updated } : previous);
     setQuery(previous => ({ ...previous, _seq: (previous._seq ?? 0) + 1 }));
   }
 
@@ -217,6 +237,7 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
       if (updated) {
         setIncidents(previous => previous.map(row => row.fire_id === updated.fire_id ? updated : row));
         setDetailsIncident(previous => previous?.fire_id === updated.fire_id ? updated : previous);
+        setLinkedIncident(previous => previous?.fireId === updated.fire_id ? { fireId: updated.fire_id, incident: updated } : previous);
       }
       setQuery(previous => ({ ...previous, _seq: (previous._seq ?? 0) + 1 }));
     }
@@ -228,23 +249,23 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
     const target = deletingIncident;
     await deleteIncident(target.fire_id);
     setIncidents((prev) => prev.filter((i) => i.fire_id !== target.fire_id));
+    setLinkedIncident(prev => prev?.fireId === target.fire_id ? null : prev);
     setTotal((t) => Math.max(0, t - 1));
     if (selectedId === target.id) setSelectedId(null);
     // The record is gone — fall back to the list if we were viewing it.
-    if (detailsIncident?.fire_id === target.fire_id) setDetailsIncident(null);
+    if (detailsView?.fire_id === target.fire_id) closeDetails(true);
   }
 
   function openDetails(inc) {
     setSelectedId(inc.id);
     setDetailsIncident(inc);
+    onOpenIncident?.(inc);
   }
 
-  // Prefer the live row (edits land in `incidents` first) but fall back to the
-  // snapshot so the page never blanks out mid-refetch.
-  const detailsView = detailsIncident
-    ? incidents.find((i) => i.fire_id === detailsIncident.fire_id) ??
-      detailsIncident
-    : null;
+  function closeDetails(deleted = false) {
+    setDetailsIncident(null);
+    onCloseIncident?.(deleted);
+  }
 
   // Modals live above both the list and the details view, so render them once
   // from a shared helper reused by each return branch.
@@ -299,7 +320,7 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
           key={detailsView.fire_id}
           incident={detailsView}
           theme={theme}
-          onBack={() => setDetailsIncident(null)}
+          onBack={() => closeDetails()}
           onEdit={setEditingIncident}
           onDelete={setDeletingIncident}
           onViewOnMap={onShowOnMap}
@@ -308,6 +329,14 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
         {renderModals()}
       </>
     );
+  }
+
+  if (detailsId != null) {
+    const detailError = linkedIncident?.fireId === detailsId ? linkedIncident.error : null;
+    return <div className="inc-page">
+      <button className="inc-btn-secondary" onClick={() => closeDetails()}>Back to incidents</button>
+      <p role={detailError ? "alert" : "status"}>{detailError || "Loading incident…"}</p>
+    </div>;
   }
 
   return (
