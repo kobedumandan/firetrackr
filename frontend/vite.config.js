@@ -21,9 +21,10 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/health': { target: apiTarget, changeOrigin: true, headers: { 'ngrok-skip-browser-warning': '1' } },
-        '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true },
-        '/uploads': { target: 'http://127.0.0.1:8000', changeOrigin: true },
-        '/ws': { target: 'ws://127.0.0.1:8000', ws: true },
+        '/api': { target: apiTarget, changeOrigin: true },
+        '/report': { target: apiTarget, changeOrigin: true },
+        '/uploads': { target: apiTarget, changeOrigin: true },
+        '/ws': { target: apiTarget.replace(/^http/, 'ws'), ws: true },
       },
     },
   }

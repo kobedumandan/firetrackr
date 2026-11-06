@@ -6,10 +6,9 @@ import { ICON_COPY, ICON_CHECK, ICON_SEND, ICON_LINK, ICON_PIN } from "./inciden
 import { Icon, Field } from "./incidentForm";
 import "../styles/LocationRequestModal.css";
 
-// Public URL serving /report/{token}; shared links must work on the reporter's phone.
+// The reporter page is served by the API, including when it is hosted separately.
 const PUBLIC_BASE_URL =
-  import.meta.env.VITE_PUBLIC_BASE_URL ??
-  "https://deacon-overcook-heftiness.ngrok-free.dev";
+  (import.meta.env.VITE_PUBLIC_BASE_URL?.trim() || import.meta.env.VITE_API_BASE_URL?.trim() || window.location.origin).replace(/\/+$/, "");
 
 function generateToken() {
   return `RPT-${Date.now().toString(36).toUpperCase().slice(-6)}`;
@@ -79,12 +78,13 @@ export default function LocationRequestModal({
   const [sending, setSending] = useState(false);
   const [sendStatus, setSendStatus] = useState(null);
   const [copyError, setCopyError] = useState(null);
+  const [serverLink, setServerLink] = useState(null);
   const submitting = useRef(false);
   const completedAction = useRef(null);
 
   const received = !!receivedData;
   const reporterPhone = receivedData?.phone || phone.trim();
-  const reportUrl = `${PUBLIC_BASE_URL.replace(/\/$/, "")}/report/${token}`;
+  const reportUrl = serverLink || `${PUBLIC_BASE_URL}/report/${token}`;
   const smsText = `BFP FireTrackr: Please share your location to help emergency responders reach you. Tap: ${reportUrl}`;
 
   async function handleSendSms(e) {
@@ -95,6 +95,7 @@ export default function LocationRequestModal({
     setSendStatus(null);
     try {
       const result = await sendReporterSms(token, phone.trim());
+      if (result.link) setServerLink(result.link);
       setSendStatus(
         result.sms_sent
           ? { ok: true, msg: `Sent to ${result.phone_number}. Waiting for them to share their location.` }

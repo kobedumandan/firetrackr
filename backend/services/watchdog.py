@@ -51,78 +51,84 @@ def _release_watchdog_lock() -> None:
         _watchdog_lock_conn = None
 
 
-async def _stale_driver_watchdog():
-    """
-    Periodically scan active dispatches whose currently-selected route is
-    based on `driver_location`. If the driver's last reported position is
-    older than `STALE_MINUTES + STATION_FALLBACK_GRACE_MINUTES`, rebuild the
-    route set from the team's station so the planned route doesn't keep
-    pointing at a phone that went dark.
-    """
+def _scan_stale_driver_routes():
+    """Run one scan with its session owned and closed by the worker thread."""
     threshold = timedelta(minutes=STALE_MINUTES + STATION_FALLBACK_GRACE_MINUTES)
     active = ("dispatched", "en_route", "on_scene")
+    now_ts = datetime.now(timezone.utc)
+    broadcasts: list[dict] = []
+    db = SessionLocal()
+    try:
+        dispatches = (
+            db.query(DispatchRecord)
+            .filter(DispatchRecord.dispatch_status.in_(active))
+            .all()
+        )
+        for dispatch in dispatches:
+            if not dispatch.route_id:
+                continue
+            route = db.get(Route, dispatch.route_id)
+            if not route or route.route_origin_source != "driver_location":
+                continue
+
+            team = dispatch.team
+            station = team.station if team else None
+            if not (station and station.station_latitude and station.station_longitude):
+                continue
+
+            driver_member = next(
+                (
+                    m for m in (team.members if team else [])
+                    if (m.member_role or "").lower() == "driver"
+                ),
+                None,
+            )
+
+            is_stale = True
+            if driver_member:
+                loc = db.get(CurrentLocation, driver_member.per_id)
+                if loc and loc.recorded_at is not None:
+                    rec_at = loc.recorded_at
+                    if rec_at.tzinfo is None:
+                        rec_at = rec_at.replace(tzinfo=timezone.utc)
+                    if (now_ts - rec_at) <= threshold:
+                        is_stale = False
+
+            if not is_stale:
+                continue
+
+            rebuilt = _rebuild_routes(
+                db, dispatch,
+                station.station_latitude, station.station_longitude,
+                "station",
+            )
+            if rebuilt is not None:
+                selected, saved = rebuilt
+                dispatch.is_deviated = False
+                dispatch.deviation_connector_geojson = None
+                dispatch.deviation_detected_at = None
+                db.commit()
+                broadcasts.append(_build_rerouted_payload(dispatch, selected, saved, "station"))
+    finally:
+        db.close()
+    return broadcasts
+
+
+async def _stale_driver_watchdog():
+    """Refresh stale-driver routes without blocking HTTP and WebSocket handling."""
     while True:
         try:
             await asyncio.sleep(WATCHDOG_INTERVAL_SECONDS)
-            now_ts = datetime.now(timezone.utc)
-            broadcasts: list[dict] = []
-            db = SessionLocal()
+            scan = asyncio.create_task(asyncio.to_thread(_scan_stale_driver_routes))
             try:
-                dispatches = (
-                    db.query(DispatchRecord)
-                    .filter(DispatchRecord.dispatch_status.in_(active))
-                    .all()
-                )
-                for dispatch in dispatches:
-                    if not dispatch.route_id:
-                        continue
-                    route = db.get(Route, dispatch.route_id)
-                    if not route or route.route_origin_source != "driver_location":
-                        continue
-
-                    team = dispatch.team
-                    station = team.station if team else None
-                    if not (station and station.station_latitude and station.station_longitude):
-                        continue
-
-                    driver_member = next(
-                        (
-                            m for m in (team.members if team else [])
-                            if (m.member_role or "").lower() == "driver"
-                        ),
-                        None,
-                    )
-
-                    is_stale = True
-                    if driver_member:
-                        loc = db.get(CurrentLocation, driver_member.per_id)
-                        if loc and loc.recorded_at is not None:
-                            rec_at = loc.recorded_at
-                            if rec_at.tzinfo is None:
-                                rec_at = rec_at.replace(tzinfo=timezone.utc)
-                            if (now_ts - rec_at) <= threshold:
-                                is_stale = False
-
-                    if not is_stale:
-                        continue
-
-                    rebuilt = _rebuild_routes(
-                        db, dispatch,
-                        station.station_latitude, station.station_longitude,
-                        "station",
-                    )
-                    if rebuilt is not None:
-                        selected, saved = rebuilt
-                        dispatch.is_deviated                 = False
-                        dispatch.deviation_connector_geojson = None
-                        dispatch.deviation_detected_at       = None
-                        db.commit()
-                        broadcasts.append(
-                            _build_rerouted_payload(dispatch, selected, saved, "station")
-                        )
-            finally:
-                db.close()
-
+                broadcasts = await asyncio.shield(scan)
+            except asyncio.CancelledError:
+                # Finish the in-progress scan before lifespan shuts down routing.
+                try:
+                    await scan
+                except Exception:
+                    logger.exception("Stale-driver scan failed during shutdown")
+                raise
             for payload in broadcasts:
                 await manager.broadcast(payload)
         except asyncio.CancelledError:

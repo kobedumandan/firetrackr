@@ -52,6 +52,33 @@ CPU was not throttled to Render's 0.1 CPU, so the timings are not Render predict
 Supabase latency, private remote photo storage, dispatch load, concurrent routing,
 model training and sustained load were not tested.
 
+## Local navigation and health timeouts — November 5, 2026
+
+A user-provided Render event screenshot shows a five-second HTTP health timeout
+at 21:42 Asia/Manila, with recovery at 21:44. It separately reports a 512 MB memory
+failure at 01:07. Successful request logs from 21:52–21:54 do not establish the
+cause of the earlier timeout, and the timeout alone does not establish an OOM.
+
+The stale-driver watchdog previously ran synchronous connection checkout,
+database queries and route rebuilding directly on the async event loop. It now
+owns that work and its database session in an awaited worker thread. This removes
+one path that could block HTTP/WebSocket scheduling while database connections
+were busy. Shutdown waits for the scan before releasing its role and routing.
+The health endpoint and its database-readiness response are unchanged.
+
+Local browser REST and WebSocket requests now use Vite's same-origin proxy,
+including when the configured target is hosted. Pending analysis reads are shared
+across navigation; Metrics/coverage coalesce cold reads and protect forced refreshes
+from older responses. Discarded StrictMode startup work is skipped, and location
+polls cannot overlap or run in hidden tabs. A headless Chromium check at 127.0.0.1
+confirms REST, health, reporter links and WebSocket traffic work through the real
+Vite proxy against a loopback mock API with no CORS headers.
+
+The standalone `backend/tests/check_watchdog_responsiveness.py` uses fake sessions
+and no live database. Its health request completes inside a 200 ms deadline while
+the watchdog query remains blocked. These checks demonstrate local scheduling and
+request-lifecycle behavior; deploy and observe Render to validate the hosted fix.
+
 ## Configuration choices
 
 - One Uvicorn worker preserves process-local WebSocket and reporter state.

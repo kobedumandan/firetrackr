@@ -36,8 +36,9 @@ JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "8"))
 
 
 # ── PhilSMS / reporter location requests ──────────────────────────────────────
-# Public base URL (ngrok tunnel to this backend) the reporter's phone reaches.
-PUBLIC_BASE_URL   = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
+# Public backend origin used for reporter links and locally stored photos.
+# Render supplies its hosted origin automatically; other hosts can set an override.
+PUBLIC_BASE_URL   = (os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or "http://localhost:8000").strip().rstrip("/")
 PHILSMS_API_TOKEN = (os.getenv("PHILSMS_API_TOKEN", "") or "").strip()
 PHILSMS_SENDER_ID = os.getenv("PHILSMS_SENDER_ID", "PhilSMS")
 SEND_SMS          = os.getenv("SEND_SMS", "false").lower() == "true"

@@ -81,7 +81,7 @@ async def send_reporter_sms(
 ):
     """Text the reporter a link to the backend-served location page.
 
-    The link points at PUBLIC_BASE_URL (the ngrok tunnel to this backend), so it
+    The link points at PUBLIC_BASE_URL (the public origin of this backend), so it
     opens on the reporter's phone. When SEND_SMS is false the SMS is not sent and
     the generated link is returned for manual sharing.
     """
@@ -115,7 +115,7 @@ async def send_reporter_sms(
 
 @router.get("/report/{token}", response_class=HTMLResponse)
 def reporter_page(token: str):
-    """Self-contained reporter location page served over the public tunnel.
+    """Self-contained reporter location page served by the public backend.
 
     The reporter opens this on their phone, taps to share GPS, and the page
     POSTs to /api/report-sessions/{token}/location (same origin), which
