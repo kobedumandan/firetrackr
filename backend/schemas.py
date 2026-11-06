@@ -370,6 +370,15 @@ class OperationalMilestoneBody(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=100)
 
 
+class OperationalMilestoneCorrectionBody(BaseModel):
+    kind: Literal['receipt', 'departure', 'arrival', 'suppression_start', 'fire_out', 'classification', 'operation_complete', 'clearance']
+    occurred_at: datetime
+    previous_occurred_at: datetime
+    dispatch_truck_id: int | None = None
+    dispatch_id: int | None = None
+    idempotency_key: str = Field(min_length=8, max_length=100)
+
+
 class TruckCreate(BaseModel):
     truck_platenum: str
     truck_status: str = "available"

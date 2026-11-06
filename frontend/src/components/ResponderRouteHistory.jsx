@@ -54,13 +54,13 @@ function FitTracks({ points, fitKey }) {
   return null
 }
 
-export default function ResponderRouteHistory({ fireId, theme = 'dark', initialDispatchId = null, onSelectDispatch, vehicleUnits }) {
+export default function ResponderRouteHistory({ fireId, theme = 'dark', initialDispatchId = null, dispatchId = null, onSelectDispatch, vehicleUnits }) {
   const [result, setResult] = useState(null)
   const [revision, setRevision] = useState(0)
   const [selection, setSelection] = useState(null)
   const [fitRevision, setFitRevision] = useState(0)
-  const scope = `${fireId}:${initialDispatchId || 'all'}`
-  const filters = selection?.scope === scope ? selection : { scope, dispatch: String(initialDispatchId || 'all'), member: 'all', planned: false, samples: false, vehicle: false }
+  const scope = `${fireId}:${dispatchId ?? initialDispatchId ?? 'all'}`
+  const filters = selection?.scope === scope ? selection : { scope, dispatch: String(dispatchId ?? initialDispatchId ?? 'all'), member: 'all', planned: false, samples: false, vehicle: false }
   const change = values => setSelection({ ...filters, ...values })
   const current = result?.fireId === fireId ? result : null
   const data = current?.data
@@ -119,7 +119,7 @@ export default function ResponderRouteHistory({ fireId, theme = 'dark', initialD
         <div className="rt-workspace">
         <aside className="rt-roster" aria-label="Filter responder routes" tabIndex={0}>
           <div className="rt-roster-heading"><h4>Team members</h4><span>{members.length}</span></div>
-          <label className="rt-team-filter">Team
+          {dispatchId == null && <label className="rt-team-filter">Team
             <select value={filters.dispatch} onChange={event => {
               const dispatch = event.target.value
               change({ dispatch, member: 'all' })
@@ -128,7 +128,7 @@ export default function ResponderRouteHistory({ fireId, theme = 'dark', initialD
               <option value="all">All teams</option>
               {dispatches.map(d => <option key={d.dispatch_id} value={String(d.dispatch_id)}>{d.team || `Dispatch #${d.dispatch_id}`}</option>)}
             </select>
-          </label>
+          </label>}
           <div className="rt-roster-list" role="group" aria-label="Route history member">
             <button type="button" className="rt-member-toggle rt-all-members" aria-pressed={!activeMember} onClick={() => change({ member: 'all' })}>All members</button>
             {members.map(member => <button type="button" key={member.key} className="rt-member-toggle" aria-label={`Show route for ${member.name}, ${member.dispatch.team || `dispatch #${member.dispatch.dispatch_id}`}`} aria-pressed={activeMember?.key === member.key} onClick={() => selectMember(member)} style={{ '--rt-member-color': colour(member) }}>

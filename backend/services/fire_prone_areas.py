@@ -7,6 +7,7 @@ from sqlalchemy import func, text
 from models import BarangayBoundary, FireIncident, HeatmapData
 from services.heatmap import severity_weight
 from services.historical_incidents import attach_history, history
+from services.incident_scope import fire_incident_filter
 
 
 def historical_rows(db, start=None, end=None, kind='historical', known_only=False, source='all'):
@@ -16,7 +17,7 @@ def historical_rows(db, start=None, end=None, kind='historical', known_only=Fals
         raise HTTPException(422, 'Unknown historical record kind.')
     if source not in ('all', 'imported', 'other'):
         raise HTTPException(422, 'Unknown incident source filter.')
-    query = db.query(FireIncident).filter(FireIncident.fire_status == 'closed',
+    query = db.query(FireIncident).filter(fire_incident_filter(), FireIncident.fire_status == 'closed',
         db.query(HeatmapData.heatmap_id).filter(HeatmapData.fire_id == FireIncident.fire_id).exists())
     if kind == 'historical':
         query = query.filter(func.coalesce(FireIncident.record_kind, 'unknown').in_(['operational', 'unknown']))

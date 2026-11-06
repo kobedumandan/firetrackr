@@ -4,7 +4,7 @@ import { createAsyncCache } from './utils/asyncCache'
 // FastAPI. That keeps login working whether the dashboard was opened through
 // localhost, 127.0.0.1, or another development hostname. Deployments that host
 // the API elsewhere can still provide VITE_API_BASE_URL.
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '')
+const BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '')
 
 // Public, uncached probe: stale sign-in tokens must not affect availability checks.
 export async function fetchBackendHealth(signal) {
@@ -30,9 +30,22 @@ export async function fetchBackendHealth(signal) {
 
 const constraintCache = createAsyncCache({ ttl: 5 * 60 * 1000 })
 const operationalCache = createAsyncCache({ ttl: 30000 })
+const metricsCache = createAsyncCache({ ttl: 120000 })
+const coverageCache = createAsyncCache({ ttl: 120000 })
+// Share only pending analysis reads. Refreshes after completion still read fresh data.
+const analysisRequests = createAsyncCache({ ttl: 0 })
+let forcedCoverage = null
+function sessionRead(cache, key, fetcher) {
+  const token = localStorage.getItem('bfp_token') || ''
+  return cache.get(`${BASE_URL}:${token}:${key}`, () => {
+    if ((localStorage.getItem('bfp_token') || '') !== token) throw new DOMException('Session changed', 'AbortError')
+    return fetcher()
+  })
+}
 export function invalidateOperationalTimes() {
   operationalCache.clear()
-  for (const key of Object.keys(_cache)) if (key.startsWith('metrics-summary-')) delete _cache[key]
+  metricsCache.clear()
+  analysisRequests.clear()
   window.dispatchEvent(new Event('operational-times-updated'))
 }
 async function operationalRequest(path, options) {
@@ -51,20 +64,37 @@ async function performanceRequest(path, query, signal) {
   if (!res.ok) throw new Error(await _detail(res, `Response analysis unavailable (${res.status})`))
   return res
 }
+function analysisJson(path, query, signal) {
+  if (signal?.aborted) return Promise.reject(signal.reason || new DOMException('Request aborted', 'AbortError'))
+  // A page change cancels that consumer, not a request another page can reuse.
+  const pending = sessionRead(analysisRequests, `${path}:${query}`, async () => (await performanceRequest(path, query)).json())
+  if (!signal) return pending
+  return new Promise((resolve, reject) => {
+    const stop = () => {
+      signal.removeEventListener('abort', stop)
+      reject(signal.reason || new DOMException('Request aborted', 'AbortError'))
+    }
+    signal.addEventListener('abort', stop, { once: true })
+    pending.then(value => { signal.removeEventListener('abort', stop); resolve(value) }, error => {
+      signal.removeEventListener('abort', stop); reject(error)
+    })
+    if (signal.aborted) stop()
+  })
+}
 export async function fetchResponsePerformance(query, signal) {
-  return (await performanceRequest('', query, signal)).json()
+  return analysisJson('', query, signal)
 }
 export async function fetchResponseOperations(query, signal) {
-  return (await performanceRequest('/operations', query, signal)).json()
+  return analysisJson('/operations', query, signal)
 }
 export async function fetchResponseIncidents(query, signal) {
-  return (await performanceRequest('/incidents', query, signal)).json()
+  return analysisJson('/incidents', query, signal)
 }
 export async function exportResponseIncidents(query) {
   return (await performanceRequest('/incidents.csv', query)).text()
 }
 export async function fetchResponseDispatches(query, signal) {
-  return (await performanceRequest('/dispatches', query, signal)).json()
+  return analysisJson('/dispatches', query, signal)
 }
 export async function fetchResponseDispatch(id, signal) {
   return (await performanceRequest(`/dispatches/${id}`, '', signal)).json()
@@ -79,6 +109,12 @@ export async function exportResponsePerformance(query, { download = true } = {})
 }
 export async function confirmOperationalMilestone(fireId, body) {
   const data = await operationalRequest(`/${fireId}/milestones`, { method: 'POST', body: JSON.stringify(body) })
+  invalidateOperationalTimes()
+  return data
+}
+
+export async function correctOperationalMilestone(fireId, body) {
+  const data = await operationalRequest(`/${fireId}/milestones`, { method: 'PATCH', body: JSON.stringify(body) })
   invalidateOperationalTimes()
   return data
 }
@@ -352,6 +388,15 @@ export async function fetchIncidents({ page = 1, pageSize = 15, period, status, 
   return res.json()
 }
 
+export async function fetchIncident(fireId) {
+  const res = await apiFetch(`/api/incidents/${fireId}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `Failed to fetch incident (${res.status})`)
+  }
+  return res.json()
+}
+
 export async function createIncident(body) {
   const res = await apiFetch('/api/incidents', { method: 'POST', body: JSON.stringify(body) })
   if (!res.ok) {
@@ -546,18 +591,18 @@ export async function fetchGnnConstraints() {
 }
 
 // ── Metrics summary (real dashboard aggregates) ─────────────────────────────
-export async function fetchMetricsSummary(period = '1m', month = '') {
-  const key = `metrics-summary-${period}${month ? `-${month}` : ''}`
-  const cached = _cacheGet(key)
-  if (cached) return cached
-
+export async function fetchMetricsSummary(period = '1m', month = '', dateRange) {
   const params = new URLSearchParams({ period })
   if (month) params.set('month', month)
-  const res = await apiFetch(`/api/metrics/summary?${params}`)
-  if (!res.ok) throw new Error(`Failed to fetch metrics summary (${res.status})`)
-  const data = await res.json()
-  _cacheSet(key, data)
-  return data
+  if (dateRange) {
+    params.set('date_from', dateRange.from)
+    params.set('date_to', dateRange.to)
+  }
+  return sessionRead(metricsCache, String(params), async () => {
+    const res = await apiFetch(`/api/metrics/summary?${params}`)
+    if (!res.ok) throw new Error(`Failed to fetch metrics summary (${res.status})`)
+    return res.json()
+  })
 }
 
 // ── Response Coverage (reachability isochrones) ─────────────────────────────
@@ -567,33 +612,31 @@ export async function fetchMetricsSummary(period = '1m', month = '') {
    recompute refreshes every band at once, the local cache is dropped wholesale
    so the minute tabs don't keep serving pre-refresh rows. */
 export function clearCoverageCache() {
-  for (const key of Object.keys(_cache)) {
-    if (key.startsWith('coverage-')) delete _cache[key]
-  }
+  coverageCache.clear()
+  forcedCoverage = null
 }
 
 export async function fetchCoverageIsochrones({ refresh = false } = {}) {
+  const session = `${BASE_URL}:${localStorage.getItem('bfp_token') || ''}`
+  if (refresh && forcedCoverage?.session === session) return forcedCoverage.pending
   if (refresh) clearCoverageCache()
-  const cached = _cacheGet('coverage-isochrones')
-  if (cached) return cached
-
-  const res = await apiFetch(`/api/coverage/isochrones${refresh ? '?refresh=true' : ''}`)
-  if (!res.ok) throw new Error(`Failed to fetch coverage isochrones (${res.status})`)
-  const data = await res.json()
-  _cacheSet('coverage-isochrones', data)
-  return data
+  const pending = sessionRead(coverageCache, 'isochrones', async () => {
+    const res = await apiFetch(`/api/coverage/isochrones${refresh ? '?refresh=true' : ''}`)
+    if (!res.ok) throw new Error(`Failed to fetch coverage isochrones (${res.status})`)
+    return res.json()
+  })
+  if (!refresh) return pending
+  const forced = { session, pending: pending.finally(() => { if (forcedCoverage === forced) forcedCoverage = null }) }
+  forcedCoverage = forced
+  return forced.pending
 }
 
 export async function fetchCoverageGaps(minutes = 5) {
-  const key = `coverage-gaps-${minutes}`
-  const cached = _cacheGet(key)
-  if (cached) return cached
-
-  const res = await apiFetch(`/api/coverage/gaps?minutes=${minutes}`)
-  if (!res.ok) throw new Error(`Failed to fetch coverage gaps (${res.status})`)
-  const data = await res.json()
-  _cacheSet(key, data)
-  return data
+  return sessionRead(coverageCache, `gaps:${minutes}`, async () => {
+    const res = await apiFetch(`/api/coverage/gaps?minutes=${minutes}`)
+    if (!res.ok) throw new Error(`Failed to fetch coverage gaps (${res.status})`)
+    return res.json()
+  })
 }
 
 export async function deleteObstruction(id) {

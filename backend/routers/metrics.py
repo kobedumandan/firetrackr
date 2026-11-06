@@ -11,10 +11,11 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import DispatchRecord, FireIncident, IncidentReport, Users
 from security import require_admin
-from services.reporting_periods import reporting_window
+from services.reporting_periods import custom_reporting_window, reporting_window
 from services.historical_incidents import attach_history, history
 from services.response_performance import overall
 from routers.response_performance import router as performance_router
+from services.incident_scope import FIRE_OPERATION, fire_incident_filter
 
 
 router = APIRouter(tags=["metrics"])
@@ -59,6 +60,8 @@ def metrics_summary(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
     month: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ):
     """One count per incident, source causes and explicitly labeled demo alarms.
 
@@ -66,11 +69,19 @@ def metrics_summary(
     recorded metric also accepts per-unit arrivals.
     Synthesized historical metadata never supplies measured response timestamps.
     Optional month selects the alarm/cause/barangay breakdowns independently
-    of the reporting-period KPIs and monthly chart history.
+    of the reporting-period KPIs. Custom calendar ranges also limit chart history
+    and intersect any selected month.
     """
     now = datetime.now(timezone.utc)
-    earliest = db.query(func.min(FireIncident.fire_incident_datetime)).scalar() if period == "all" else None
-    start, now = reporting_window(period, now, earliest)
+    if period == "custom" or date_from is not None or date_to is not None:
+        try:
+            start, now = custom_reporting_window(date_from, date_to, now)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        period = "custom"
+    else:
+        earliest = db.query(func.min(FireIncident.fire_incident_datetime)).filter(fire_incident_filter()).scalar() if period == "all" else None
+        start, now = reporting_window(period, now, earliest)
     breakdown_start, breakdown_end = start, now
     if month is not None:
         if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
@@ -83,6 +94,8 @@ def metrics_summary(
         except ValueError:
             raise HTTPException(422, 'Use a valid calendar month.') from None
         breakdown_end = min(following_month, now)
+        if period == "custom":
+            breakdown_start = max(breakdown_start, start)
     prev_start = start if period == "all" else start - (now - start)
 
     current_window = and_(FireIncident.fire_incident_datetime >= start,
@@ -100,7 +113,7 @@ def metrics_summary(
         count.filter(prior_window, is_critical).label('previous_critical'),
         *(count.filter(current_window, FireIncident.fire_severity == name).label(name)
           for name in ('Critical', 'Moderate', 'Minor')),
-    ).filter(FireIncident.fire_incident_datetime >= prev_start,
+    ).filter(fire_incident_filter(), FireIncident.fire_incident_datetime >= prev_start,
              FireIncident.fire_incident_datetime < now).one()
     total, prev_total = totals.total, totals.previous
     contained, prev_contained, prev_critical = totals.contained, totals.previous_contained, totals.previous_critical
@@ -116,6 +129,7 @@ def metrics_summary(
             )
             .join(DispatchRecord, DispatchRecord.fire_id == FireIncident.fire_id)
             .filter(
+                fire_incident_filter(),
                 FireIncident.fire_incident_datetime >= since,
                 FireIncident.fire_incident_datetime < until,
                 DispatchRecord.dispatch_arrived_at.isnot(None),
@@ -136,8 +150,8 @@ def metrics_summary(
     prev_avg_response = _avg_response(prev_start, start)
     # Preserve the branch's receipt-based response key. New dashboard consumers
     # explicitly select the verified-receipt metric, including unit arrivals.
-    recorded = overall(db, start, now, kind="all")
-    prior_recorded = overall(db, prev_start, start, kind="all") if prev_start < start else {"mean_seconds": None}
+    recorded = overall(db, start, now, kind="all", fire_only=True)
+    prior_recorded = overall(db, prev_start, start, kind="all", fire_only=True) if prev_start < start else {"mean_seconds": None}
     recorded_minutes = recorded["mean_seconds"] / 60 if recorded["mean_seconds"] is not None else None
 
     # Severity breakdown for the current window.
@@ -160,19 +174,21 @@ def metrics_summary(
                      ) ORDER BY fallback.brgy_id LIMIT 1))
                 WHERE fi.fire_incident_datetime >= :start
                   AND fi.fire_incident_datetime < :end
+                  AND (TRIM(COALESCE(fi.fire_dispatch_type, '')) = :fire_operation
+                       OR (TRIM(COALESCE(fi.fire_dispatch_type, '')) = '' AND fi.response_kind = 'fire'))
                 GROUP BY bb.brgy_name
                 """
             ),
-            {"start": breakdown_start, "end": breakdown_end},
+            {"start": breakdown_start, "end": breakdown_end, "fire_operation": FIRE_OPERATION},
         ).all()
     }
 
-    # Incidents per month over the last 12 months (independent of `period`).
-    end_month = ((now - timedelta(seconds=1)) if period == "2023-2024" else now).astimezone(ZoneInfo("Asia/Manila"))
+    # Presets retain twelve-month context; all/custom span their reporting window.
+    end_month = ((now - timedelta(microseconds=1)) if period in ("2023-2024", "custom") else now).astimezone(ZoneInfo("Asia/Manila"))
     y, m = end_month.year, end_month.month
     seq: list[tuple[int, int]] = []
     first_month = start.astimezone(ZoneInfo("Asia/Manila"))
-    months_back = (y - first_month.year) * 12 + m - first_month.month if period == "all" else (23 if period == "2023-2024" else 11)
+    months_back = (y - first_month.year) * 12 + m - first_month.month if period in ("all", "custom") else (23 if period == "2023-2024" else 11)
     for i in range(months_back, -1, -1):
         mm, yy = m - i, y
         while mm <= 0:
@@ -180,9 +196,11 @@ def metrics_summary(
             yy -= 1
         seq.append((yy, mm))
     window_start = datetime(seq[0][0], seq[0][1], 1, tzinfo=ZoneInfo("Asia/Manila"))
+    if period == "custom":
+        window_start = start
     # Read chart/breakdown incidents together so each source history and report
     # cause is looked up once, including a selected month outside chart history.
-    chart_and_breakdown = attach_history(db, db.query(FireIncident).filter(or_(
+    chart_and_breakdown = attach_history(db, db.query(FireIncident).filter(fire_incident_filter(), or_(
         and_(FireIncident.fire_incident_datetime >= window_start,
              FireIncident.fire_incident_datetime < now),
         and_(FireIncident.fire_incident_datetime >= breakdown_start,
@@ -204,7 +222,7 @@ def metrics_summary(
             if cause and cause.strip() not in ("", "Not recorded"):
                 month_causes[key][cause] += 1
     monthly = [
-        {"month": f"{_MONTH_ABBR[mm - 1]} {str(yy)[2:]}" if period in ("2023-2024", "all") else _MONTH_ABBR[mm - 1],
+        {"month": f"{_MONTH_ABBR[mm - 1]} {str(yy)[2:]}" if period in ("2023-2024", "all", "custom") else _MONTH_ABBR[mm - 1],
          "month_key": f"{yy:04d}-{mm:02d}", "count": month_counts[(yy, mm)],
          "top_causes": _top_causes(month_causes[(yy, mm)], 5)}
         for (yy, mm) in seq
@@ -214,7 +232,10 @@ def metrics_summary(
     alarms = Counter(i.fire_alarm_level or "Not recorded" for i in incidents)
     causes = Counter(incident_causes[i.fire_id] for i in incidents)
     return {
+        "scope": "fire",
         "period": period,
+        "date_from": date_from,
+        "date_to": date_to,
         "breakdown_month": month,
         "breakdown_total": len(incidents),
         "total": total,

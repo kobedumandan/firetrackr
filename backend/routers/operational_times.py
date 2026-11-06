@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import DispatchTruck, FireIncident, Users
-from schemas import OperationalMilestoneBody
+from models import DispatchRecord, DispatchTruck, FireIncident, Users
+from schemas import OperationalMilestoneBody, OperationalMilestoneCorrectionBody
 from security import require_admin
 from services.operational_times import analytics, detail, record_milestone
 from state import manager
@@ -27,6 +27,24 @@ def incident_detail(fire_id: int, db: Session = Depends(get_db), _user: Users = 
     inc = db.get(FireIncident, fire_id)
     if not inc:
         raise HTTPException(404, "Incident not found.")
+    return detail(db, inc)
+
+
+@router.patch('/{fire_id}/milestones')
+async def correct_milestone_time(fire_id: int, body: OperationalMilestoneCorrectionBody,
+                                db: Session = Depends(get_db), user: Users = Depends(require_admin)):
+    from services.milestone_corrections import correct_milestone
+    inc = db.query(FireIncident).filter_by(fire_id=fire_id).with_for_update().first()
+    if inc is None:
+        raise HTTPException(404, 'Incident not found.')
+    unit = db.get(DispatchTruck, body.dispatch_truck_id) if body.dispatch_truck_id else None
+    dispatch = db.get(DispatchRecord, body.dispatch_id) if body.dispatch_id else None
+    if (body.dispatch_truck_id and unit is None) or (body.dispatch_id and dispatch is None):
+        raise HTTPException(404, 'Assignment not found for this incident.')
+    correct_milestone(db, inc, body.kind, body.occurred_at, body.previous_occurred_at, user,
+                      unit=unit, dispatch=dispatch, key=f'correction:{user.user_id}:{body.idempotency_key}')
+    db.commit()
+    await manager.broadcast({'type': 'operational_times_updated', 'data': {'fire_id': fire_id}})
     return detail(db, inc)
 
 

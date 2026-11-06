@@ -21,6 +21,7 @@ export const SEVERITIES = [
   { value: 'Critical', tone: 'fire' },
 ]
 export const ALARMS     = ['1st Alarm', '2nd Alarm', '3rd Alarm']
+export const supportsFireAlarm = dispatchType => !dispatchType || dispatchType === 'Firefighting Operations'
 export const STRUCTURES = [
   'Residential', 'Residential 2-storey', 'Commercial', 'Industrial',
   'Institutional', 'Informal Settlement', 'Vegetation', 'Vehicle', 'Other',

@@ -62,11 +62,12 @@ export function buildMetricsPresentation({ summary, period, generatedAt, baranga
 
   if (options.overview) {
   page(options.title || 'Incident activity overview', `${period.description} | Recorded metrics`)
+  if (summary.scope === 'fire') note('Firefighting operations and confirmed fire responses only. Non-fire operations and unclassified records are excluded.', 95)
   const response = summary.recorded_response_minutes
   const kpis = [
-    ['Recorded incidents', summary.total ?? 0],
-    ['Average response time', response == null ? 'Not available' : `${response.toFixed(1)} min`],
-    ['Critical incidents', summary.total > 0 && summary.unknown_severity_count === summary.total ? 'Not recorded' : summary.severity?.Critical ?? 0],
+    [summary.scope === 'fire' ? 'Recorded fire incidents' : 'Recorded incidents', summary.total ?? 0],
+    [summary.scope === 'fire' ? 'Average fire response time' : 'Average response time', response == null ? 'Not available' : `${response.toFixed(1)} min`],
+    [summary.scope === 'fire' ? 'Critical fire incidents' : 'Critical incidents', summary.total > 0 && summary.unknown_severity_count === summary.total ? 'Not recorded' : summary.severity?.Critical ?? 0],
     ['Contained / closed', summary.contained ?? 0],
   ]
   kpis.forEach(([label, value], index) => {
@@ -91,7 +92,7 @@ export function buildMetricsPresentation({ summary, period, generatedAt, baranga
   if (options.monthly) {
   const monthly = summary.monthly ?? []
   for (let offset = 0; offset < Math.max(1, monthly.length); offset += 12) {
-    page('Monthly incident activity', `${period.key === 'all' ? 'All recorded months' : 'Last 12 months'} | Occurrence date | Months ${monthly.length ? offset + 1 : 0}-${Math.min(offset + 12, monthly.length)} of ${monthly.length}`)
+    page('Monthly incident activity', `${period.key === 'custom' ? period.description : period.key === 'all' ? 'All recorded months' : 'Last 12 months'} | Occurrence date | Months ${monthly.length ? offset + 1 : 0}-${Math.min(offset + 12, monthly.length)} of ${monthly.length}`)
     const rows = monthly.slice(offset, offset + 12)
     if (options.lineChart) drawMonthlyChart(pdf, rows, FIRE, options.values)
     else table(rows.map(row => [row.month, row.count]), ['Month', 'Incidents'])

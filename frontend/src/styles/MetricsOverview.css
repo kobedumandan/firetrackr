@@ -33,6 +33,18 @@
 .mo-control-icon { display: grid; place-items: center; flex-shrink: 0; width: 35px; height: 35px; border: 1px solid var(--border-dim); border-radius: 9px; background: var(--mo-soft); color: var(--mo-muted); }
 .mo-control-icon svg { width: 18px; height: 18px; }
 .m-page .m-period-group { flex-shrink: 0; }
+.mo-period-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; }
+.mo-date-range { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; padding-left: 12px; border-left: 1px solid var(--border-dim); }
+.mo-date-range label { display: grid; gap: 4px; color: var(--mo-muted); font-size: 10px; }
+.mo-date-range input { min-width: 0; padding: 7px 8px; border: 1px solid var(--border-dim); border-radius: 6px; background: var(--bg-panel); color: var(--text-primary); font: inherit; }
+.mo-date-range input.is-empty { color: color-mix(in srgb, var(--text-primary) 38%, var(--bg-panel)); }
+.mo-date-range input.is-empty::-webkit-datetime-edit { color: inherit; }
+.mo-date-range.is-active input { border-color: var(--accent-fire); }
+.mo-range-error { margin: 0 0 14px; color: var(--accent-fire); }
+@media (max-width: 760px) {
+  .mo-period-controls { justify-content: flex-start; width: 100%; }
+  .mo-date-range { padding-left: 0; border-left: 0; }
+}
 .m-page .m-kpi-row { margin-bottom: 22px; }
 .m-page .kpi-card-sub { text-transform: none; }
 .mo-pipe { opacity: .4; }
@@ -45,10 +57,6 @@
 .mo-response-kpi .kpi-card { height: 100%; }
 .m-page .mo-response-kpi .trend-up { color: var(--accent-red); }
 .m-page .mo-response-kpi .trend-down { color: var(--accent-emerald); }
-.mo-source-note { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 20px; padding: 12px 15px; border: 1px solid var(--border-dim); border-radius: 9px; background: var(--bg-panel); }
-.mo-source-note > svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; color: var(--mo-muted); }
-.mo-source-note p { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 16px; margin: 0; font-size: 10px; color: var(--mo-muted); }
-.mo-source-note strong { color: var(--text-primary); font-weight: 500; }
 .m-page .m-grid { grid-template-columns: minmax(300px,1fr) minmax(0,1.9fr); gap: 18px; }
 .m-page .m-card { min-width: 0; padding: 20px; border-color: var(--border-dim); border-radius: 12px; }
 .m-page .m-card-line { background: transparent; border-color: transparent; }

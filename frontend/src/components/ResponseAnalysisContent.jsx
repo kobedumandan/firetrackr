@@ -5,11 +5,12 @@ import '../styles/OperationalTimePage.css'
 import ResponderRouteHistory from './ResponderRouteHistory'
 import AnalysisIcon from './AnalysisIcon'
 import AnalysisValue from './AnalysisValue'
+import MilestoneConfirmationFields from './MilestoneConfirmationFields'
 import KpiCard, { KPI_EMPTY } from './KpiCard'
 import SettingsLoading from './SettingsLoading'
 import { Field } from './incidentForm'
 import { DetailsSection } from '../layout/DetailsLayout'
-import { confirmDispatchClearance, confirmOperationalMilestone, fetchOperationalDetail } from '../api'
+import { confirmDispatchClearance, confirmOperationalMilestone, correctOperationalMilestone, fetchOperationalDetail } from '../api'
 import { MAP_CENTER, tileLayersFor } from '../data/mapConfig'
 import { STAGES, dateTime, duration, manilaInput, parseRouteWkt } from '../utils/operationalTimes'
 import '../styles/ResponseAnalysisModal.css'
@@ -63,50 +64,93 @@ function ResponseMap({ data, unit, stage, theme, pageLayout }) {
   </MapContainer><p className="ota-note">{unit?.baseline_available ? 'Routes preserved at departure.' : 'Current planned routes; original departure selection unavailable.'} {unit?.gps_segments?.length ? 'Dashed line: recorded vehicle GPS samples; gaps are not joined.' : 'No reliable historical vehicle GPS path. Planned routes do not prove the path driven.'}</p></div>
 }
 
-function MilestoneForm({ data, unit, onSaved, pageLayout }) {
+const MILESTONES = {
+  receipt: 'Report received', departure: 'Truck departed', arrival: 'Truck arrived',
+  suppression_start: 'Suppression started', fire_out: 'Fire out', classification: 'Response classification',
+  clearance: 'Dispatch cleared', operation_complete: 'Operation complete / all units cleared',
+}
+
+function milestoneTimestamp(data, unit, kind, dispatchId) {
+  if (kind === 'departure') return unit?.departed_at || null
+  if (kind === 'arrival') return unit?.arrived_at || null
+  if (kind === 'clearance') return data.dispatches?.find(item => String(item.dispatch_id) === dispatchId)?.cleared_at || null
+  if (kind === 'classification') return [...(data.events || [])].reverse().find(event => event.type === 'op_classification' && event.verified)?.at || null
+  return data[{ receipt: 'reported_at', suppression_start: 'suppression_started_at', fire_out: 'fire_out_at', operation_complete: 'operation_completed_at' }[kind]] || null
+}
+
+const recordedInput = value => value ? manilaInput(new Date(value)) : ''
+const sameInputTime = (left, right) => left === right || Boolean(left && right && new Date(`${left}+08:00`).getTime() === new Date(`${right}+08:00`).getTime())
+
+export function MilestoneForm({ data, unit, onSaved, pageLayout, selectedDispatchId }) {
   const [kind, setKind] = useState('receipt')
-  const [at, setAt] = useState('')
-  const [responseKind, setResponseKind] = useState(data.response_kind || '')
+  const [draft, setDraft] = useState(null)
+  const [classificationDraft, setClassificationDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [saved, setSaved] = useState(null)
   const [submission, setSubmission] = useState(null)
-  const [dispatchId, setDispatchId] = useState('')
+  const [dispatchId, setDispatchId] = useState(() => selectedDispatchId == null ? '' : String(selectedDispatchId))
+  const scopeKey = `${data.fire_id}:${kind}:${['departure', 'arrival'].includes(kind) ? unit?.id : kind === 'clearance' ? dispatchId : 'incident'}`
+  const currentAt = milestoneTimestamp(data, unit, kind, dispatchId)
+  const activeDraft = draft?.scopeKey === scopeKey ? draft : null
+  const originalAt = activeDraft ? activeDraft.originalAt : currentAt
+  const at = activeDraft ? activeDraft.at : recordedInput(currentAt)
+  const changed = originalAt ? !sameInputTime(at, recordedInput(originalAt)) : Boolean(at)
+  const responseKind = data.response_kind || classificationDraft
+  function changeTime(value) {
+    setDraft(sameInputTime(value, recordedInput(currentAt)) ? null : { scopeKey, at: value, originalAt })
+    setSaved(null); setError(null)
+  }
+  function changeKind(value) {
+    setKind(value); setDraft(null); setSaved(null); setError(null)
+  }
+  function changeDispatch(value) {
+    setDispatchId(value); setDraft(null); setSaved(null); setError(null)
+  }
+  function keepRecordedTime() {
+    setDraft(null); setSaved(null); setError(null)
+  }
   async function save(e) {
-    e.preventDefault(); setBusy(true); setError(null)
+    e.preventDefault()
+    if (originalAt && !changed) return
+    setBusy(true); setError(null); setSaved(null)
     try {
-      const body = { kind, occurred_at: new Date(`${at}+08:00`).toISOString(), response_kind: responseKind || null, dispatch_truck_id: ['departure', 'arrival'].includes(kind) ? unit?.id : null }
-      const signature = JSON.stringify({ ...body, dispatch_id: kind === 'clearance' ? dispatchId : null })
+      const body = { kind, occurred_at: new Date(`${at}+08:00`).toISOString(), dispatch_truck_id: ['departure', 'arrival'].includes(kind) ? unit?.id : null,
+        ...(originalAt ? { previous_occurred_at: originalAt, dispatch_id: kind === 'clearance' ? Number(dispatchId) : null } : { response_kind: responseKind || null }) }
+      const signature = JSON.stringify({ ...body, action: originalAt ? 'correct' : 'confirm', dispatch_id: kind === 'clearance' ? dispatchId : null })
       const key = submission?.signature === signature ? submission.key : crypto.randomUUID()
       setSubmission({ signature, key })
-      if (kind === 'clearance') {
+      if (originalAt) onSaved(await correctOperationalMilestone(data.fire_id, { ...body, idempotency_key: key }))
+      else if (kind === 'clearance') {
         await confirmDispatchClearance(Number(dispatchId), { occurred_at: body.occurred_at, idempotency_key: key })
         onSaved(await fetchOperationalDetail(data.fire_id))
       } else onSaved(await confirmOperationalMilestone(data.fire_id, { ...body, idempotency_key: key }))
-      setAt('')
+      setDraft(null)
+      setSaved(originalAt ? 'Milestone timestamp updated.' : 'Milestone confirmed.')
     }
     catch (err) { setError(err.message) }
     finally { setBusy(false) }
   }
-  const guidance = <p className="ota-note">Use a verified occurrence time. Recorded milestones are preserved and cannot be overwritten here. Confirmations do not change dispatch or incident status.</p>
-  const classificationField = <Field label="Response classification"><select value={responseKind} onChange={e => setResponseKind(e.target.value)} disabled={!!data.response_kind}><option value="">Unknown</option>{['fire', 'medical', 'rescue', 'other'].map(v => <option key={v}>{v}</option>)}</select></Field>
+  const guidance = <p className="ota-note">Recorded times are filled in automatically. Keep the saved time or edit it to save an audited correction. Incident and dispatch statuses stay unchanged.</p>
+  const classificationField = <Field label="Response classification"><select value={responseKind} onChange={e => setClassificationDraft(e.target.value)} disabled={!!data.response_kind}><option value="">Unknown</option>{['fire', 'medical', 'rescue', 'other'].map(v => <option key={v}>{v}</option>)}</select></Field>
   const actions = <>
-    <button type="button" onClick={() => setAt(manilaInput())}>{pageLayout && <AnalysisIcon name="response" />}Happened now</button>
-    <button type="submit" disabled={busy || !at}>{pageLayout && <AnalysisIcon name="acknowledgement" />}{busy ? 'Saving…' : 'Confirm milestone'}</button>
+    <button type="button" onClick={() => changeTime(manilaInput())}>Happened now</button>
+    <button type="submit" disabled={busy || !at || (Boolean(originalAt) && !changed)}>{busy ? 'Saving…' : originalAt ? 'Save timestamp' : 'Confirm milestone'}</button>
   </>
-  return <details className="ota-confirm"><summary>{pageLayout ? <>
-    <span className="ram-evidence-icon"><AnalysisIcon name="acknowledgement" /></span>
-    <span className="ram-confirm-heading"><span className="ram-confirm-title">Confirm a verified operational milestone</span><span className="ram-confirm-subtitle">Record a verified occurrence time</span></span>
-    <AnalysisIcon name="chevron" className="ram-confirm-chevron" />
+  return <details className={`ota-confirm${pageLayout ? ' rar-disclosure' : ''}`}><summary className={pageLayout ? 'rp-section-heading rar-section-heading' : undefined}>{pageLayout ? <>
+    <div className="rar-section-heading-copy"><span className="rar-section-heading-icon"><AnalysisIcon name="acknowledgement" /></span><div><h3>Confirm a Verified Operational Milestone</h3><p>Record a verified occurrence time</p></div></div>
+    <AnalysisIcon name="chevron" className="rar-chevron" />
   </> : 'Confirm a verified operational milestone'}</summary>
-    {pageLayout ? <div className="ram-confirm-guidance"><AnalysisIcon name="info" />{guidance}</div> : guidance}
-    <form onSubmit={save}>
-      <Field label="Milestone"><select value={kind} onChange={e => setKind(e.target.value)}>{Object.entries({ receipt: 'Report received', departure: 'Truck departed', arrival: 'Truck arrived', suppression_start: 'Suppression started', fire_out: 'Fire out', classification: 'Response classification', clearance: 'Dispatch cleared', operation_complete: 'Operation complete / all units cleared' }).map(([key, label]) => <option key={key} value={key} disabled={['departure', 'arrival'].includes(key) && !unit}>{label}</option>)}</select></Field>
-      {pageLayout && classificationField}
-      {kind === 'clearance' && <Field label="Responding dispatch" required={pageLayout} className={pageLayout ? 'ram-confirm-dispatch' : ''}><select required value={dispatchId} onChange={e => setDispatchId(e.target.value)}><option value="">Select a dispatch</option>{(data.dispatches || []).map(d => <option key={d.dispatch_id} value={d.dispatch_id} disabled={!!d.cleared_at}>{d.team || `Dispatch ${d.dispatch_id}`} {pageLayout ? '|' : '·'} {d.cleared_at ? 'Clearance recorded' : d.status}</option>)}</select></Field>}
-      {!pageLayout && classificationField}
-      <Field label={<>Verified occurrence <TimingSeparator pageLayout={pageLayout} /> Philippine time</>} required={pageLayout} className={pageLayout ? 'ram-confirm-time' : ''}><input type="datetime-local" step="1" required value={at} onChange={e => setAt(e.target.value)} /></Field>
-      {pageLayout ? <div className="ram-confirm-actions">{actions}</div> : actions}
+    {!pageLayout && guidance}
+    <form onSubmit={save} onChange={() => { setSaved(null); setError(null) }} aria-busy={busy}>
+      {pageLayout ? <MilestoneConfirmationFields data={data} unit={unit} milestones={MILESTONES} kind={kind} at={at} recordedAt={originalAt} changed={changed} responseKind={responseKind} dispatchId={dispatchId} busy={busy} error={error} saved={saved} onKindChange={changeKind} onTimeChange={changeTime} onClassificationChange={setClassificationDraft} onDispatchChange={changeDispatch} onNow={() => changeTime(manilaInput())} onKeepRecorded={keepRecordedTime} /> : <>
+      <Field label="Milestone"><select value={kind} onChange={e => changeKind(e.target.value)}>{Object.entries(MILESTONES).map(([key, label]) => <option key={key} value={key} disabled={['departure', 'arrival'].includes(key) && !unit}>{label}</option>)}</select></Field>
+      {kind === 'clearance' && <Field label="Responding dispatch"><select required value={dispatchId} onChange={e => changeDispatch(e.target.value)}><option value="">Select a dispatch</option>{(data.dispatches || []).map(d => <option key={d.dispatch_id} value={d.dispatch_id}>{d.team || `Dispatch ${d.dispatch_id}`} · {d.cleared_at ? 'Clearance recorded' : d.status}</option>)}</select></Field>}
+      {classificationField}
+      <Field label={<>Verified occurrence <TimingSeparator /> Philippine time</>}><input type="datetime-local" step="1" required value={at} onChange={e => changeTime(e.target.value)} /></Field>
+      {actions}
       {error && <p className="ota-error" role="alert">{error}</p>}
+      </>}
     </form>
   </details>
 }

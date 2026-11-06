@@ -14,11 +14,13 @@ const TABS = [
   { key: 'reports', label: 'Operational Reports', icon: 'chart' },
 ]
 
-export default function AnalysisPage({ theme, tab = 'response', onTabChange, onOpenIncident }) {
+export default function AnalysisPage({ theme, tab = 'response', onTabChange, onOpenIncident, detailView: routedDetail = null, onDetailChange }) {
   // Preserve navigation from older callers that still request the timing tab.
   const activeTab = tab === 'operational' ? 'response' : tab
   const tabListRef = useRef(null)
-  const [detailView, setDetailView] = useState(null)
+  const [localDetailView, setLocalDetailView] = useState(null)
+  const detailView = onDetailChange ? routedDetail : localDetailView
+  const setDetailView = onDetailChange || setLocalDetailView
   const recordTriggerRef = useRef(null)
   useEffect(() => {
     if (detailView == null && recordTriggerRef.current?.isConnected) {
@@ -26,9 +28,9 @@ export default function AnalysisPage({ theme, tab = 'response', onTabChange, onO
       recordTriggerRef.current = null
     }
   }, [detailView])
-  function openDetails(kind, id) {
+  function openDetails(kind, id, fireId) {
     recordTriggerRef.current = document.activeElement
-    setDetailView({ kind, id })
+    setDetailView({ kind, id, fireId })
   }
   useEffect(() => {
     tabListRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
@@ -51,10 +53,12 @@ export default function AnalysisPage({ theme, tab = 'response', onTabChange, onO
       </div>
     </header>
     <div id="analysis-panel" role="tabpanel" aria-labelledby={`analysis-${activeTab}-tab`} className="analysis-panel">
-      {activeTab === 'response' ? <ResponsePerformanceView onOpenAnalysis={id => openDetails('incident', id)} onOpenDispatch={id => openDetails('dispatch', id)} /> : activeTab === 'reports' ? <OperationalReports /> : <PlanningPage />}
+      {activeTab === 'response' ? <ResponsePerformanceView onOpenAnalysis={id => openDetails('incident', id)} onOpenDispatch={(id, fireId) => openDetails('dispatch', id, fireId)} /> : activeTab === 'reports' ? <OperationalReports /> : <PlanningPage />}
     </div>
     </div>
     {detailView?.kind === 'incident' && <ResponseAnalysisPage key={detailView.id} fireId={detailView.id} theme={theme} onBack={() => setDetailView(null)} onOpenIncident={onOpenIncident} />}
-    {detailView?.kind === 'dispatch' && <DispatchDetailsPage key={detailView.id} id={detailView.id} theme={theme} onBack={() => setDetailView(null)} onOpenIncident={onOpenIncident} />}
+    {detailView?.kind === 'dispatch' && (detailView.fireId != null
+      ? <ResponseAnalysisPage key={`dispatch-${detailView.id}`} fireId={detailView.fireId} initialDispatchId={detailView.id} theme={theme} backLabel="Dispatch observations" onBack={() => setDetailView(null)} onOpenIncident={onOpenIncident} />
+      : <DispatchDetailsPage key={detailView.id} id={detailView.id} theme={theme} onBack={() => setDetailView(null)} onOpenIncident={onOpenIncident} />)}
   </div>
 }

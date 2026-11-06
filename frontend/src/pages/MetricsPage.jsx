@@ -64,7 +64,6 @@ const PERIODS = [
   { key: "1d", label: "Day", description: "Past day" },
   { key: "1w", label: "Week", description: "Past week" },
   { key: "1m", label: "Month", description: "Past month" },
-  { key: "6m", label: "6 months", description: "Past six months" },
   { key: "1y", label: "Year", description: "Past year" },
   { key: "all", label: "All dates", description: "All recorded dates" },
 ];
@@ -217,12 +216,16 @@ function BarangayBar({ name, value, max, color }) {
 
 export default function MetricsPage({ onOpenAnalysis }) {
   const [period, setPeriod] = useState("all");
+  const [rangeDraft, setRangeDraft] = useState({ from: '', to: '' });
+  const [dateRange, setDateRange] = useState(null);
+  const [rangeError, setRangeError] = useState('');
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const [exportSnapshot, setExportSnapshot] = useState(null);
   const [revision, setRevision] = useState(0);
   const [result, setResult] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState("");
   const [monthResult, setMonthResult] = useState(null);
-  const resultKey = `${period}:${revision}`;
+  const resultKey = `${period}:${dateRange?.from || ''}:${dateRange?.to || ''}:${revision}`;
   const summary = result?.key === resultKey ? result.data : null;
   const error = result?.key === resultKey ? result.error : null;
   const loading = !summary && !error;
@@ -251,23 +254,25 @@ export default function MetricsPage({ onOpenAnalysis }) {
 
   useEffect(() => {
     let alive = true;
-    fetchMetricsSummary(period)
+    const request = dateRange ? fetchMetricsSummary(period, '', dateRange) : fetchMetricsSummary(period);
+    request
       .then((data) => {
         if (!alive) return;
         setResult({ key: resultKey, data });
       })
       .catch((err) => { if (alive) setResult({ key: resultKey, error: err.message }); });
     return () => { alive = false; };
-  }, [period, revision, resultKey]);
+  }, [period, dateRange, revision, resultKey]);
 
   useEffect(() => {
     if (!selectedMonth) return;
     let alive = true;
-    fetchMetricsSummary(period, selectedMonth)
+    const request = dateRange ? fetchMetricsSummary(period, selectedMonth, dateRange) : fetchMetricsSummary(period, selectedMonth);
+    request
       .then(data => { if (alive) setMonthResult({ key: monthResultKey, data }); })
       .catch(failure => { if (alive) setMonthResult({ key: monthResultKey, error: failure.message }); });
     return () => { alive = false; };
-  }, [period, selectedMonth, revision, monthResultKey]);
+  }, [period, dateRange, selectedMonth, revision, monthResultKey]);
 
   useEffect(() => {
     const refresh = () => setRevision(value => value + 1);
@@ -304,8 +309,11 @@ export default function MetricsPage({ onOpenAnalysis }) {
   const causesByMonth = (summary?.monthly ?? []).map(month => month.top_causes ?? []);
   const linePoints = (summary?.monthly ?? []).map((p) => p.count);
   const chartTotal = linePoints.reduce((sum, count) => sum + count, 0);
-  const activePeriod = PERIODS.find((p) => p.key === period);
-  const chartScope = period === "all" ? "All recorded months" : "Last 12 months";
+  const formatDate = value => new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${value}T00:00:00+08:00`));
+  const activePeriod = dateRange
+    ? { key: 'custom', label: 'Date range', description: `${formatDate(dateRange.from)} – ${formatDate(dateRange.to)}` }
+    : PERIODS.find((p) => p.key === period);
+  const chartScope = dateRange ? activePeriod.description : period === "all" ? "All recorded months" : "Last 12 months";
   const selectedMonthIndex = (summary?.monthly ?? []).findIndex(month => month.month_key === selectedMonth);
   const selectedMonthLabel = selectedMonth
     ? new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'long', year: 'numeric' }).format(new Date(`${selectedMonth}-01T00:00:00+08:00`))
@@ -316,6 +324,14 @@ export default function MetricsPage({ onOpenAnalysis }) {
   function selectMonth(index) {
     const month = summary?.monthly?.[index]?.month_key;
     if (month) setSelectedMonth(month);
+  }
+
+  function applyRange(event) {
+    event.preventDefault();
+    if (!rangeDraft.from || !rangeDraft.to) { setRangeError('Choose both a start and end date.'); return; }
+    if (rangeDraft.from > rangeDraft.to) { setRangeError('The start date must be on or before the end date.'); return; }
+    if (rangeDraft.to > today) { setRangeError('Reporting dates cannot be in the future.'); return; }
+    setRangeError(''); setDateRange({ ...rangeDraft }); setPeriod('custom'); setSelectedMonth('');
   }
 
   function openExport() {
@@ -358,12 +374,13 @@ export default function MetricsPage({ onOpenAnalysis }) {
         <section className="mo-period-panel" aria-label="Metrics reporting period">
         <div className="m-section-row">
           <div className="mo-period-copy"><span className="mo-control-icon"><AnalysisIcon name="chart" /></span><div><h2>Reporting period</h2><p>Review recorded activity across a selected window.</p></div></div>
+          <div className="mo-period-controls">
           <div className="m-period-group" role="group" aria-label="Reporting period">
             {PERIODS.map((p) => (
               <button
                 key={p.key}
                 className={`m-period-btn${period === p.key ? " active" : ""}`}
-                onClick={() => { setPeriod(p.key); setSelectedMonth(''); }}
+                onClick={() => { setPeriod(p.key); setDateRange(null); setRangeDraft({ from: '', to: '' }); setRangeError(''); setSelectedMonth(''); }}
                 aria-pressed={period === p.key}
                 aria-label={p.description}
               >
@@ -371,23 +388,30 @@ export default function MetricsPage({ onOpenAnalysis }) {
               </button>
             ))}
           </div>
+          <form className={`mo-date-range${dateRange ? ' is-active' : ''}`} onSubmit={applyRange} aria-label="Custom reporting date range">
+            <label>From<input type="date" aria-label="Start date" className={!rangeDraft.from ? 'is-empty' : undefined} value={rangeDraft.from} max={rangeDraft.to || today} onChange={event => { setRangeDraft(value => ({ ...value, from: event.target.value })); setRangeError(''); }} /></label>
+            <label>To<input type="date" aria-label="End date" className={!rangeDraft.to ? 'is-empty' : undefined} value={rangeDraft.to} min={rangeDraft.from || undefined} max={today} onChange={event => { setRangeDraft(value => ({ ...value, to: event.target.value })); setRangeError(''); }} /></label>
+            <button className="mo-button" type="submit">Apply</button>
+          </form>
+          </div>
         </div>
+        {rangeError && <p className="mo-range-error" role="alert">{rangeError}</p>}
         </section>
         {error && <div className="mo-error" role="alert"><AnalysisIcon name="info" /><div><strong>Could not load metrics</strong><p>{error}</p></div><button className="mo-button" onClick={invalidateOperationalTimes}>Retry</button></div>}
         {!error && <>
         <div className="kpi-row m-kpi-row">
           <KpiCard
             icon={<PhoneIcon />}
-            label="Recorded incidents"
+            label="Recorded fire incidents"
             value={total.toLocaleString()}
-            sub="Incidents in the selected reporting period"
+            sub="Fire incidents in the selected reporting period"
             loading={loading}
             trend={trendOf(deltas.total)}
             accent="fire"
           />
           <div className="mo-response-kpi"><KpiCard
             icon={<ClockIcon />}
-            label="Average response time"
+            label="Average fire response time"
             onClick={onOpenAnalysis}
             actionLabel="Average Response Time: open Analysis, Response & Operations"
             value={avgResponse != null ? `${avgResponse.toFixed(1)} min` : KPI_EMPTY}
@@ -398,7 +422,7 @@ export default function MetricsPage({ onOpenAnalysis }) {
           /></div>
           <KpiCard
             icon={<AlertIcon />}
-            label="Critical incidents"
+            label="Critical fire incidents"
             value={total > 0 && summary?.unknown_severity_count === total ? KPI_EMPTY : (severity.Critical ?? 0).toLocaleString()}
             sub={summary?.unknown_severity_count > 0 ? `${summary.unknown_severity_count} records have no reported severity` : "Incidents with critical severity"}
             loading={loading}
@@ -416,7 +440,6 @@ export default function MetricsPage({ onOpenAnalysis }) {
           />
         </div>
 
-        {!loading && (summary.historical_import_count > 0 || summary.synthetic_alarm_count > 0 || summary.approximate_location_count > 0) && <aside className="mo-source-note"><AnalysisIcon name="info" /><p><strong>Record context</strong>{summary.historical_import_count > 0 && <span>{summary.historical_import_count} imported historical incidents</span>}{summary.synthetic_alarm_count > 0 && <span>{summary.synthetic_alarm_count} assumed alarm levels</span>}{summary.approximate_location_count > 0 && <span>{summary.approximate_location_count} estimated locations</span>}</p></aside>}
         {loading ? <div className="mo-chart-skeletons" aria-label="Loading metric charts">{[0, 1, 2, 3].map(n => <div className="m-card" key={n}><span className="kpi-sk mo-skeleton-title" /><span className="kpi-sk mo-skeleton-chart" /></div>)}</div> : <>
         <div className="m-grid">
           <div className="m-card m-card-donut" aria-busy={breakdownLoading}>
@@ -564,7 +587,7 @@ export default function MetricsPage({ onOpenAnalysis }) {
           </div>
         </div>
         <details className="mo-method"><summary><AnalysisIcon name="info" />How to read this overview<AnalysisIcon name="chevron" /></summary><div className="mo-method-content">
-          <section><div className="mo-method-heading"><span><AnalysisIcon name="chart" /></span><h3>Incident activity & rankings</h3></div><p>Incident totals use the selected occurrence-date window. Select a chart month to filter alarm levels, barangays and causes to that calendar month. Each incident contributes once to a cause or barangay count. Rankings show up to ten entries.</p><div className="mo-method-assumptions"><h4>Monthly chart scope</h4><p>All dates shows all recorded months. Other periods show the last twelve months, independently of the selected incident window. Clear the month to restore reporting-period breakdowns.</p></div></section>
+          <section><div className="mo-method-heading"><span><AnalysisIcon name="chart" /></span><h3>Incident activity & rankings</h3></div><p>Incident totals use the selected occurrence-date window. Select a chart month to filter alarm levels, barangays and causes to that calendar month. Each incident contributes once to a cause or barangay count. Rankings show up to ten entries.</p><div className="mo-method-assumptions"><h4>Monthly chart scope</h4><p>All dates shows all recorded months. A custom range includes both calendar dates in Philippine time and limits the chart to that window. Other periods show the last twelve months. Clear the month to restore reporting-period breakdowns.</p></div></section>
           <section><div className="mo-method-heading"><span><AnalysisIcon name="response" /></span><h3>Response time & record quality</h3></div><p>Response time measures verified report receipt to the first eligible arrival, using its own receipt-date cohort and available measurements.</p><div className="mo-method-assumptions"><h4>Missing & historical records</h4><p>Unknown severity, missing arrivals and unresolved barangays stay explicit. Historical imports may include assumed alarm levels and estimated locations. Open Analysis to review response quality and individual incidents.</p></div></section>
         </div></details>
         </>}

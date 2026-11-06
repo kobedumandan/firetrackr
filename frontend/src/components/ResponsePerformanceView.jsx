@@ -465,7 +465,7 @@ export default function ResponsePerformanceView({ onOpenAnalysis, onOpenDispatch
             <td>{r.location || <MissingValue />}<small className="ro-dispatch-context ro-dispatch-location">{r.severity ? <SeverityBadge sev={r.severity} /> : <MissingValue />}<span className="ro-label-separator" aria-hidden="true">|</span>{r.record_kind ? responseKindLabel(r.record_kind) : <MissingValue />}</small></td>
             {[r.dispatch_at, r.acknowledged_at, r.departed_at, r.arrived_at].map((at, i) => <td key={i} className={`rp-timestamp${!at ? ' is-missing' : ''}`}><ReceiptDateTime value={at} /></td>)}
             <td className="rp-duration">{Number.isFinite(r.metrics.response.seconds) ? duration(r.metrics.response.seconds) : <MissingValue />}</td><td><span className="rp-quality-badge" data-quality={r.metrics.response.quality}>{responseKindLabel(r.metrics.response.reason || 'valid')}</span></td>
-            <td><button type="button" className="inc-btn-view" aria-label={`View dispatch DISP-${r.dispatch_id}`} onClick={() => onOpenDispatch(r.dispatch_id)}>View</button></td>
+            <td><button type="button" className="inc-btn-view" aria-label={`View dispatch DISP-${r.dispatch_id}`} onClick={() => onOpenDispatch(r.dispatch_id, r.fire_id)}>View</button></td>
           </tr>)}
         </tbody></table></div>
         {!dispatchLoading && !dispatchError && !rows?.records.length && <div className="rp-empty"><PerformanceIcon name="handling" /><h3>No dispatch observations match these filters</h3><p>Adjust the table filters or selected month</p>{filters.kind === 'operational' && <button onClick={() => update('kind', 'unknown')}>View unclassified records</button>}</div>}

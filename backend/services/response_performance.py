@@ -15,6 +15,7 @@ from services.operational_times import EXCLUDED, detail, iso
 from services.timing_metrics import MAX_SECONDS, measure, summarize, arrival, departure, first_arrival
 from services.historical_incidents import attach_history, demo_times
 from serializers import _incident_dict
+from services.incident_scope import fire_incident_filter
 
 MANILA = ZoneInfo("Asia/Manila")
 KINDS = {"operational", "drill", "test", "unknown"}
@@ -149,7 +150,7 @@ def dispatch_page(db, page=1, page_size=25, dispatch_team_id=None, response_qual
             "page_size": page_size, "total_pages": pages}
 
 
-def overall(db, start, end, kind="operational", station_id=None, barangay_id=None, severity=None):
+def overall(db, start, end, kind="operational", station_id=None, barangay_id=None, severity=None, fire_only=False):
     query = db.query(FireIncident).options(
         selectinload(FireIncident.dispatches).selectinload(DispatchRecord.dispatch_trucks),
         selectinload(FireIncident.dispatches).joinedload(DispatchRecord.team).joinedload(ResponseTeam.station),
@@ -157,6 +158,8 @@ def overall(db, start, end, kind="operational", station_id=None, barangay_id=Non
         selectinload(FireIncident.dispatches).joinedload(DispatchRecord.team).joinedload(ResponseTeam.truck),
     ).filter(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) >= start,
              func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) < end)
+    if fire_only:
+        query = query.filter(fire_incident_filter())
     if kind != "all":
         query = query.filter(func.coalesce(FireIncident.record_kind, "unknown") == kind)
     if barangay_id:

@@ -122,6 +122,19 @@ def get_active_incidents(
     return [_incident_dict(r) for r in rows]
 
 
+@router.get("/api/incidents/{fire_id}")
+def get_incident(
+    fire_id: int,
+    db: Session = Depends(get_db),
+    _auth: Users = Depends(require_admin),
+):
+    """Load a bookmarked incident without relying on the current register page."""
+    incident = db.get(FireIncident, fire_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    return _incident_dict(incident)
+
+
 @router.post("/api/incidents", status_code=201)
 async def create_incident(
     body: IncidentCreate,
@@ -145,9 +158,9 @@ async def create_incident(
         fire_longitude=body.fire_longitude,
         fire_severity=body.fire_severity,
         fire_status=body.fire_status,
-        fire_alarm_level=body.fire_alarm_level,
+        fire_alarm_level=body.fire_alarm_level if body.fire_dispatch_type == 'Firefighting Operations' else None,
         fire_dispatch_type=body.fire_dispatch_type,
-        fire_structure_type=body.fire_structure_type,
+        fire_structure_type=body.fire_structure_type if body.fire_dispatch_type == 'Firefighting Operations' else None,
         fire_casualties=body.fire_casualties,
         fire_units_assigned=body.fire_units_assigned,
         fire_reporter_name=body.fire_reporter_name,
@@ -227,6 +240,9 @@ async def update_incident(
     before = snapshot(inc)
     for field, val in body.model_dump(exclude_unset=True).items():
         setattr(inc, field, val)
+    if inc.fire_dispatch_type and inc.fire_dispatch_type != 'Firefighting Operations':
+        inc.fire_alarm_level = None
+        inc.fire_structure_type = None
     record_changes(db, inc, before, user=_auth)
     # If this edit closes the incident, release any still-active dispatch crews
     # and trucks — mirrors the report-filing close path.
@@ -242,9 +258,10 @@ async def update_incident(
         )
         for d in active_dispatches:
             _complete_dispatch_and_release(d, now)
-        _add_incident_to_heatmap(db, inc, now)
         # An incident can close with nothing dispatched to it; stay quiet then.
         released = _released_payload(active_dispatches) if active_dispatches else None
+    if inc.fire_status == 'closed' and (not was_closed or 'fire_dispatch_type' in body.model_fields_set):
+        _add_incident_to_heatmap(db, inc, datetime.now(timezone.utc))
     db.commit()
     db.refresh(inc)
     data = _incident_dict(inc)

@@ -5,11 +5,11 @@ import { manilaInput } from '../utils/operationalTimes'
 import { fetchTeams } from '../api'
 import { useIncidentBarangay } from '../hooks/useIncidentBarangay'
 import {
-  SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES,
+  SEVERITIES, ALARMS, DISPATCH_TYPES, supportsFireAlarm,
   ICON_CLOSE, ICON_TRUCK, ICON_PLUS, ICON_PIN, ICON_WARN, ICON_HISTORY,
 } from './incidentFormOptions'
 import {
-  Icon, Field, SectionHead, Segmented, StatusSteps, CasualtyPicker, LockedNote,
+  Icon, Field, SectionHead, Segmented, StatusSteps, CasualtyPicker, LockedNote, StructureTypeField,
 } from './incidentForm'
 import { MapPicker, PinStatus } from './MapPicker'
 
@@ -65,6 +65,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
   }, [mode])
 
   const isPast         = mode === 'past'
+  const showFireAlarm   = supportsFireAlarm(form.fire_dispatch_type)
   const nowLocal       = manilaInput().slice(0, 16)
   const futureTime     = isPast && occurredAt !== '' && occurredAt > nowLocal
   const showUnits      = form.fire_status !== 'pending'
@@ -77,6 +78,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
     !hasPin && 'map pin',
     !form.fire_location_name.trim() && 'area name',
     isPast && !occurredAt && 'incident time',
+    showFireAlarm && (!form.fire_structure_type.trim() || form.fire_structure_type === 'Other') && 'structure type',
   ].filter(Boolean)
 
   function set(field, value) {
@@ -128,6 +130,10 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
       setError('Area / Barangay name is required.')
       return
     }
+    if (showFireAlarm && (!form.fire_structure_type.trim() || form.fire_structure_type === 'Other')) {
+      setError('Specify the structure type when Other is selected.')
+      return
+    }
     if (isPast && !occurredAt) {
       setError('Enter when the incident happened.')
       return
@@ -141,6 +147,8 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
     try {
       await onSubmit({
         ...form,
+        fire_structure_type: showFireAlarm ? form.fire_structure_type.trim() : null,
+        fire_alarm_level: showFireAlarm ? form.fire_alarm_level : null,
         report_received_at: receivedAt ? new Date(`${receivedAt}+08:00`).toISOString() : null,
         response_kind: responseKind || null,
         record_kind: recordKind,
@@ -253,16 +261,13 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
             </Field>
             <Field label="Severity" required>
               <Segmented label="Severity" options={SEVERITIES} value={form.fire_severity} onChange={v => set('fire_severity', v)} />
+              <span className="frm-hint">Overall incident seriousness, used for incident sorting and reporting across operation types.</span>
             </Field>
             <div className="eim-row">
-              <Field label="Alarm level">
+              {showFireAlarm && <Field label="Alarm level">
                 <Segmented label="Alarm level" options={ALARMS.map(a => ({ value: a, label: a.replace(' Alarm', '') }))} value={form.fire_alarm_level} onChange={v => set('fire_alarm_level', v)} />
-              </Field>
-              <Field label="Structure type">
-                <select aria-label="Structure type" value={form.fire_structure_type} onChange={e => set('fire_structure_type', e.target.value)}>
-                  {STRUCTURES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </Field>
+              </Field>}
+              {showFireAlarm && <StructureTypeField value={form.fire_structure_type} onChange={value => set('fire_structure_type', value)} />}
             </div>
           </IntakeSection>
 

@@ -11,6 +11,7 @@ const PATHS = {
   refresh: 'M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 3M18 18a8 8 0 0 1-13-3',
   download: 'M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5',
   chevron: 'm9 5 7 7-7 7',
+  view: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z',
   chart: 'M4 4v16h16M8 15l4-5 4 2 4-7',
   coverage: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10M12 11v2',
   route: 'M6 6h10a4 4 0 0 1 0 8H8a4 4 0 0 0 0 8h10M6 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6M18 19a2 2 0 1 0 0 4 2 2 0 0 0 0-4',
@@ -19,6 +20,6 @@ const PATHS = {
 
 export default function AnalysisIcon({ name, className = '' }) {
   return <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    {name === 'response' && <circle cx="12" cy="13" r="8" />}{name === 'info' && <circle cx="12" cy="12" r="9" />}<path d={PATHS[name]} />
+    {name === 'response' && <circle cx="12" cy="13" r="8" />}{name === 'info' && <circle cx="12" cy="12" r="9" />}{name === 'view' && <circle cx="12" cy="12" r="3" />}<path d={PATHS[name]} />
   </svg>
 }

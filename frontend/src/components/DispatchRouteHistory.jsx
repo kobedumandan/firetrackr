@@ -35,8 +35,8 @@ export default function DispatchRouteHistory({ data, theme, pageLayout = false }
     {showPlans && (!pageLayout || revision) && <div className={pageLayout ? 'ddp-plan-map' : 'rp-map'}><MapContainer center={MAP_CENTER} zoom={12} style={{ height: '100%' }}>{tileLayersFor(theme === 'light' ? 'street' : 'dark').map(layer => <TileLayer key={layer.url} {...layer} />)}<FitRoute points={points} />{route.length > 1 && <Polyline positions={route} pathOptions={{ color: '#ff6c3b' }} />}{location && <CircleMarker center={location}><Tooltip>Incident</Tooltip></CircleMarker>}</MapContainer></div>}
     {pageLayout && revision && route.length < 2 && <p className="ddp-empty">No saved route geometry is available for this revision.</p>}
   </>
-  return <details className={`rt-vehicle-context${pageLayout ? ' ddp-route-history' : ''}`} open={showPlans} onToggle={e => setShowPlans(e.currentTarget.open)}>
-    <summary>{pageLayout ? <><span className="ddp-section-icon"><AnalysisIcon name="route" /></span><span><strong>Generated route history</strong><small>Inspect saved route selections and predictions.</small></span><AnalysisIcon name="chevron" className="ddp-chevron" /></> : 'Generated route history'}</summary>
+  return <details className={`rt-vehicle-context${pageLayout ? ' ddp-route-history rar-disclosure' : ''}`} open={showPlans} onToggle={e => setShowPlans(e.currentTarget.open)}>
+    <summary className={pageLayout ? 'rp-section-heading rar-section-heading' : undefined}>{pageLayout ? <><div className="rar-section-heading-copy"><span className="rar-section-heading-icon"><AnalysisIcon name="route" /></span><div><h3>Generated Route History</h3><p>Inspect saved route selections and predictions.</p></div></div><AnalysisIcon name="chevron" className="rar-chevron" /></> : 'Generated route history'}</summary>
     {pageLayout ? <div className="ddp-route-body">{content}</div> : content}
   </details>
 }

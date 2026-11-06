@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchResponseDispatch } from '../api'
 
-export default function useDispatchDetail(id) {
+export default function useDispatchDetail(id, initialData = null) {
   const [result, setResult] = useState(null)
   const [revision, setRevision] = useState(0)
   useEffect(() => {
@@ -10,17 +10,18 @@ export default function useDispatchDetail(id) {
     return () => window.removeEventListener('operational-times-updated', refresh)
   }, [])
   useEffect(() => {
+    if (id == null || (initialData?.dispatch_id === id && revision === 0)) return
     const controller = new AbortController()
     fetchResponseDispatch(id, controller.signal).then(
       data => { if (!controller.signal.aborted) setResult({ id, data }) },
       error => {
-        if (!controller.signal.aborted) setResult(previous => ({ id, data: previous?.id === id ? previous.data : null, error: error.message }))
+        if (!controller.signal.aborted) setResult(previous => ({ id, data: previous?.id === id ? previous.data : initialData?.dispatch_id === id ? initialData : null, error: error.message }))
       },
     )
     return () => controller.abort()
-  }, [id, revision])
+  }, [id, revision, initialData])
   return {
-    data: result?.id === id ? result.data : null,
+    data: result?.id === id ? result.data : initialData?.dispatch_id === id ? initialData : null,
     error: result?.id === id ? result.error : null,
     onRetry: () => setRevision(value => value + 1),
   }

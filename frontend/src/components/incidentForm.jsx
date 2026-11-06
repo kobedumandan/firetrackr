@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import '../styles/AppModal.css'
 import {
-  STATUSES, CASUALTIES, statusMetaOf,
+  STATUSES, CASUALTIES, STRUCTURES, statusMetaOf,
   ICON_CHECK, ICON_WARN, ICON_LOCK, ICON_CLOSE, ICON_ARROW,
 } from './incidentFormOptions'
 import { ICON_EYE, ICON_EYE_OFF } from './resourceFormOptions'
@@ -36,6 +36,38 @@ export function SectionHead({ title, desc, changed }) {
       <h3>{title}</h3>
       {desc && <p>{desc}</p>}
       {changed && <span className="eim-dot" title="Edited" />}
+    </div>
+  )
+}
+
+export function StructureTypeField({ value, onChange, changed }) {
+  const [selection, setSelection] = useState(() => STRUCTURES.includes(value) ? value : 'Other')
+  const [description, setDescription] = useState(() => STRUCTURES.includes(value) ? '' : value || '')
+
+  return (
+    <div>
+      <Field label="Structure type" changed={changed}>
+        <select aria-label="Structure type" value={selection} onChange={event => {
+          const next = event.target.value
+          setSelection(next)
+          onChange(next === 'Other' ? description.trim() || 'Other' : next)
+        }}>
+          {STRUCTURES.map(type => <option key={type} value={type}>{type}</option>)}
+        </select>
+      </Field>
+      {selection === 'Other' && <Field label="Specify structure type" required>
+        <input
+          aria-label="Specify structure type"
+          placeholder="Enter the structure or site type"
+          required
+          maxLength={100}
+          value={description}
+          onChange={event => {
+            setDescription(event.target.value)
+            onChange(event.target.value.trim() || 'Other')
+          }}
+        />
+      </Field>}
     </div>
   )
 }

@@ -6,6 +6,7 @@ import AnalysisIcon from "./AnalysisIcon";
 import DispatchModal from "./DispatchModal";
 import EscalateAlarmModal from "./EscalateAlarmModal";
 import IncidentTimeline from "./IncidentTimeline";
+import { supportsFireAlarm } from "./incidentFormOptions";
 
 function TimeIcon() {
   return (
@@ -813,7 +814,7 @@ export default function RightSidebar({
             >
               Dispatch unit
             </button>
-            <button
+            {supportsFireAlarm(incident.dispatch_type) && <button
               className="btn-secondary"
               onClick={() => setShowEscalate(true)}
               disabled={highestAlarm}
@@ -824,7 +825,7 @@ export default function RightSidebar({
               }
             >
               Escalate alarm
-            </button>
+            </button>}
           </div>
         )}
       </aside>

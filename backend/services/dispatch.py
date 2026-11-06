@@ -16,6 +16,7 @@ from models import (
 from serializers import _incident_dict
 from services.incident_events import record_changes, snapshot
 from services.heatmap import severity_weight
+from services.incident_scope import is_fire_incident
 from services.push import notify_dispatch_assigned
 from services.routing import _haversine_meters, _load_active_obstructions
 from state import manager
@@ -301,7 +302,7 @@ def _add_incident_to_heatmap(db: Session, inc: FireIncident, now: datetime):
     """Record a newly closed incident as a heatmap point. Idempotent — skips if
     this incident already has a heatmap row (an incident only closes once, but
     this guards against either close path running twice)."""
-    if inc.fire_latitude is None or inc.fire_longitude is None:
+    if not is_fire_incident(inc) or inc.fire_latitude is None or inc.fire_longitude is None:
         return
     already = (
         db.query(HeatmapData)

@@ -4,8 +4,8 @@ import { IntakeSection, IntakeDisclosure, IntakeReceipt } from './IncidentIntake
 import { manilaInput } from '../utils/operationalTimes'
 import { useIncidentBarangay } from '../hooks/useIncidentBarangay'
 import '../styles/AppModal.css'
-import { SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES, ICON_PIN, ICON_BOLT, ICON_WARN } from './incidentFormOptions'
-import { Icon, Field, Segmented } from './incidentForm'
+import { SEVERITIES, ALARMS, DISPATCH_TYPES, supportsFireAlarm, ICON_PIN, ICON_BOLT, ICON_WARN } from './incidentFormOptions'
+import { Icon, Field, Segmented, StructureTypeField } from './incidentForm'
 
 const CHANNELS = ['911 Call', 'BFP Hotline', 'SMS Report', 'Walk-in', 'Dispatcher']
 
@@ -46,7 +46,11 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
   }
 
   const fromReporter = form.locationSource === 'report'
-  const missing = form.locationName.trim() ? [] : ['area name']
+  const showFireAlarm = supportsFireAlarm(form.dispatchType)
+  const missing = [
+    !form.locationName.trim() && 'area name',
+    showFireAlarm && (!form.structure.trim() || form.structure === 'Other') && 'structure type',
+  ].filter(Boolean)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -58,8 +62,8 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
         locationName: form.locationName.trim(),
         address:      form.address.trim(),
         severity:     form.severity,
-        alarm:        form.alarm,
-        structure:    form.structure,
+        alarm:        showFireAlarm ? form.alarm : null,
+        structure:    showFireAlarm ? form.structure.trim() : null,
         dispatchType: form.dispatchType,
         reporter:     form.reporter,
         mobile:       form.mobile.trim(),
@@ -143,21 +147,18 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
             </Field>
             <Field label="Severity" required>
               <Segmented label="Severity" options={SEVERITIES} value={form.severity} onChange={v => set('severity', v)} />
+              <span className="frm-hint">Overall incident seriousness, used for incident sorting and reporting across operation types.</span>
             </Field>
             <div className="eim-row">
-              <Field label="Alarm level">
+              {showFireAlarm && <Field label="Alarm level">
                 <Segmented
                   label="Alarm level"
                   options={ALARMS.map(a => ({ value: a, label: a.replace(' Alarm', '') }))}
                   value={form.alarm}
                   onChange={v => set('alarm', v)}
                 />
-              </Field>
-              <Field label="Structure type">
-                <select aria-label="Structure type" value={form.structure} onChange={e => set('structure', e.target.value)}>
-                  {STRUCTURES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </Field>
+              </Field>}
+              {showFireAlarm && <StructureTypeField value={form.structure} onChange={value => set('structure', value)} />}
             </div>
           </IntakeSection>
 

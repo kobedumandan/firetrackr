@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
 from models import DispatchRecord, FireIncident, IncidentEvent, Route, TruckLog
+from serializers import _incident_dict
 from services.incident_events import actor_name
 from services.historical_incidents import attach_history, history, demo_times
 from services.reporting_periods import reporting_window
@@ -360,14 +361,16 @@ def detail(db, inc):
     attach_history(db, [inc])
     result = record_dict(inc)
     events = db.query(IncidentEvent).filter_by(fire_id=inc.fire_id).order_by(IncidentEvent.created_at, IncidentEvent.event_id).all()
-    result.update({"location": [inc.fire_latitude, inc.fire_longitude], "address": inc.fire_address,
+    result.update({"incident_record": _incident_dict(inc),
+                   "location": [inc.fire_latitude, inc.fire_longitude], "address": inc.fire_address,
                    'dispatches': [{'dispatch_id': d.dispatch_id, 'team': d.context_snapshot.get('team_name') if d.context_snapshot else None,
                                    'status': d.dispatch_status, 'cleared_at': iso(d.cleared_at)} for d in inc.dispatches],
                    'operation_completed_at': iso(inc.operation_completed_at),
                    "suppression_started_at": iso(inc.suppression_started_at), "fire_out_at": iso(inc.fire_out_at),
                    "controlled_at": timeline(db, inc, events)['controlled_at'],
-                   "events": [{"type": e.event_type, "at": iso(e.occurred_at or e.created_at), "received_at": iso(e.created_at),
-                               "source": e.source, "verified": e.verified, "actor": e.event_actor, "unit_id": e.dispatch_truck_id}
+                   "events": [{"id": e.event_id, "type": e.event_type, "at": iso(e.occurred_at or e.created_at), "received_at": iso(e.created_at),
+                               "source": e.source, "verified": e.verified, "actor": e.event_actor, "unit_id": e.dispatch_truck_id,
+                               "dispatch_id": e.dispatch_id, "correction": (e.event_metadata or {}).get('correction')}
                               for e in events if e.event_type != "op_routes"], "units": []})
     for dispatch in inc.dispatches:
         for unit in dispatch.dispatch_trucks:

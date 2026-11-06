@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { updateIncident } from '../api'
 import '../styles/EditFormModal.css'
 import {
-  STATUSES, SEVERITIES, ALARMS, STRUCTURES, DISPATCH_TYPES, statusMetaOf,
+  STATUSES, SEVERITIES, ALARMS, DISPATCH_TYPES, statusMetaOf, supportsFireAlarm,
   ICON_CLOSE, ICON_MINUS, ICON_PLUS, ICON_LOCK,
 } from './incidentFormOptions'
 import {
   Icon, Field, SectionHead, Segmented, StatusSteps, Callout,
-  ReviewChanges,
+  ReviewChanges, StructureTypeField,
 } from './incidentForm'
 
 // Review order and display labels for every editable field.
@@ -32,8 +32,8 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
     fire_address:          incident.addr       || '',
     fire_severity:         incident.sev        || 'Minor',
     fire_status:           incident.status     || 'pending',
-    fire_alarm_level:      incident.alarm      || '1st Alarm',
-    fire_structure_type:   incident.structure  || 'Residential',
+    fire_alarm_level:      supportsFireAlarm(incident.dispatch_type) ? incident.alarm || '1st Alarm' : null,
+    fire_structure_type:   supportsFireAlarm(incident.dispatch_type) ? incident.structure || 'Residential' : null,
     fire_dispatch_type:    incident.dispatch_type || '',
     fire_units_assigned:   incident.units      ?? 0,
     fire_reporter_name:    incident.reporter && incident.reporter !== '—' ? incident.reporter : '',
@@ -46,10 +46,13 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
 
   const closingNow     = form.fire_status === 'closed' && initial.fire_status !== 'closed'
   const statusMeta     = statusMetaOf(form.fire_status)
+  const showFireAlarm  = supportsFireAlarm(form.fire_dispatch_type)
 
   // Outcome fields are managed in the dedicated after-action report modal.
   const effective = {
     ...form,
+    fire_alarm_level: showFireAlarm ? form.fire_alarm_level || '1st Alarm' : null,
+    fire_structure_type: showFireAlarm ? form.fire_structure_type || 'Residential' : null,
     fire_units_assigned: Number(form.fire_units_assigned) || 0,
   }
   // PATCH only what changed; a blank contact means "keep the stored one".
@@ -87,6 +90,10 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
       setError('Area / Barangay name is required.')
       return
     }
+    if (showFireAlarm && effective.fire_structure_type === 'Other' && isChanged('fire_structure_type')) {
+      setError('Specify the structure type when Other is selected.')
+      return
+    }
     if (changeCount === 0) return
     setError(null)
     setReviewing(true)
@@ -116,7 +123,7 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
               <span className="eim-chip eim-chip-code">{incident.id}</span>
               <span className="eim-chip">{statusMeta.label}</span>
               <span className="eim-chip">{form.fire_severity}</span>
-              <span className="eim-chip">{form.fire_alarm_level}</span>
+              {showFireAlarm && <span className="eim-chip">{form.fire_alarm_level || '1st Alarm'}</span>}
             </div>
           </div>
           <button className="eim-close" onClick={onClose} aria-label="Close" disabled={saving}>
@@ -132,34 +139,31 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
             <SectionHead title="Status" desc="Where this incident is in its lifecycle" changed={isChanged('fire_status')} />
             <StatusSteps value={form.fire_status} onChange={v => set('fire_status', v)} hint={statusMeta.hint.replace(/\.$/, '')} />
             {closingNow && (
-              <Callout>When you save, active crews and trucks on this incident are released and it is added to the heatmap</Callout>
+              <Callout>When you save, active crews and trucks on this incident are released. Eligible fire records also contribute to the fire heatmap.</Callout>
             )}
           </section>
 
           {/* ── Assessment ── */}
           <section className="eim-section">
-            <SectionHead title="Assessment" desc="How serious the fire is and what's committed to it" />
+            <SectionHead title="Assessment" desc="Incident seriousness and the response assigned to it" />
 
             <Field label="Dispatch type" changed={isChanged('fire_dispatch_type')}>
-              <select value={form.fire_dispatch_type} onChange={e => set('fire_dispatch_type', e.target.value)}>
+              <select aria-label="Dispatch type" value={form.fire_dispatch_type} onChange={e => set('fire_dispatch_type', e.target.value)}>
                 <option value="">Unspecified</option>
                 {DISPATCH_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
               </select>
             </Field>
             <Field label="Severity" required changed={isChanged('fire_severity')}>
               <Segmented label="Severity" options={SEVERITIES} value={form.fire_severity} onChange={v => set('fire_severity', v)} />
+              <span className="frm-hint">Overall incident seriousness, used for incident sorting and reporting across operation types.</span>
             </Field>
 
-            <Field label="Alarm level" changed={isChanged('fire_alarm_level')}>
-              <Segmented label="Alarm level" options={ALARMS} value={form.fire_alarm_level} onChange={v => set('fire_alarm_level', v)} />
-            </Field>
+            {showFireAlarm && <Field label="Alarm level" changed={isChanged('fire_alarm_level')}>
+              <Segmented label="Alarm level" options={ALARMS} value={form.fire_alarm_level || '1st Alarm'} onChange={v => set('fire_alarm_level', v)} />
+            </Field>}
 
             <div className="eim-row">
-              <Field label="Structure type" changed={isChanged('fire_structure_type')}>
-                <select value={form.fire_structure_type} onChange={e => set('fire_structure_type', e.target.value)}>
-                  {STRUCTURES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </Field>
+              {showFireAlarm && <StructureTypeField value={effective.fire_structure_type} onChange={value => set('fire_structure_type', value)} changed={isChanged('fire_structure_type')} />}
               <Field label="Units assigned" changed={isChanged('fire_units_assigned')}>
                 <div className="eim-stepper">
                   <button type="button" onClick={() => stepUnits(-1)} disabled={Number(form.fire_units_assigned) <= 0} aria-label="Decrease units">
@@ -259,7 +263,7 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
           // The stored contact isn't loaded into the form, so there's no old value to show.
           beforeText: key === 'fire_reporter_contact' ? 'Previous number' : null,
         }))}
-        note={closingNow && 'Closing this incident releases its active crews and trucks and adds it to the heatmap.'}
+        note={closingNow && 'Closing this incident releases its active crews and trucks. Eligible fire records also contribute to the fire heatmap.'}
         saving={saving}
         error={error}
         onBack={() => { setError(null); setReviewing(false) }}
