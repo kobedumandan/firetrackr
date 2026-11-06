@@ -1268,11 +1268,15 @@ class GeoAIRoutingEngine:
         return None
 
     def compute_routes_from_position(self, lat, lon, dest_lat, dest_lon, obstructions=None, previous_position=None):
-        """Route from the current road segment, retaining direction at its junction.
+        """Choose the best available road direction from the current GPS fix.
 
         Geometry begins at the reported fix. A small GPS-to-road snap is explicit;
         the remaining partial edge is traversed before entering ALT. No graph or
         shared engine state is temporarily rewritten.
+
+        Both directions are considered on two-way roads. ``previous_position``
+        remains accepted for existing callers but does not constrain departure:
+        recent movement or GPS drift must not force a loop just to turn around.
         """
         import math
         from .graph_builder import _haversine_km
@@ -1283,21 +1287,9 @@ class GeoAIRoutingEngine:
             return []
         u, v, plat, plon, _ = snap
         graph = self.graph.G
-        a, b = graph.nodes[u], graph.nodes[v]
         endpoints = [(u, v)]
         if graph.has_edge(v, u):
             endpoints.append((v, u))
-        # Recent motion disambiguates the two directions on a bidirectional road.
-        # At a junction the truck may choose a fresh outgoing edge normally.
-        at_node = min(_haversine_km(plat, plon, a['lat'], a['lon']),
-                      _haversine_km(plat, plon, b['lat'], b['lon'])) * 1000 < 1
-        if previous_position and not at_node and _haversine_km(*previous_position, lat, lon) * 1000 > 1:
-            dy, dx = lat - previous_position[0], (lon - previous_position[1]) * math.cos(math.radians(lat))
-            def alignment(edge):
-                end = graph.nodes[edge[1]]
-                ey, ex = end['lat'] - plat, (end['lon'] - plon) * math.cos(math.radians(lat))
-                return (dx * ex + dy * ey) / max(1e-15, math.hypot(ex, ey))
-            endpoints = [max(endpoints, key=alignment)]
         costs, _ = self._compute_edge_costs()
         if obstructions:
             self.apply_obstructions(obstructions, costs)

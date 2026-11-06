@@ -7,7 +7,7 @@ from fastapi import HTTPException
 import routing_pool
 import state
 from config import ROUTING_POOL_TIMEOUT
-from models import CurrentLocation, DispatchRecord, DispatchTruck, FireIncident, LocationLog, ResponseTeamMember, Route
+from models import CurrentLocation, DispatchRecord, DispatchTruck, FireIncident, ResponseTeamMember, Route
 from services.dispatch import _normalize_role
 from services.routing import _build_rerouted_payload, _load_active_obstructions
 from services.operational_times import snapshot_routes
@@ -30,10 +30,7 @@ def live_driver_origin(db, dispatch):
         if at.tzinfo is None:
             at = at.replace(tzinfo=timezone.utc)
         if now - timedelta(minutes=2) <= at <= now + timedelta(seconds=30) and (not dispatch.dispatch_at or at >= dispatch.dispatch_at):
-            previous = db.query(LocationLog).filter(LocationLog.per_id == per_id, LocationLog.recorded_at < at,
-                LocationLog.recorded_at >= at-timedelta(seconds=60)).order_by(LocationLog.recorded_at.desc()).first()
-            return float(location.latitude), float(location.longitude), 'driver_location', (
-                (previous.log_latitude, previous.log_longitude) if previous else None)
+            return float(location.latitude), float(location.longitude), 'driver_location', None
     return None
 
 
