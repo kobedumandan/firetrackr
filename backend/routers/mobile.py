@@ -21,6 +21,7 @@ from services.dispatch import (
 )
 from services.push import push_message, send_expo_push
 from services.routing import check_location_deviation, _recompute_deviation_routing_bg
+from services.location_routing import schedule_location_routing
 from services.tracking_policy import policy as tracking_policy
 from services.personnel_navigation import navigation_for, save_navigation
 from services.personnel_arrival import arrival_for, personnel_status
@@ -454,7 +455,7 @@ def location_update(
     # Publish the fix before its routing result. Reversing these broadcasts lets
     # an older GPS payload erase the newly calculated branch in the dashboard.
     for task, args in routing_tasks:
-        background_tasks.add_task(task, *args)
+        background_tasks.add_task(schedule_location_routing, task, *args)
 
     # TODO: replace polling with WebSocket push when scaling requires it
     own_navigation = navigation_for(dispatch, per_id)

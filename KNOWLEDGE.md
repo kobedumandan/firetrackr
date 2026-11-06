@@ -17,6 +17,28 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### GPS routing admission and connection use (2026-11-06)
+
+- Accepted GPS uploads keep their existing history, deduplication, tracking
+  policy and immediate position broadcasts. Automatic driver-online refreshes
+  and deviation calculations share one process-local worker, with the latest
+  pending calculation per dispatch/personnel pair. The queue holds at most 128
+  waiting pairs; work older than 30 seconds is discarded. New GPS fixes can
+  request current work again. These limits apply to derived routes, not uploads.
+- Computation runs outside the AnyIO worker pool used by synchronous HTTP
+  endpoints. Queued work holds no database session. Automatic driver and
+  personnel calculations release their read transaction/connection during
+  graph work, then revalidate route revision, dispatch activity, truck ownership
+  and current-position checks as appropriate before saving. Manual navigation
+  retains its existing transaction behavior. Shutdown discards pending work and
+  waits for the running calculation before disposing the routing engine.
+- The supplied Render logs and Events entry show a five-second HTTP health-check
+  timeout around 10:45 AM Philippine time, graceful shutdown and recovery at
+  10:46 AM. All 36 logged GPS uploads returned 200; no exception or memory-limit
+  event is present in that excerpt. Overlapping route work and connections held
+  during computation are confirmed code risks, not proof of the exact resource
+  bottleneck behind that hosted timeout. The HTTP health contract is unchanged.
+
 ### Dashboard URL navigation (2026-11-06)
 
 - Screen selection follows browser paths: `/command`, `/metrics`,

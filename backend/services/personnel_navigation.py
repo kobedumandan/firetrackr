@@ -39,7 +39,8 @@ def save_navigation(db, dispatch, per_id, *, expected_route_id, is_deviated,
     return True
 
 
-def build_personnel_navigation(db, dispatch, per_id, lat, lon, *, is_deviated, expected_route_id):
+def build_personnel_navigation(db, dispatch, per_id, lat, lon, *, is_deviated, expected_route_id,
+                              release_connection=False):
     """Return the full road path for movement and its trimmed branch for display."""
     from fastapi import HTTPException
     from models import CurrentLocation
@@ -48,9 +49,12 @@ def build_personnel_navigation(db, dispatch, per_id, lat, lon, *, is_deviated, e
     incident = dispatch.fire_incident
     if not incident or incident.fire_status in ('closed', 'cancelled', 'canceled', 'recalled'):
         raise HTTPException(409, 'Incident is no longer active.')
+    destination = incident.fire_latitude, incident.fire_longitude
+    obstructions = _load_active_obstructions(db)
+    if release_connection:
+        db.rollback()  # No writes yet; avoid occupying a connection during graph work.
     try:
-        full = _run_routing_via_pool('connector', lat, lon, incident.fire_latitude, incident.fire_longitude,
-                                   _load_active_obstructions(db))
+        full = _run_routing_via_pool('connector', lat, lon, *destination, obstructions)
     except ValueError:
         raise HTTPException(422, 'No connected personnel route is available. Your position has been preserved.')
     coordinates = (full or {}).get('coordinates', [])

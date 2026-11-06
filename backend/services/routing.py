@@ -332,6 +332,7 @@ def _recompute_deviation_routing_bg(
         if not navigation_for(dispatch, per_id).get('is_deviated', dispatch.is_deviated):
             return  # rejoined the route before this task ran — nothing to do
         expected_route_id = dispatch.route_id
+        fire_id = dispatch.fire_id
 
         obs = _load_active_obstructions(db)
 
@@ -350,8 +351,10 @@ def _recompute_deviation_routing_bg(
             ordinal = db.query(Route).filter(Route.dispatch_id == dispatch_id, Route.route_type == preferred,
                 Route.route_rank < selected_route.route_rank).count() if selected_route else 0
             lat, lon, _, previous = origin
+            destination = incident.fire_latitude, incident.fire_longitude
+            db.rollback()  # Read-only inputs; release the connection during graph work.
             route_results = _run_routing_via_pool(
-                "position_routes", lat, lon, incident.fire_latitude, incident.fire_longitude, obs, previous
+                "position_routes", lat, lon, *destination, obs, previous
             )
             if route_results:
                 matching = [route for route in route_results if route['route_type'] == preferred]
@@ -359,7 +362,7 @@ def _recompute_deviation_routing_bg(
                 route_results = [{**route, 'is_selected': route is chosen} for route in route_results]
             # A dispatcher may have recalculated/selected a new route while the
             # worker was computing. Never overwrite that newer route revision.
-            db.query(FireIncident).filter_by(fire_id=dispatch.fire_id).with_for_update().one()
+            db.query(FireIncident).filter_by(fire_id=fire_id).with_for_update().one()
             db.refresh(dispatch, with_for_update=True)
             if (dispatch.route_id != expected_route_id or not dispatch.is_deviated or
                     dispatch.dispatch_status not in ('dispatched', 'en_route', 'on_scene')):
@@ -380,7 +383,7 @@ def _recompute_deviation_routing_bg(
             payload = _build_rerouted_payload(dispatch, selected, saved, "driver_location")
         else:
             data = build_personnel_navigation(db, dispatch, per_id, lat, lon,
-                is_deviated=True, expected_route_id=expected_route_id)
+                is_deviated=True, expected_route_id=expected_route_id, release_connection=True)
             payload = {'type': 'dispatch_deviation', 'data': data}
     except Exception as exc:
         logger.warning("Background deviation routing failed (dispatch=%s): %s", dispatch_id, exc)

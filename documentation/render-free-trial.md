@@ -79,6 +79,27 @@ and no live database. Its health request completes inside a 200 ms deadline whil
 the watchdog query remains blocked. These checks demonstrate local scheduling and
 request-lifecycle behavior; deploy and observe Render to validate the hosted fix.
 
+## GPS work and the November 6 health timeout
+
+The supplied Events entry reports an HTTP health check exceeding five seconds
+at 10:45 AM Philippine time, with recovery at 10:46 AM. The matching application
+log ends its health responses at 10:44:45, gracefully shuts down at 10:45:25 and
+reports healthy again at 10:46:39. All 36 GPS POSTs in the excerpt returned 200.
+There is no Python traceback or out-of-memory event in that excerpt; CPU, memory
+and database metrics are still needed to establish the exact hosted bottleneck.
+
+Automatic GPS route work now has one process-local computation slot and at most
+one latest waiting calculation per dispatch/personnel pair. The waiting backlog
+is capped at 128 pairs, and calculations queued more than 30 seconds ago expire.
+GPS history and immediate location broadcasts are retained. Waiting work holds
+no HTTP worker or database session; running automatic calculations release their
+read connection during graph work and revalidate the current assignment/revision
+before persistence. Manual routing and the health endpoint retain their existing
+behavior. Shutdown waits for the running calculation before freeing its engine.
+
+This limits a confirmed overload path; deploying it and checking Render Events
+and CPU/database/memory behavior is necessary to verify the hosted improvement.
+
 ## Configuration choices
 
 - One Uvicorn worker preserves process-local WebSocket and reporter state.

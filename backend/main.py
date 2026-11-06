@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 import state
 from config import REPORT_PHOTO_STORAGE, UPLOAD_ROOT
 from services.report_photos import check_report_photo_storage
+from services.location_routing import location_routing
 from config import BLACKLIST_REAPER_INTERVAL_SECONDS, WATCHDOG_INTERVAL_SECONDS
 from routers import (
     capstone_reports,
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI):
     await run_in_threadpool(check_report_photo_storage)
     state.main_event_loop = asyncio.get_running_loop()
+    location_routing.start()
 
     from services.routing_reload import reload_routing, poll_routing_changes
 
@@ -69,25 +71,27 @@ async def lifespan(_app: FastAPI):
     else:
         logger.info("Token-blacklist reaper held by another worker — not started here.")
 
-    yield  # server runs here
+    try:
+        yield  # server runs here
+    finally:
+        await location_routing.close()
+        for task in (watchdog_task, reaper_task, routing_sync_task, model_jobs_task):
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        _release_watchdog_lock()
+        _release_reaper_lock()
 
-    for task in (watchdog_task, reaper_task, routing_sync_task, model_jobs_task):
-        if task is not None:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-    _release_watchdog_lock()
-    _release_reaper_lock()
+        if state.routing_pool_executor is not None:
+            state.routing_pool_executor.shutdown(wait=False, cancel_futures=True)
+            logger.info("Routing process pool shut down.")
 
-    if state.routing_pool_executor is not None:
-        state.routing_pool_executor.shutdown(wait=False, cancel_futures=True)
-        logger.info("Routing process pool shut down.")
-
-    if state.routing_engine:
-        state.routing_engine.shutdown()
-    logger.info("Routing engine shut down.")
+        if state.routing_engine:
+            state.routing_engine.shutdown()
+        logger.info("Routing engine shut down.")
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
