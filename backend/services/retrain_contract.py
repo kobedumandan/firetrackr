@@ -25,7 +25,10 @@ def validate_job_id(job_id):
 
 def source_hashes(root):
     root = Path(root)
-    return {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in SOURCE_FILES}
+    # Git commonly checks out CRLF on Windows and LF on hosted Linux. Those
+    # equivalent source files must pass the same deployment compatibility gate.
+    return {name: hashlib.sha256((root / name).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+            for name in SOURCE_FILES}
 
 
 def snapshot_files(directory):

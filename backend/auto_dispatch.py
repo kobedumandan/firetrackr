@@ -1,8 +1,8 @@
 """Smart auto-dispatch: pick the best response team for a new incident.
 
 Pipeline:
-  A. Hard filters (SQL): correct shift, team not active, station has an
-     available truck, all team members on standby.
+  A. Hard filters: correct shift, standby team, its assigned truck available,
+     and all personnel free of active assignments or unfinished returns.
   B. Haversine prefilter -> top 5 nearest candidate stations.
   C. GNN ETA per finalist (falls back to haversine ETA if routing is down).
   D. Tiebreaker: prefer teams with fewer dispatches in the last 12h.
@@ -16,13 +16,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
-from models import (
-    DispatchRecord, FireIncident, ResponseTeam, ResponseTeamMember,
-    Station, Truck,
-)
+from models import DispatchRecord, FireIncident, ResponseTeam, Station
 from services.routing import _load_active_obstructions
+from services.resource_availability import availability_snapshot, team_unavailability
 from shift_utils import current_shift_id
 
 logger = logging.getLogger(__name__)
@@ -73,6 +71,7 @@ def _eligible_teams(
     """Stage A: hard filters. Returns (eligible, stage_counts) for diagnostics."""
     all_teams = (
         db.query(ResponseTeam)
+        .options(joinedload(ResponseTeam.station), joinedload(ResponseTeam.truck), selectinload(ResponseTeam.members))
         .join(Station, ResponseTeam.station_id == Station.station_id)
         .filter(Station.station_latitude != None, Station.station_longitude != None)  # noqa: E711
         .all()
@@ -86,14 +85,16 @@ def _eligible_teams(
         "has_truck":           0,
         "members_standby":     0,
     }
+    availability = availability_snapshot(db, all_teams)
     eligible: list[ResponseTeam] = []
     for team in all_teams:
-        # A station marked inactive is out of service; its teams aren't sent.
-        if (team.station.station_status or "operational") == "inactive":
+        unavailable = team_unavailability(db, team, require_truck=True, require_members=True, availability=availability)
+        failed_stage = unavailable[0] if unavailable else None
+        if failed_stage == "station_operational":
             continue
         counts["station_operational"] += 1
 
-        if (team.team_status or "").lower() == "active":
+        if failed_stage == "not_active":
             continue
         counts["not_active"] += 1
 
@@ -101,25 +102,11 @@ def _eligible_teams(
             continue
         counts["on_shift"] += 1
 
-        truck_avail = (
-            db.query(Truck)
-            .filter(Truck.station_id == team.station_id, Truck.truck_status == "available")
-            .first()
-        )
-        if not truck_avail:
+        if failed_stage == "has_truck":
             continue
         counts["has_truck"] += 1
 
-        members = team.members or []
-        if not members:
-            continue
-        # NULL / empty member_status is treated as implicit "standby" — the
-        # frontend doesn't expose this field, so most members never have it
-        # explicitly set. Only an explicit non-standby value disqualifies.
-        if any(
-            (m.member_status or "").strip().lower() not in ("", "standby")
-            for m in members
-        ):
+        if failed_stage == "members_standby":
             continue
         counts["members_standby"] += 1
 

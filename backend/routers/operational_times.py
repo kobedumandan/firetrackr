@@ -68,8 +68,12 @@ async def confirm_milestone(fire_id: int, body: OperationalMilestoneBody, db: Se
         raise HTTPException(404, "Truck assignment not found for this incident.")
     if body.kind not in ('departure', 'arrival') and unit:
         raise HTTPException(422, "This milestone belongs to the incident, not an individual unit.")
-    record_milestone(db, inc, body.kind, body.occurred_at, user, unit,
-                     key=f"manual:{user.user_id}:{body.idempotency_key}", response_kind=body.response_kind)
+    event = record_milestone(db, inc, body.kind, body.occurred_at, user, unit,
+                             key=f"manual:{user.user_id}:{body.idempotency_key}", response_kind=body.response_kind)
+    changed = event is not None and event in db.new
     db.commit()
     await manager.broadcast({"type": "operational_times_updated", "data": {"fire_id": fire_id}})
+    if body.kind == 'operation_complete' or (changed and body.kind in ('suppression_start', 'fire_out')):
+        from routers.response_workflow import notify
+        await notify(db, body.kind, inc)
     return detail(db, inc)

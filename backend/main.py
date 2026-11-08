@@ -19,12 +19,13 @@ import state
 from config import REPORT_PHOTO_STORAGE, UPLOAD_ROOT
 from services.report_photos import check_report_photo_storage
 from services.location_routing import location_routing
+from services.route_alternatives import route_alternatives
 from config import BLACKLIST_REAPER_INTERVAL_SECONDS, WATCHDOG_INTERVAL_SECONDS
 from routers import (
     capstone_reports,
     auth, constraints, coverage, dispatch, geodata, incidents, metrics, mobile,
     obstructions, personnel, reporting, routing, shifts, stations, system, teams,
-    trucks, models, operational_times,
+    trucks, models, operational_times, response_workflow,
 )
 from services.token_cleanup import (
     _acquire_reaper_lock, _release_reaper_lock, _token_blacklist_reaper,
@@ -43,6 +44,7 @@ async def lifespan(_app: FastAPI):
     await run_in_threadpool(check_report_photo_storage)
     state.main_event_loop = asyncio.get_running_loop()
     location_routing.start()
+    route_alternatives.start()
 
     from services.routing_reload import reload_routing, poll_routing_changes
 
@@ -75,6 +77,7 @@ async def lifespan(_app: FastAPI):
         yield  # server runs here
     finally:
         await location_routing.close()
+        await route_alternatives.close()
         for task in (watchdog_task, reaper_task, routing_sync_task, model_jobs_task):
             if task is not None:
                 task.cancel()
@@ -142,3 +145,4 @@ app.include_router(dispatch.router)
 app.include_router(mobile.router)
 app.include_router(capstone_reports.router)
 app.include_router(trucks.router)
+app.include_router(response_workflow.router)

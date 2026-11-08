@@ -4,11 +4,15 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db
 from models import (
-    DispatchRecord, Personnel, ResponseTeam, ResponseTeamMember, Shift, Station, Truck, Users,
+    DispatchRecord, DispatchTruck, Personnel, ResponseTeam, ResponseTeamMember, Shift, Station, Truck, Users,
 )
 from schemas import TeamCreate, TeamMemberBody, TeamMemberRoleUpdate, TeamUpdate
 from security import require_admin
 from serializers import _team_dict
+from services.resource_availability import (
+    lock_membership_team, lock_personnel_assignments, personnel_assignment_reason, return_assignment_locks,
+    pending_return_context,
+)
 
 
 router = APIRouter(tags=["teams"])
@@ -34,7 +38,10 @@ def get_teams(
         .order_by(ResponseTeam.team_id)
         .all()
     )
-    return [_team_dict(r) for r in rows]
+    context = pending_return_context(db, team_ids=[team.team_id for team in rows],
+        per_ids=[member.per_id for team in rows for member in team.members])
+    return_locks = {per_id: row['assignment_reason'] for per_id, row in context['drivers'].items()}
+    return [_team_dict(r, return_locks=return_locks, return_context=context) for r in rows]
 
 
 @router.post("/api/teams", status_code=201)
@@ -43,6 +50,8 @@ def create_team(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
+    if body.team_status in ('dispatched', 'on_scene', 'returning'):
+        raise HTTPException(422, 'Create a standby or inactive team; dispatch actions establish response states.')
     if body.station_id and not db.get(Station, body.station_id):
         raise HTTPException(status_code=404, detail="Station not found.")
     if body.shift_id is not None and not db.get(Shift, body.shift_id):
@@ -75,6 +84,18 @@ def update_team(
     team = db.query(ResponseTeam).filter_by(team_id=team_id).populate_existing().with_for_update().first()
     if not team:
         raise HTTPException(status_code=404, detail="Team not found.")
+    active_or_returning = db.query(DispatchRecord.dispatch_id).outerjoin(DispatchTruck).filter(
+        DispatchRecord.team_id == team_id,
+        (DispatchRecord.dispatch_status.in_(('dispatched', 'en_route', 'on_scene')) |
+         (DispatchTruck.return_started_at.is_not(None) & DispatchTruck.ready_at.is_(None))),
+    ).first()
+    if active_or_returning and any(
+        field in body.model_fields_set and getattr(body, field) != getattr(team, field)
+        for field in ('team_status', 'truck_id', 'station_id')
+    ):
+        raise HTTPException(409, 'Use response clearance and truck return/readiness before changing this team assignment or availability.')
+    if body.team_status is not None and body.team_status != team.team_status and body.team_status in ('dispatched', 'on_scene', 'returning'):
+        raise HTTPException(409, 'Response team states are recorded by dispatch and clearance actions.')
     if "truck_id" in body.model_fields_set and body.truck_id != team.truck_id:
         active = db.query(DispatchRecord.dispatch_id).filter(
             DispatchRecord.team_id == team_id,
@@ -143,9 +164,10 @@ def add_team_member(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    team = db.get(ResponseTeam, team_id)
+    team = lock_membership_team(db, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found.")
+    lock_personnel_assignments(db, [body.per_id])
     person = db.get(Personnel, body.per_id)
     if not person:
         raise HTTPException(status_code=404, detail="Personnel not found.")
@@ -159,7 +181,15 @@ def add_team_member(
         ResponseTeamMember.per_id  == body.per_id,
     ).first()
     if existing:
+        same_role = body.member_role is None or _member_value(body.member_role) == _member_value(existing.member_role)
+        same_status = body.member_status is None or _member_value(body.member_status) == _member_value(existing.member_status)
+        if same_role and same_status:
+            return {"members_id": existing.members_id, "team_id": existing.team_id,
+                    "per_id": existing.per_id, "member_role": existing.member_role}
         raise HTTPException(status_code=409, detail="Already a member of this team.")
+    reason = personnel_assignment_reason(db, body.per_id, exclude_team_id=team_id)
+    if reason:
+        raise HTTPException(409, reason)
     m = ResponseTeamMember(
         team_id=team_id,
         per_id=body.per_id,
@@ -182,14 +212,24 @@ def update_team_member(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
+    lock_membership_team(db, team_id)
+    lock_personnel_assignments(db, [per_id])
     m = db.query(ResponseTeamMember).filter(
         ResponseTeamMember.team_id == team_id,
         ResponseTeamMember.per_id  == per_id,
-    ).first()
+    ).populate_existing().first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found.")
-    if body.member_role   is not None: m.member_role   = body.member_role
-    if body.member_status is not None: m.member_status = body.member_status
+    changed = any(getattr(body, field) is not None and
+                  _member_value(getattr(body, field)) != _member_value(getattr(m, field))
+                  for field in ('member_role', 'member_status'))
+    reason = return_assignment_locks(db, [per_id]).get(per_id) if changed else None
+    if reason:
+        raise HTTPException(409, reason)
+    for field in ('member_role', 'member_status'):
+        value = getattr(body, field)
+        if value is not None and _member_value(value) != _member_value(getattr(m, field)):
+            setattr(m, field, value)
     from services.personnel_deployment import sync_rosters
     sync_rosters(db, team_id, _auth)
     db.commit()
@@ -203,13 +243,22 @@ def remove_team_member(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
+    lock_membership_team(db, team_id)
+    lock_personnel_assignments(db, [per_id])
     m = db.query(ResponseTeamMember).filter(
         ResponseTeamMember.team_id == team_id,
         ResponseTeamMember.per_id  == per_id,
-    ).first()
+    ).populate_existing().first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found.")
+    reason = return_assignment_locks(db, [per_id]).get(per_id)
+    if reason:
+        raise HTTPException(409, reason)
     db.delete(m)
     from services.personnel_deployment import sync_rosters
     sync_rosters(db, team_id, _auth)
     db.commit()
+
+
+def _member_value(value):
+    return (value or '').strip().lower().replace('_', ' ')

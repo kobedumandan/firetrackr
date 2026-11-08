@@ -4,12 +4,13 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 import state
 from config import DEVIATION_MAX_ACCURACY_M, _REROUTE_INLINE
 from database import get_db
 from models import (
-    CurrentLocation, DispatchRecord, FireIncident, LocationLog, Personnel, PushToken, ResponseTeamMember,
+    CurrentLocation, DispatchRecord, DispatchTruck, FireIncident, IncidentEvent, LocationLog, Personnel, PushToken, ResponseTeamMember,
     Route, Users,
 )
 from schemas import LocationUpdateBody, PushTokenBody, PushTokenRef
@@ -26,6 +27,7 @@ from services.tracking_policy import policy as tracking_policy
 from services.personnel_navigation import navigation_for, save_navigation
 from services.personnel_arrival import arrival_for, personnel_status
 from services.report_timing import timeline as report_timeline
+from services.response_workflow import stage, release_confirmations, release_state
 from state import manager
 
 
@@ -202,6 +204,7 @@ def mobile_me_status(
                     "truck_status":     dt.truck.truck_status,
                 }
             own_arrival = arrival_for(db, active_dispatch, p.per_id)
+            scene_dispatches = list(inc.dispatches) if inc else []
             dispatch_data = {
                 "dispatch_id":     active_dispatch.dispatch_id,
                 "dispatch_status": active_dispatch.dispatch_status,
@@ -211,6 +214,9 @@ def mobile_me_status(
                 "acknowledged_at": active_dispatch.acknowledged_at.isoformat() if active_dispatch.acknowledged_at else None,
                 "departed_at": active_dispatch.departed_at.isoformat() if active_dispatch.departed_at else None,
                 'cleared_at': active_dispatch.cleared_at.isoformat() if active_dispatch.cleared_at else None,
+                'release_authorized_at': active_dispatch.release_authorized_at.isoformat() if active_dispatch.release_authorized_at else None,
+                'release': release_state(inc, active_dispatch, scene_dispatches,
+                                         release_confirmations(db, scene_dispatches)) if inc else None,
                 "arrived_at": active_dispatch.dispatch_arrived_at.isoformat() if active_dispatch.dispatch_arrived_at else None,
                 "milestone_timestamp_basis": "server_received_action",
                 "route_wkt":       selected_route.route_path_geojson if selected_route else None,
@@ -228,6 +234,10 @@ def mobile_me_status(
                     "fire_severity":      inc.fire_severity,
                     "fire_structure_type": inc.fire_structure_type,
                     "fire_status":        inc.fire_status,
+                    'lifecycle_stage': stage(inc),
+                    'operation_completed_at': inc.operation_completed_at.isoformat() if inc.operation_completed_at else None,
+                    "dispatch_type":      inc.fire_dispatch_type or "",
+                    "response_kind":      inc.response_kind,
                     "operational_timing": report_timeline(db, inc),
                     "fire_incident_datetime": inc.fire_incident_datetime.isoformat() if inc.fire_incident_datetime else None,
                 } if inc else None,
@@ -237,9 +247,33 @@ def mobile_me_status(
         # No active dispatch on this team; keep looking but save first team found
         # Continue through every membership: a later team may own the response.
 
+    from services.response_workflow import owned_query, return_payload, WORKFLOW_VERSION
+    from routers.response_workflow import pending_query
+    assignments = owned_query(db, current_user).with_entities(DispatchRecord.dispatch_id)
+    returns = db.query(DispatchTruck).filter(
+        DispatchTruck.dispatch_id.in_(assignments), DispatchTruck.return_started_at.is_not(None),
+        DispatchTruck.ready_at.is_(None),
+    ).order_by(DispatchTruck.return_started_at.desc()).all()
+    recent_events = db.query(IncidentEvent).filter(
+        or_(IncidentEvent.dispatch_id.in_(assignments),
+            (IncidentEvent.event_type.in_(('op_suppression_start', 'op_fire_out')) & IncidentEvent.fire_id.in_(
+                owned_query(db, current_user).with_entities(DispatchRecord.fire_id))),
+            (IncidentEvent.dispatch_id.is_(None) & IncidentEvent.fire_id.in_(
+                owned_query(db, current_user).with_entities(DispatchRecord.fire_id)))),
+        IncidentEvent.event_type.in_(('op_release_authorized', 'op_clearance', 'op_truck_ready',
+                                     'op_truck_not_ready', 'op_operation_complete', 'report_reviewed',
+                                     'report_field_submitted', 'report_created', 'report_edited',
+                                     'op_suppression_start', 'op_fire_out')),
+    ).order_by(IncidentEvent.event_id.desc()).limit(20).all()
     location = db.get(CurrentLocation, p.per_id)
     return {
         "per_id":     p.per_id,
+        'workflow_version': WORKFLOW_VERSION,
+        'pending_report_count': pending_query(db, current_user).count(),
+        'returns': [{**return_payload(unit), 'can_confirm': unit.return_driver_per_id == p.per_id} for unit in returns],
+        'workflow_events': [{'id': event.event_id, 'kind': event.event_type, 'fire_id': event.fire_id,
+                             'dispatch_id': event.dispatch_id, 'at': (event.occurred_at or event.created_at).isoformat()}
+                            for event in reversed(recent_events)],
         "location": {'latitude': float(location.latitude), 'longitude': float(location.longitude),
                      'recorded_at': location.recorded_at.isoformat()} if location else None,
         "first_name": p.per_firstname,
@@ -283,7 +317,8 @@ def location_update(
         return {'status': 'tracking_stopped', 'tracking': tracking}
 
     dispatch = db.get(DispatchRecord, body.dispatch_id) if body.dispatch_id is not None else None
-    if body.dispatch_id is not None and (dispatch is None or dispatch.dispatch_status not in ("dispatched", "en_route", "on_scene")):
+    returning = tracking['mode'] == 'returning'
+    if body.dispatch_id is not None and (dispatch is None or (dispatch.dispatch_status not in ("dispatched", "en_route", "on_scene") and not returning)):
         return {"status": "dispatch_ended", 'tracking': tracking}
 
     membership = (
@@ -294,7 +329,7 @@ def location_update(
         )
         .first()
     ) if dispatch else None
-    if dispatch and not membership:
+    if dispatch and not membership and not returning:
         raise HTTPException(403, 'Not assigned to this dispatch.')
     if tracking['dispatch_id'] != body.dispatch_id:
         return {'status': 'tracking_changed', 'tracking': tracking}
@@ -318,7 +353,7 @@ def location_update(
         # GPS and arrival can deadlock while telemetry upgrades the incident lock.
         db.query(FireIncident).filter_by(fire_id=dispatch.fire_id).with_for_update().one()
         db.refresh(dispatch)
-        if dispatch.dispatch_status not in ('dispatched', 'en_route', 'on_scene'):
+        if dispatch.dispatch_status not in ('dispatched', 'en_route', 'on_scene') and not returning:
             return {'status': 'dispatch_ended', 'tracking': tracking_policy(db, person, datetime.now(timezone.utc))}
 
     # Atomically deduplicate attributed phone history before any vehicle effects.
@@ -332,6 +367,32 @@ def location_update(
     if saved is None:
         db.commit()
         return {'status': 'duplicate', 'tracking': tracking}
+
+    if returning:
+        unit = next((item for item in dispatch.dispatch_trucks if item.return_driver_per_id == per_id
+                     and item.return_started_at and not item.returned_at and not item.ready_at), None)
+        if unit is None:
+            db.rollback()
+            return {'status': 'tracking_changed', 'tracking': tracking_policy(db, person)}
+        existing = db.get(CurrentLocation, per_id)
+        if _race_condition_winner(existing, 'mobile_app', recorded_at, now):
+            if existing is None:
+                existing = CurrentLocation(per_id=per_id)
+                db.add(existing)
+            existing.latitude, existing.longitude = body.latitude, body.longitude
+            existing.source, existing.recorded_at, existing.received_at = 'mobile_app', recorded_at, now
+            if unit.manned_by_per_id == per_id and unit.truck:
+                unit.truck.truck_latitude, unit.truck.truck_longitude = body.latitude, body.longitude
+                unit.truck.truck_last_updated = now
+        db.commit()
+        background_tasks.add_task(manager.broadcast, {'type': 'personnel_location', 'data': {
+            'per_id': per_id, 'latitude': body.latitude, 'longitude': body.longitude,
+            'recorded_at': recorded_at.isoformat(), 'source': 'mobile_app', 'is_stale': False,
+            'personnel_status': 'returning', 'dispatch_id': dispatch.dispatch_id, 'tracking': tracking,
+            'manned_truck': {'truck_id': unit.truck_id, 'truck_platenum': unit.truck.truck_platenum}
+                if unit.manned_by_per_id == per_id and unit.truck else None,
+        }})
+        return {'status': 'ok', 'tracking': tracking}
 
     # Always preserve history
     from services.dispatch_locations import collect

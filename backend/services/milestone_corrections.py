@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from models import IncidentEvent
 from services.operational_times import EXCLUDED, audit, iso, unit_arrival, valid_time
+from services.incident_scope import effective_response_kind
 
 FIELDS = {
     'receipt': 'report_received_at', 'departure': 'departed_at', 'arrival': 'arrived_at',
@@ -97,29 +98,29 @@ def correct_milestone(db, inc, kind, at, previous_at, user, *, unit=None, dispat
             _between(at, upper=[unit_arrival(unit)], message='Departure must precede arrival.')
         else:
             _between(at, lower=[unit.departed_at], message='Arrival must follow departure.')
-            if first_arrival and inc.suppression_started_at and first_arrival > inc.suppression_started_at:
-                raise HTTPException(422, 'The first arrival must precede recorded suppression.')
+            fire_times = [value for value in (inc.suppression_started_at, controlled, inc.fire_out_at) if value]
+            if first_arrival and fire_times and first_arrival > min(fire_times):
+                raise HTTPException(422, 'The first arrival must precede recorded fire milestones.')
     elif kind in ('suppression_start', 'fire_out'):
-        if inc.response_kind != 'fire':
+        if effective_response_kind(inc) != 'fire':
             raise HTTPException(422, 'Suppression timing requires a verified fire response.')
         _between(at, lower=[inc.report_received_at, min((item.dispatch_at for item in eligible), default=None), first_arrival],
                  upper=[inc.operation_completed_at])
         if kind == 'suppression_start':
             _between(at, upper=[controlled, inc.fire_out_at], message='Suppression must precede containment and fire out.')
         else:
-            if inc.suppression_started_at is None:
-                raise HTTPException(422, 'Record suppression start before fire out.')
             _between(at, lower=[inc.suppression_started_at, controlled], message='Fire out must follow suppression and containment.')
     elif kind == 'clearance':
-        _between(at, lower=[owner.dispatch_at, owner.departed_at, owner.dispatch_arrived_at,
+        _between(at, lower=[owner.dispatch_at, owner.departed_at, owner.dispatch_arrived_at, owner.release_authorized_at,
                             *(other.departed_at for other in owner.dispatch_trucks),
                             *(unit_arrival(other) for other in owner.dispatch_trucks)],
-                 upper=[inc.operation_completed_at],
+                 upper=[inc.operation_completed_at, *(other.returned_at for other in owner.dispatch_trucks),
+                        *(other.ready_at for other in owner.dispatch_trucks)],
                  message='Clearance must follow the dispatch and truck activity, and precede operation completion.')
     elif kind == 'operation_complete':
         if not eligible or any(item.cleared_at is None for item in eligible):
             raise HTTPException(422, 'Record clearance for every responding dispatch first.')
-        if inc.response_kind == 'fire' and inc.fire_out_at is None:
+        if effective_response_kind(inc) == 'fire' and inc.fire_out_at is None:
             raise HTTPException(422, 'Record fire out before completing a fire operation.')
         _between(at, lower=[inc.report_received_at, inc.fire_out_at, *(item.cleared_at for item in eligible)],
                  message='Operation completion must follow receipt, fire out and every dispatch clearance.')
@@ -127,9 +128,17 @@ def correct_milestone(db, inc, kind, at, previous_at, user, *, unit=None, dispat
     correction = {'kind': kind, 'previous_at': iso(existing), 'occurred_at': iso(at)}
     if field:
         setattr(target, field, at)
+    if kind == 'clearance':
+        if owner.dispatch_completed_at == existing:
+            owner.dispatch_completed_at = at
+        for released in owner.dispatch_trucks:
+            if released.return_started_at == existing:
+                released.return_started_at = at
     if mirrored_arrival:
         owner.dispatch_arrived_at = mirrored_arrival
         correction['dispatch_arrived_at'] = iso(mirrored_arrival)
+    from services.report_timing import invalidate_consolidated_timing_review
+    invalidate_consolidated_timing_review(db, inc)
     return audit(db, inc, f'op_{kind}', at, user, unit=unit, dispatch=dispatch,
                  source='manual_correction', key=key,
                  metadata={'submission': signature, 'correction': correction})

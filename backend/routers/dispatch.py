@@ -22,15 +22,11 @@ from models import (
     CurrentLocation, DispatchRecord, DispatchTruck, FireIncident, IncidentReport, ReportPhoto,
     ResponseTeam, ResponseTeamMember, Route, Users,
 )
-from schemas import ClearanceBody, DispatchCreate, SelectRouteBody, TruckManningBody
+from schemas import ClearanceBody, ContainmentBody, DispatchCreate, SelectRouteBody, TruckManningBody
 from security import get_current_user, require_admin
 from serializers import _incident_dict
 from services.report_photos import cleanup_report_photos, report_photo_urls, save_report_photo
-from services.dispatch import (
-    _add_incident_to_heatmap, _complete_dispatch_and_release, _is_driver,
-    _released_payload,
-    _normalize_role, _perform_dispatch,
-)
+from services.dispatch import _is_driver, _normalize_role, _perform_dispatch
 from services.routing import (
     _build_rerouted_payload, _rebuild_routes,
 )
@@ -43,12 +39,16 @@ router = APIRouter(tags=["dispatch"])
 
 
 @router.patch('/api/dispatch/{dispatch_id}/clearance')
-def confirm_clearance(dispatch_id: int, body: ClearanceBody, background_tasks: BackgroundTasks,
+async def confirm_clearance(dispatch_id: int, body: ClearanceBody, background_tasks: BackgroundTasks,
                       db: Session = Depends(get_db), user: Users = Depends(get_current_user)):
     from services.operation_completion import clear_dispatch
-    data = clear_dispatch(db, dispatch_id, user, body.occurred_at, f'clear:{user.user_id}:{body.idempotency_key}')
+    data = clear_dispatch(db, dispatch_id, user, body.occurred_at, f'clear:{user.user_id}:{body.idempotency_key}', reason=body.reason)
     db.commit()
     background_tasks.add_task(manager.broadcast, {'type': 'operational_times_updated', 'data': data})
+    if not data['repeated']:
+        from routers.response_workflow import notify
+        assignment = db.get(DispatchRecord, dispatch_id)
+        await notify(db, 'team_cleared', assignment.fire_incident, assignment)
     return data
 
 
@@ -213,6 +213,8 @@ def get_dispatches(
             "dispatch_at":        r.dispatch_at.isoformat() if r.dispatch_at else None,
             "arrived_at":         r.dispatch_arrived_at.isoformat() if r.dispatch_arrived_at else None,
             "completed_at":       r.dispatch_completed_at.isoformat() if r.dispatch_completed_at else None,
+            'cleared_at': r.cleared_at.isoformat() if r.cleared_at else None,
+            'release_authorized_at': r.release_authorized_at.isoformat() if r.release_authorized_at else None,
             "truck_platenums":    [dt.truck.truck_platenum for dt in r.dispatch_trucks if dt.truck],
             "station_name":       r.team.station.station_name if (r.team and r.team.station) else None,
             "station_latitude":   r.team.station.station_latitude  if (r.team and r.team.station) else None,
@@ -362,11 +364,24 @@ def set_truck_manning(
     if current_user.user_role != "personnel" or not current_user.personnel:
         raise HTTPException(status_code=403, detail="Only personnel accounts can man a truck.")
 
+    from services.resource_availability import (
+        ACTIVE, lock_personnel_assignments, personnel_assignment_reason,
+    )
     per_id = current_user.personnel.per_id
 
     dispatch = db.get(DispatchRecord, dispatch_id)
     if not dispatch:
         raise HTTPException(status_code=404, detail="Dispatch not found.")
+    incident = db.query(FireIncident).filter_by(fire_id=dispatch.fire_id).populate_existing().with_for_update().first()
+    if not incident:
+        raise HTTPException(404, 'Incident not found.')
+    if dispatch.team_id:
+        db.query(ResponseTeam).filter_by(team_id=dispatch.team_id).populate_existing().with_for_update().one()
+    lock_personnel_assignments(db, [per_id])
+    db.refresh(dispatch)
+    if (dispatch.dispatch_status not in ACTIVE or dispatch.cleared_at or incident.operation_completed_at
+            or incident.fire_status in ('closed', 'cancelled', 'canceled', 'recalled')):
+        raise HTTPException(409, 'Truck manning can only change during an active response. Use return/readiness after clearance.')
 
     membership = (
         db.query(ResponseTeamMember)
@@ -374,23 +389,33 @@ def set_truck_manning(
             ResponseTeamMember.team_id == dispatch.team_id,
             ResponseTeamMember.per_id  == per_id,
         )
-        .first()
+        .populate_existing().first()
     )
     if not membership:
         raise HTTPException(status_code=403, detail="You are not assigned to this dispatch.")
+    if _normalize_role(membership.member_role) != 'driver':
+        raise HTTPException(status_code=403, detail="Only the team's driver can man the truck.")
+    reason = personnel_assignment_reason(db, per_id, exclude_team_id=dispatch.team_id)
+    if reason:
+        raise HTTPException(409, reason)
 
-    dispatch_truck = dispatch.dispatch_trucks[0] if dispatch.dispatch_trucks else None
+    dispatch_truck = db.query(DispatchTruck).filter_by(dispatch_id=dispatch_id).order_by(
+        DispatchTruck.dispatch_truck_id).populate_existing().with_for_update().first()
     if not dispatch_truck or not dispatch_truck.truck:
         raise HTTPException(status_code=404, detail="No truck assigned to this dispatch.")
+    if dispatch_truck.return_started_at:
+        raise HTTPException(409, 'This truck has entered return/readiness. Its response manning is no longer editable.')
+    db.refresh(dispatch_truck.truck, with_for_update=True)
 
     now = datetime.now(timezone.utc)
     released = False
+    was_manning = dispatch_truck.manned_by_per_id == per_id
 
     if body.manning:
-        if not _is_driver(db, dispatch, per_id):
-            raise HTTPException(status_code=403, detail="Only the team's driver can man the truck.")
+        if dispatch_truck.manned_by_per_id not in (None, per_id):
+            raise HTTPException(409, 'This truck is already manned by another Driver.')
         dispatch_truck.manned_by_per_id = per_id
-        dispatch_truck.manned_since     = now
+        dispatch_truck.manned_since     = dispatch_truck.manned_since or now
         # Seed the truck position from the driver's last known location so the
         # truck snaps to them immediately rather than waiting for the next ping.
         cur = db.get(CurrentLocation, per_id)
@@ -406,6 +431,13 @@ def set_truck_manning(
             released = True
 
     db.commit()
+
+    if body.manning and not was_manning and dispatch.route_id:
+        from services.dispatch_routing import has_accurate_driver_fix, refresh_returning_driver
+        from services.location_routing import schedule_location_routing
+        if has_accurate_driver_fix(db, dispatch, per_id):
+            background_tasks.add_task(schedule_location_routing, refresh_returning_driver,
+                                      dispatch.dispatch_id, per_id, dispatch.route_id)
 
     # When the driver explicitly unmans, the truck is no longer following their
     # phone, so a route that was rebuilt around the driver's location is stale
@@ -446,13 +478,18 @@ def set_truck_manning(
 @router.patch("/api/dispatch/{dispatch_id}/contain")
 async def mark_contained(
     dispatch_id: int,
+    body: ContainmentBody | None = None,
     db: Session = Depends(get_db),
     current_user: Users = Depends(get_current_user),
 ):
-    """Personnel mark the dispatch's incident as contained. The dispatch itself
-    stays active (crew remains on scene for overhaul); 'closed' is a later step."""
+    """The leader confirms fire containment or non-fire situation control.
+
+    Both retain the compatible 'contained' status. Dispatch clearance and
+    command's operation-completion milestone remain separate actions.
+    After an existing Fire Out, an explicit verified occurrence time is required.
+    """
     if current_user.user_role != "personnel" or not current_user.personnel:
-        raise HTTPException(status_code=403, detail="Only personnel accounts can mark an incident contained.")
+        raise HTTPException(status_code=403, detail="Only personnel accounts can mark a situation under control.")
 
     per_id = current_user.personnel.per_id
 
@@ -471,7 +508,7 @@ async def mark_contained(
     if not membership:
         raise HTTPException(status_code=403, detail="You are not assigned to this dispatch.")
     if _normalize_role(membership.member_role) != "team leader":
-        raise HTTPException(status_code=403, detail="Only the team leader can mark an incident contained.")
+        raise HTTPException(status_code=403, detail="Only the team leader can mark a situation under control.")
 
     inc = dispatch.fire_incident
     if not inc:
@@ -480,17 +517,33 @@ async def mark_contained(
     inc = db.query(FireIncident).filter_by(fire_id=inc.fire_id).populate_existing().with_for_update().one()
     db.refresh(dispatch)
     if inc.fire_status in ('closed', 'cancelled', 'canceled', 'recalled') or inc.operation_completed_at:
-        raise HTTPException(409, 'This incident no longer accepts containment actions.')
-    if dispatch.dispatch_status not in ('dispatched', 'en_route', 'on_scene'):
+        raise HTTPException(409, 'This incident no longer accepts situation-control actions.')
+    if dispatch.dispatch_status not in ('dispatched', 'en_route', 'on_scene') or dispatch.cleared_at:
         raise HTTPException(409, 'This dispatch is no longer active.')
     before = snapshot(inc)
     now = datetime.now(timezone.utc)
+    occurred_at = now
+    if inc.fire_status != 'contained':
+        from services.operational_times import unit_arrival, valid_time
+        if inc.fire_out_at and body is None:
+            raise HTTPException(409, 'Fire Out is already recorded. Enter the verified containment time at or before Fire Out.')
+        occurred_at = valid_time(body.occurred_at) if body else now
+        if inc.fire_out_at and occurred_at > inc.fire_out_at:
+            raise HTTPException(422, 'Containment must be at or before Fire Out.')
+        dispatches = [d for d in inc.dispatches if d.dispatch_status not in ('cancelled', 'canceled', 'recalled') and d.dispatch_at]
+        arrivals = [unit_arrival(u) for d in dispatches for u in d.dispatch_trucks if unit_arrival(u)]
+        arrivals += [d.dispatch_arrived_at for d in dispatches if d.dispatch_arrived_at and d.dispatch_arrived_at >= d.dispatch_at]
+        lower = [at for at in (inc.report_received_at, inc.suppression_started_at,
+                 min((d.dispatch_at for d in dispatches), default=None), min(arrivals, default=None)) if at]
+        if lower and occurred_at < max(lower):
+            raise HTTPException(422, 'Containment cannot precede receipt, first dispatch, first arrival or recorded suppression start.')
     inc.fire_status = "contained"
     for event in record_changes(db, inc, before, user=current_user, at=now):
-        event.occurred_at = now
+        event.occurred_at = occurred_at
         event.source = 'team_leader_action'
         event.verified = True
         event.dispatch_id = dispatch.dispatch_id
+        event.event_metadata = {'retrospective': body is not None}
     db.commit()
     db.refresh(inc)
 
@@ -513,14 +566,14 @@ async def submit_incident_report(
     suppression_started_at: datetime | None = Form(None),
     controlled_at: datetime | None = Form(None),
     fire_out_at: datetime | None = Form(None),
+    workflow_version: int = Form(0),
     photos: list[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     current_user: Users = Depends(get_current_user),
 ):
-    """Assigned personnel file the after-action report for a contained incident.
-    The request is multipart/form-data: text fields plus zero or more scene
-    photos. Submitting the report closes the incident (fire_status='closed') and
-    completes the dispatch."""
+    """An assigned leader submits field information without closing the response."""
+    if workflow_version != 2:
+        raise HTTPException(409, 'Update the personnel app. Reports no longer close incidents or release teams.')
     if current_user.user_role != "personnel" or not current_user.personnel:
         raise HTTPException(status_code=403, detail="Only personnel accounts can submit an incident report.")
 
@@ -543,19 +596,8 @@ async def submit_incident_report(
     if not dispatch:
         raise HTTPException(status_code=404, detail="Dispatch not found.")
 
-    membership = (
-        db.query(ResponseTeamMember)
-        .filter(
-            ResponseTeamMember.team_id == dispatch.team_id,
-            ResponseTeamMember.per_id  == per_id,
-        )
-        .first()
-    )
-    if not membership:
-        raise HTTPException(status_code=403, detail="You are not assigned to this dispatch.")
-    # Filing closes the incident and completes the dispatch, so it is held to
-    # the same team-leader rule as marking the incident contained.
-    if _normalize_role(membership.member_role) != "team leader":
+    from services.response_workflow import field_report_blocker, is_leader
+    if not is_leader(db, dispatch, current_user, historical=True):
         raise HTTPException(status_code=403, detail="Only the team leader can file the incident report.")
 
     inc = dispatch.fire_incident
@@ -564,10 +606,19 @@ async def submit_incident_report(
 
     # Serialize reports from multiple leaders and operational confirmations.
     inc = db.query(FireIncident).filter_by(fire_id=inc.fire_id).populate_existing().with_for_update().one()
+    db.refresh(dispatch)
     if inc.fire_status == "closed":
         raise HTTPException(status_code=409, detail="This incident is already closed.")
-    if inc.fire_status != "contained":
-        raise HTTPException(status_code=409, detail="The incident must be contained before filing a report.")
+    if inc.fire_status in ('cancelled', 'canceled', 'recalled'):
+        raise HTTPException(409, 'This response does not accept a field report.')
+    previous_report = db.query(IncidentReport).filter_by(
+        dispatch_id=dispatch_id, per_id=per_id, report_kind='field').first()
+    if previous_report:
+        raise HTTPException(409, 'Your field report is already submitted. Ask the dispatcher to correct finalized information.')
+    blocker = field_report_blocker(db, dispatch, current_user)
+    if blocker:
+        raise HTTPException(409, blocker)
+    first_field_report = not db.query(IncidentReport.report_id).filter_by(fire_id=inc.fire_id).first()
 
     now = datetime.now(timezone.utc)
     report = IncidentReport(
@@ -580,6 +631,8 @@ async def submit_incident_report(
         report_narrative       = narrative.strip(),
         report_recommendations = (recommendations or "").strip() or None,
         report_submitted_at    = now,
+        report_kind            = 'field',
+        revision               = 1,
     )
     db.add(report)
     db.flush()  # assign report_id so photo rows / filenames can reference it
@@ -612,22 +665,18 @@ async def submit_incident_report(
                 content_type  = content_type,
             ))
 
-        # Generate viewing URLs before committing: a storage failure must not
-        # close the incident while the client sees a failed report submission.
+        # Resolve viewing URLs before committing so a storage failure cannot
+        # leave a saved report behind a failed submission response.
         photo_urls = await run_in_threadpool(report_photo_urls, written_names)
 
-        # Filing closes the whole incident and releases every responding team.
-        before = snapshot(inc)
-        inc.fire_status = "closed"
-        record_changes(db, inc, before, user=current_user, at=now)
-        active_dispatches = db.query(DispatchRecord).filter(
-            DispatchRecord.fire_id == inc.fire_id,
-            DispatchRecord.dispatch_status.in_(("dispatched", "en_route", "on_scene")),
-        ).all()
-        for active_dispatch in active_dispatches:
-            _complete_dispatch_and_release(active_dispatch, now)
-        _add_incident_to_heatmap(db, inc, now)
-        released = _released_payload(active_dispatches)
+        # First field summary is provisional. Competing observations and a
+        # dispatcher-consolidated summary are never silently overwritten/added.
+        if first_field_report and report.report_casualties:
+            inc.fire_casualties = report.report_casualties
+            inc.casualties_reviewed_at = None
+        from services.operational_times import audit
+        audit(db, inc, 'report_field_submitted', now, current_user, dispatch=dispatch,
+              source='personnel_report', metadata={'report_id': report.report_id})
         db.commit()
     except Exception:
         try:
@@ -638,9 +687,7 @@ async def submit_incident_report(
     db.refresh(report)
     db.refresh(inc)
 
-    # Tell the dashboard a report landed, ahead of the incident_updated that
-    # closes it: the dashboard names the place from its incident snapshot, and
-    # this way the snapshot still holds it when the alert is built.
+    # Field information refreshes the shared incident facts without ending work.
     filer = current_user.personnel
     await manager.broadcast({
         "type": "report_submitted",
@@ -658,8 +705,8 @@ async def submit_incident_report(
 
     data = _incident_dict(inc)
     await manager.broadcast({"type": "incident_updated", "data": data})
-    # Same reason as the status-edit close path in routers/incidents.py.
-    await manager.broadcast(released)
+    from routers.response_workflow import notify
+    await notify(db, 'field_report_submitted', inc, dispatch)
     return {
         "report_id":   report.report_id,
         "fire_id":     inc.fire_id,
@@ -681,8 +728,10 @@ def full_reroute(dispatch_id: int, background_tasks: BackgroundTasks,
         raise HTTPException(404, 'Dispatch not found.')
     db.query(FireIncident).filter_by(fire_id=dispatch.fire_id).with_for_update().one()
     db.refresh(dispatch, with_for_update=True)
-    data = recalculate(db, dispatch)
+    data = recalculate(db, dispatch, defer_alternatives=True)
     background_tasks.add_task(manager.broadcast, {'type': 'dispatch_rerouted', 'data': data})
+    from services.route_alternatives import schedule_route_alternatives
+    background_tasks.add_task(schedule_route_alternatives, data)
     return data
 
 
@@ -711,8 +760,10 @@ def refresh_driver_navigation(dispatch_id: int, background_tasks: BackgroundTask
                                      Route.route_rank < selected.route_rank).count() if selected else 0
     data = recalculate(db, dispatch, preferred_type=selected.route_type if selected else None,
                        preferred_ordinal=ordinal, require_driver=True, allow_preference_fallback=True,
-                       reason='driver_navigation_refresh')
+                       reason='driver_navigation_refresh', defer_alternatives=True)
     background_tasks.add_task(manager.broadcast, {'type': 'dispatch_rerouted', 'data': data})
+    from services.route_alternatives import schedule_route_alternatives
+    background_tasks.add_task(schedule_route_alternatives, data)
     return data
 
 

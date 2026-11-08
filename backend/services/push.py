@@ -157,3 +157,27 @@ def notify_dispatch_assigned(db: Session, dispatch, incident, team) -> None:
         "fire_id":     incident.fire_id,
     }
     _spawn(_deliver(collect_team_recipients(db, team), title, body, sms, data))
+
+
+def notify_workflow(db, per_ids, kind, data):
+    """Target saved workflow events to participants; this path never sends SMS."""
+    labels = {
+        'suppression_start': ('Suppression Started', 'A verified suppression start time was recorded.'),
+        'fire_out': ('Fire Out Recorded', 'Command-declared Fire Out was recorded. Team release still requires dispatcher authorization and actual clearance.'),
+        'release_authorized': ('Release Authorized', 'Your team may confirm actual clearance after personnel and equipment are accounted for.'),
+        'team_cleared': ('Team Cleared', 'Scene assignment cleared. Truck return/readiness remains separate.'),
+        'operation_complete': ('Operation Complete', 'Operational work is complete. Field reporting remains accessible in My Incidents.'),
+        'incident_closed': ('Incident Closed', 'The dispatcher finalized the incident report and closed the incident.'),
+        'truck_ready': ('Truck Ready', 'Return and readiness were confirmed.'),
+        'truck_not_ready': ('Truck Not Ready', 'The truck remains unavailable. Review the readiness reason.'),
+        'field_report_submitted': ('Field Report Submitted', 'Field information is ready for dispatcher review.'),
+        'report_prepared': ('Incident Report Prepared', 'The dispatcher prepared the report for review.'),
+        'report_corrected': ('Incident Report Updated', 'The dispatcher recorded a report correction.'),
+        'report_reviewed': ('Report Review Complete', 'The dispatcher reviewed the corrected incident report.'),
+    }
+    if not per_ids or kind not in labels:
+        return
+    tokens = db.query(PushToken).filter(PushToken.per_id.in_(per_ids)).all()
+    recipients = [{'tokens': [(token.token, bool(token.sound_enabled))], 'contact': None} for token in tokens]
+    title, body = labels[kind]
+    _spawn(_deliver(recipients, title, body, '', {'type': 'workflow_updated', **data, 'incident': None}))

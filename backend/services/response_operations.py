@@ -9,6 +9,7 @@ from services import operational_times as operational
 from services.historical_incidents import demo_times
 from services.response_performance import context, is_reinforcement, MANILA
 from services.timing_metrics import EXCLUDED, summarize
+from services.incident_scope import effective_response_kind
 
 STAGES = ("processing", "preparation", "travel", "suppression")
 METRICS = (*STAGES, "cta", "operation")
@@ -45,7 +46,7 @@ def metric_samples(cohort, source):
                                     "reason": "cancelled_or_recalled" if excluded else None if seconds is not None else "not_recorded_in_demo"})
             continue
         for key, metric in operational.incident_metrics(inc).items():
-            if key == 'suppression' and inc.response_kind != 'fire':
+            if key == 'suppression' and effective_response_kind(inc) != 'fire':
                 continue
             values[key].append(metric)
         for dispatch in inc.dispatches:
@@ -134,8 +135,21 @@ def analytics(db, **filters):
                      else cursor + (timedelta(hours=1) if trend_period == '1d' else timedelta(days=1)))
         subset = [i for i in current if cursor <= (i.report_received_at or i.fire_incident_datetime) < following]
         summaries = {key: summarize(values) for key, values in metric_samples(subset, source).items()}
+        # A selected bucket uses the same equal-length preceding-window rule as
+        # the overall cards, clipped to the requested reporting boundaries.
+        bucket_start, bucket_end = max(cursor, start), min(following, end)
+        comparison_start = bucket_start - (bucket_end - bucket_start)
+        preceding = [i for i in previous + current
+                     if comparison_start <= (i.report_received_at or i.fire_incident_datetime) < bucket_start]
+        prior_samples = metric_samples(preceding, source)
+        for key, stat in summaries.items():
+            before = summarize(prior_samples[key])
+            avg = before["mean_seconds"]
+            stat["previous_valid"] = before["valid"]
+            stat["change_percent"] = (stat["mean_seconds"]-avg)/avg*100 if avg and stat["mean_seconds"] is not None else None
         trends.append({"at": operational.iso(cursor), "values": {key: s["mean_seconds"] for key, s in summaries.items()},
                        "counts": {key: s["valid"] for key, s in summaries.items()},
+                       "summary": summaries,
                        "breakdown": stage_breakdown(subset, source)})
         cursor = following
     return {"summary": stats, "trends": trends, "trend_period": trend_period, "total": len(current), "source": source,

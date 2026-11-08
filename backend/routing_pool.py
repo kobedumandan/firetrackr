@@ -48,7 +48,7 @@ def warmup(hold_seconds: float = 0.3) -> bool:
     return _engine is not None
 
 
-def compute_routes(origin_lat, origin_lng, target_lat, target_lng, obstructions):
+def compute_routes(origin_lat, origin_lng, target_lat, target_lng, obstructions, primary_only=False):
     """Full multi-alpha route set from origin to target. Returns a list of
     plain route dicts (picklable) or None."""
     if _engine is None:
@@ -57,13 +57,15 @@ def compute_routes(origin_lat, origin_lng, target_lat, target_lng, obstructions)
     tgt = _engine.graph.nodes_near(target_lat, target_lng, radius_km=NODES_NEAR_RADIUS_KM)
     if not src or not tgt:
         return None
-    return _engine.compute_routes_multi_alpha(src[0][0], tgt[0][0], obstructions=obstructions)
+    return _engine.compute_routes_multi_alpha(src[0][0], tgt[0][0], obstructions=obstructions,
+                                             primary_only=primary_only)
 
 
-def compute_position_routes(lat, lon, fire_lat, fire_lon, obstructions, previous_position=None):
+def compute_position_routes(lat, lon, fire_lat, fire_lon, obstructions, previous_position=None, primary_only=False):
     if _engine is None:
         return None
-    return _engine.compute_routes_from_position(lat, lon, fire_lat, fire_lon, obstructions, previous_position)
+    return _engine.compute_routes_from_position(lat, lon, fire_lat, fire_lon, obstructions, previous_position,
+                                                primary_only=primary_only)
 
 
 def compute_connector(lat, lon, fire_lat, fire_lon, obstructions):

@@ -182,7 +182,8 @@ def _persist_rebuilt_routes(
 
 
 def _run_routing_via_pool(
-    kind: str, a: float, b: float, c: float, d: float, obstructions: list, previous_position=None
+    kind: str, a: float, b: float, c: float, d: float, obstructions: list, previous_position=None,
+    primary_only=False,
 ):
     """Run a CPU-bound routing computation in the process pool so it executes
     with real parallelism, off this process's GIL. Falls back to the
@@ -197,7 +198,8 @@ def _run_routing_via_pool(
               'connector': routing_pool.compute_connector}[kind]
         try:
             args = (a, b, c, d, obstructions, previous_position) if kind == 'position_routes' else (a, b, c, d, obstructions)
-            return pool.submit(fn, *args).result(timeout=ROUTING_POOL_TIMEOUT)
+            kwargs = {'primary_only': True} if primary_only and kind != 'connector' else {}
+            return pool.submit(fn, *args, **kwargs).result(timeout=ROUTING_POOL_TIMEOUT)
         except Exception as exc:
             logger.warning("Pool routing (%s) failed (%s); falling back in-process.", kind, exc)
 
@@ -206,12 +208,14 @@ def _run_routing_via_pool(
     if kind == "connector":
         return state.routing_engine.compute_connector(a, b, c, d, obstructions=obstructions)
     if kind == 'position_routes':
-        return state.routing_engine.compute_routes_from_position(a, b, c, d, obstructions, previous_position)
+        return state.routing_engine.compute_routes_from_position(a, b, c, d, obstructions, previous_position,
+                                                                 primary_only=primary_only)
     src = state.routing_engine.graph.nodes_near(a, b, radius_km=2.0)
     tgt = state.routing_engine.graph.nodes_near(c, d, radius_km=2.0)
     if not src or not tgt:
         return None
-    return state.routing_engine.compute_routes_multi_alpha(src[0][0], tgt[0][0], obstructions=obstructions)
+    return state.routing_engine.compute_routes_multi_alpha(src[0][0], tgt[0][0], obstructions=obstructions,
+                                                          primary_only=primary_only)
 
 
 def _build_rerouted_payload(dispatch: DispatchRecord, selected: Route, saved, origin_source: str) -> dict:
@@ -353,8 +357,10 @@ def _recompute_deviation_routing_bg(
             lat, lon, _, previous = origin
             destination = incident.fire_latitude, incident.fire_longitude
             db.rollback()  # Read-only inputs; release the connection during graph work.
+            primary_only = preferred in (None, 'recommended')
             route_results = _run_routing_via_pool(
-                "position_routes", lat, lon, *destination, obs, previous
+                "position_routes", lat, lon, *destination, obs, previous,
+                primary_only=primary_only,
             )
             if route_results:
                 matching = [route for route in route_results if route['route_type'] == preferred]
@@ -381,6 +387,7 @@ def _recompute_deviation_routing_bg(
             dispatch.deviation_detected_at       = None
             db.commit()
             payload = _build_rerouted_payload(dispatch, selected, saved, "driver_location")
+            payload['data']['alternatives_pending'] = primary_only
         else:
             data = build_personnel_navigation(db, dispatch, per_id, lat, lon,
                 is_deviated=True, expected_route_id=expected_route_id, release_connection=True)
@@ -394,6 +401,8 @@ def _recompute_deviation_routing_bg(
 
     if payload is not None:
         broadcast_threadsafe(payload)
+        from services.route_alternatives import queue_route_alternatives
+        queue_route_alternatives(payload['data'])
 
 
 def check_location_deviation(

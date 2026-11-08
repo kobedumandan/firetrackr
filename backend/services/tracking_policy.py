@@ -1,7 +1,7 @@
 """Server-owned duty eligibility; standby fixes never imply vehicle occupancy."""
 from datetime import datetime, timedelta, timezone
 
-from models import DispatchRecord, ResponseTeamMember
+from models import DispatchRecord, DispatchTruck, ResponseTeamMember
 from services.personnel_arrival import arrival_for
 from shift_utils import SHIFT_TZ, SHIFT_CUTOVER_HOUR, current_shift_name
 
@@ -46,11 +46,20 @@ def policy(db, person, now=None, *, dispatches=None, arrivals=None):
     if len(dispatches) > 1:
         allowed, reason = False, 'ambiguous_dispatch_assignment'
     dispatch = dispatches[0] if allowed and dispatches else None
+    returning = None
+    if allowed and dispatch is None:
+        returning = db.query(DispatchTruck).filter(
+            DispatchTruck.return_driver_per_id == person.per_id,
+            DispatchTruck.return_started_at.is_not(None), DispatchTruck.returned_at.is_(None),
+            DispatchTruck.ready_at.is_(None),
+        ).order_by(DispatchTruck.return_started_at.desc()).first()
+        if returning:
+            dispatch = returning.dispatch_record
     arrived = (arrival_for(db, dispatch, person.per_id) if arrivals is None
                else arrivals.get((dispatch.dispatch_id, person.per_id))) if dispatch else None
-    mode = ('on_scene' if arrived else 'dispatch') if dispatch else 'standby'
+    mode = 'returning' if returning else ('on_scene' if arrived else 'dispatch') if dispatch else 'standby'
     return {'mode': mode if allowed else 'off', 'on_duty': allowed, 'reason': reason,
-            'interval_ms': (20000 if mode == 'on_scene' else 3000 if mode == 'dispatch' else 30000) if allowed else None,
+            'interval_ms': (10000 if mode == 'returning' else 20000 if mode == 'on_scene' else 3000 if mode == 'dispatch' else 30000) if allowed else None,
             'dispatch_id': dispatch.dispatch_id if dispatch else None,
             'server_time': now.isoformat(), 'duty_starts_at': start.isoformat(), 'duty_ends_at': end.isoformat(),
             'policy_expires_at': min(now + timedelta(minutes=2), end).isoformat()}

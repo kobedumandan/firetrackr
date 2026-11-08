@@ -181,6 +181,46 @@ def summaries(rows):
     return {metric: summarize([row["metrics"][metric] for row in rows]) for metric in MEASURES}
 
 
+def shift_summary(cohort):
+    shifts = []
+    for name in ("Shift A", "Shift B"):
+        selected = [row for row in cohort
+                    if (row["context"].get("shift_name") or "").strip().casefold() == name.casefold()]
+        shifts.append({"name": name, "dispatches": len(selected), "summary": summaries(selected),
+                       "legacy_dispatches": sum(row["context"].get("provenance") != "assignment"
+                                                for row in selected)})
+    return {"shifts": shifts, "unknown_dispatches": len(cohort) - sum(s["dispatches"] for s in shifts)}
+
+
+def shift_comparison(rows, start=None, end=None):
+    """Aggregate raw dispatch samples, retaining unknown and legacy attribution counts."""
+    buckets = []
+    period = None
+    if start is not None and end is not None:
+        span = end - start
+        period = "hourly" if span <= timedelta(days=2) else "daily" if span <= timedelta(days=62) else "monthly"
+        cursor = start.astimezone(MANILA).replace(minute=0, second=0, microsecond=0)
+        if period != "hourly":
+            cursor = cursor.replace(hour=0)
+        if period == "monthly":
+            cursor = cursor.replace(day=1)
+        while cursor < end:
+            following = ((cursor.replace(day=28) + timedelta(days=4)).replace(day=1) if period == "monthly"
+                         else cursor + timedelta(hours=1) if period == "hourly" else cursor + timedelta(days=1))
+            buckets.append((cursor, following))
+            cursor = following
+    groups = {}
+    for assignment in ("all", "initial", "reinforcement"):
+        cohort = [row for row in rows if assignment == "all"
+                  or row["reinforcement"] == (assignment == "reinforcement")]
+        trends = []
+        for at, following in buckets:
+            subset = [row for row in cohort if at <= datetime.fromisoformat(row["dispatch_at"]) < following]
+            trends.append({"at": iso(at), **shift_summary(subset)})
+        groups[assignment] = {**shift_summary(cohort), "trends": trends, "period": period}
+    return groups
+
+
 def team_options(db):
     options = {}
     for dispatch in db.query(DispatchRecord).options(
@@ -221,7 +261,7 @@ def analytics(db, start=None, end=None, kind="operational", team_ids=None, stati
         cursor = following
     return {"start": iso(start), "end": iso(end), "timezone": "Asia/Manila", "record_kind": kind,
             "overall": service, "summary": stats, "monthly": months, "teams": team_options(db),
-            "definitions": MEASURES, "candidate_dispatches": len(rows),
+            "definitions": MEASURES, "candidate_dispatches": len(rows), "shift_comparison": shift_comparison(rows, start, end),
             "stations": [{"id": s.station_id, "name": s.station_name} for s in db.query(Station).order_by(Station.station_name)],
             "barangays": [{"id": b.brgy_id, "name": b.brgy_name} for b in db.query(BarangayBoundary).order_by(BarangayBoundary.brgy_name)],
             "comparison": "Equal-length preceding date window",

@@ -12,12 +12,16 @@ from backend.services.retrain_contract import MAX_TRAINING_SECONDS, PROTOCOL_VER
 
 
 def run_job(job_id, volume, root="/jobs", source_root="/opt/firetrackr", device="cuda"):
+    from modal import current_function_call_id
+
     validate_job_id(job_id)
     volume.reload()
     directory = Path(root) / job_id
+    call_id = current_function_call_id()
 
     def publish(state, error=None):
-        payload = {"job_id": job_id, "state": state, "updated_at": datetime.now(timezone.utc).isoformat()}
+        payload = {"job_id": job_id, "call_id": call_id, "state": state,
+                   "updated_at": datetime.now(timezone.utc).isoformat()}
         if error:
             payload["error"] = error
         if state == "failed" and (directory / "job.log").exists():

@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, PositiveInt, model_validator
 
 
 class RouteRequest(BaseModel):
@@ -257,6 +257,12 @@ DispatchType = Literal[
 
 
 class IncidentCreate(BaseModel):
+    @model_validator(mode='after')
+    def coherent_response_classification(self):
+        from services.incident_scope import validate_classification
+        validate_classification(self.fire_dispatch_type, self.response_kind)
+        return self
+
     record_kind: Literal['operational', 'drill', 'test', 'unknown'] = 'unknown'
     report_received_at: datetime | None = None
     response_kind: Literal['fire', 'medical', 'rescue', 'other'] | None = None
@@ -305,6 +311,8 @@ class IncidentReportSave(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     report_id: int | None = Field(default=None, ge=1)
+    revision: int | None = Field(default=None, ge=1)
+    field_photo_ids: list[PositiveInt] = Field(default_factory=list, max_length=8)
     narrative: str = Field(min_length=1)
     cause: str | None = Field(default=None, max_length=255)
     casualties: str | None = Field(default=None, max_length=255)
@@ -357,9 +365,14 @@ class TruckManningBody(BaseModel):
     manning: bool
 
 
+class ContainmentBody(BaseModel):
+    occurred_at: datetime
+
+
 class ClearanceBody(BaseModel):
     occurred_at: datetime
     idempotency_key: str = Field(min_length=8, max_length=100)
+    reason: str | None = Field(default=None, max_length=255)
 
 
 class OperationalMilestoneBody(BaseModel):
@@ -386,6 +399,7 @@ class TruckCreate(BaseModel):
 
 
 class TruckUpdate(BaseModel):
+    readiness_note: str | None = Field(default=None, max_length=255)
     truck_platenum: str | None = None
     truck_status: str | None = None
     station_id: int | None = None

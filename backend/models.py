@@ -215,6 +215,9 @@ class Truck(Base):
     truck_latitude     = Column(Float)
     truck_longitude    = Column(Float)
     truck_last_updated = Column(DateTime(timezone=True))
+    readiness_note = Column(String(255))
+    readiness_confirmed_at = Column(DateTime(timezone=True))
+    readiness_confirmed_by = Column(Integer, ForeignKey('users.user_id', ondelete='SET NULL'))
     station_id         = Column(Integer, ForeignKey("stations.station_id"), nullable=True)
 
     station         = relationship("Station",      back_populates="trucks")
@@ -291,6 +294,7 @@ class FireIncident(Base):
     fire_dispatch_type     = Column(String(100), nullable=True)
     fire_structure_type    = Column(String(100))   # "Residential" | "Commercial" | ...
     fire_casualties        = Column(String(255))   # category or after-action summary
+    casualties_reviewed_at = Column(DateTime(timezone=True))
     fire_units_assigned    = Column(Integer, default=0)
     fire_remarks           = Column(Text, nullable=True)
     fire_incident_datetime = Column(DateTime(timezone=True), default=_now)
@@ -387,6 +391,8 @@ class DispatchRecord(Base):
     dispatch_arrived_by_name = Column(String(150), nullable=True)
     dispatch_recalled_by     = Column(String(150), nullable=True)
     cleared_at            = Column(DateTime(timezone=True))
+    release_authorized_at = Column(DateTime(timezone=True))
+    release_authorized_by = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"))
     dispatch_truck_count  = Column(Integer, default=0)
     acknowledged_at       = Column(DateTime(timezone=True))
     acknowledged_by       = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"))
@@ -427,6 +433,14 @@ class DispatchTruck(Base):
     departed_at       = Column(DateTime(timezone=True))
     arrived_at        = Column(DateTime(timezone=True))
 
+    return_driver_per_id = Column(Integer, ForeignKey("personnel.per_id", ondelete="SET NULL"))
+    return_station_id = Column(Integer, ForeignKey("stations.station_id", ondelete="SET NULL"))
+    return_station = relationship('Station', foreign_keys=[return_station_id])
+    return_started_at = Column(DateTime(timezone=True))
+    returned_at = Column(DateTime(timezone=True))
+    ready_at = Column(DateTime(timezone=True))
+    not_ready_reason = Column(String(255))
+
     dispatch_record = relationship("DispatchRecord", back_populates="dispatch_trucks")
     truck           = relationship("Truck",          back_populates="dispatch_trucks")
     manned_by       = relationship("Personnel",      foreign_keys=[manned_by_per_id])
@@ -453,8 +467,7 @@ class DispatchLocation(Base):
 # ---------------------------------------------------------------------------
 
 class IncidentReport(Base):
-    """A personnel report or administrator recovery report after containment.
-    Submitting the report closes the incident (fire_status='closed')."""
+    """Attributed field submissions and dispatcher-owned consolidated reports."""
     __tablename__ = "incident_reports"
 
     report_id              = Column(Integer, primary_key=True, autoincrement=True)
@@ -468,6 +481,10 @@ class IncidentReport(Base):
     report_narrative       = Column(Text, nullable=False)         # main account of the response
     report_recommendations = Column(Text, nullable=True)          # optional recommendations / remarks
     report_submitted_at    = Column(DateTime(timezone=True), default=_now)
+    report_kind            = Column(String(20), nullable=False, default='legacy', server_default='legacy')
+    reviewed_at            = Column(DateTime(timezone=True))
+    reviewed_by_user_id     = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"))
+    revision               = Column(Integer, nullable=False, default=1, server_default='1')
     created_at             = Column(DateTime(timezone=True), default=_now)
 
     fire_incident = relationship("FireIncident")
@@ -624,6 +641,7 @@ class ModelVersion(Base):
     )
 
     version = Column(String(64), primary_key=True)
+    name = Column(String(120), nullable=True)
     status = Column(String(20), nullable=False)
     label_hash = Column(String(64), nullable=False)
     split_version = Column(String(100), nullable=False)

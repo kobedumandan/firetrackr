@@ -135,6 +135,9 @@ def build_routing_engine(register_gym: bool = True, custom_constraints=None, mod
 
         if register_gym and Config.USE_RL:
             register_env()
+        # Each engine (including pool workers and reload replacements) is ready
+        # for its first request, rather than charging it for all 16 landmarks.
+        engine._precompute_landmarks()
         return engine
     except Exception as exc:
         logger.warning("build_routing_engine failed: %s", exc)

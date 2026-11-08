@@ -27,7 +27,7 @@ def confirm(db, dispatch_id, user, kind):
         return result(dispatch)
     if dispatch.dispatch_status not in ("dispatched", "en_route") or arrival(dispatch) is not None:
         raise HTTPException(409, "New milestones cannot be recorded after arrival or completion.")
-    if inc.fire_status in ("contained", "closed", "cancelled", "canceled", "recalled"):
+    if inc.operation_completed_at or dispatch.cleared_at or inc.fire_status in ("closed", "cancelled", "canceled", "recalled"):
         raise HTTPException(409, "This incident no longer accepts departure actions.")
     if kind == "depart":
         snapshot_routes(db, dispatch, reason="departure_confirmation")

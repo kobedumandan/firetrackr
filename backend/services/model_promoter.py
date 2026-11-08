@@ -56,7 +56,7 @@ def check_promotion(db, row, champion):
         raise registry.RegistryError("Registry has no champion; initialize or repair it first")
     if not row.bundle_manifest_sha256:
         raise registry.RegistryError("Model has no registered artifact digest")
-    directory = registry.version_directory(row.version)
+    directory = registry.artifact_directory(row)
     manifest, audit, _ = verify_artifacts(directory, row.bundle_manifest_sha256)
     if manifest.get("version") != row.version or manifest["threshold"] != row.threshold:
         raise registry.RegistryError("Registered identity or threshold differs from the bundle")
@@ -81,13 +81,14 @@ def check_promotion(db, row, champion):
     baseline = db.get(ModelVersion, "v1")
     if baseline is None or not baseline.bundle_manifest_sha256:
         raise registry.RegistryError("Verified original baseline provenance is missing")
-    original, _, _ = verify_artifacts(registry.version_directory("v1"), baseline.bundle_manifest_sha256)
+    baseline_directory = registry.artifact_directory(baseline)
+    original, _, _ = verify_artifacts(baseline_directory, baseline.bundle_manifest_sha256)
     if (manifest.get("baseline_sha256") != original["files"]["predicted_constraints.geojson"]
             or manifest["files"]["split_blocks.json"] != original["files"]["split_blocks.json"]
             or manifest["architecture"] != original["architecture"]
             or manifest.get("model_class") != "SegmentGAT"):
         raise registry.RegistryError("Candidate changes the verified road baseline, architecture or frozen split")
-    _check_export(directory, registry.version_directory("v1"), directory / "style_config.json")
+    _check_export(directory, baseline_directory, directory / "style_config.json")
     return manifest
 
 

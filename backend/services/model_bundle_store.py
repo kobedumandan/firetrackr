@@ -1,4 +1,4 @@
-"""Restore missing registered model bundles from private Supabase storage.
+"""Publish and restore immutable model bundles in private Supabase storage.
 
 The database's manifest digest remains authoritative. Downloads are bounded,
 verified in a staging directory, then published atomically into the local cache.
@@ -21,6 +21,10 @@ from services.model_artifacts import BASE_FILES, CANDIDATE_FILES, verify_artifac
 logger = logging.getLogger(__name__)
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 MAX_BUNDLE_BYTES = 128 * 1024 * 1024
+
+
+class BundleStoreUnavailable(RuntimeError):
+    """A storage failure that can be retried without discarding trained results."""
 
 
 def object_path(version, digest):
@@ -51,9 +55,104 @@ def storage_settings():
 def require_private_bucket(client, bucket):
     response = client.get(f"bucket/{bucket}")
     if response.status_code != 200:
-        raise RuntimeError(f"Private model bucket is unavailable (HTTP {response.status_code})")
+        raise BundleStoreUnavailable(f"Private model bucket is unavailable (HTTP {response.status_code})")
     if response.json().get("public") is not False:
         raise ValueError("The Supabase model bucket must be private")
+
+
+def check_model_storage():
+    """Check existing private storage before spending time on cloud training."""
+    base, bucket, headers = storage_settings()
+    try:
+        with httpx.Client(base_url=f"{base}/", headers=headers,
+                          timeout=httpx.Timeout(30.0, connect=5.0), follow_redirects=False) as client:
+            require_private_bucket(client, bucket)
+    except httpx.HTTPError:
+        raise BundleStoreUnavailable("Model artifact storage request failed") from None
+
+
+def _download_archive(client, path, destination):
+    with client.stream("GET", f"object/{path}") as response:
+        if response.status_code != 200:
+            raise BundleStoreUnavailable(f"Registered model bundle is unavailable (HTTP {response.status_code})")
+        received = 0
+        with Path(destination).open("xb") as output:
+            for block in response.iter_bytes(64 * 1024):
+                received += len(block)
+                if received > MAX_ARCHIVE_BYTES:
+                    raise ValueError("Model archive exceeds the download limit")
+                output.write(block)
+
+
+def publish_model_bundle(version, digest, *, create_bucket=False, allow_existing=True):
+    """Archive verified results before review; retries never overwrite objects.
+
+    Automatic publication requires an existing private bucket. Only the explicit
+    operator CLI can create one. A duplicate upload is accepted only after the
+    stored archive passes the registered digest and every artifact hash check.
+    """
+    path = object_path(version, digest)
+    from services.model_registry import version_directory
+
+    directory = version_directory(version)
+    manifest, _, _ = verify_artifacts(directory, digest)
+    if manifest.get("version") != version:
+        raise ValueError("Model version differs from its manifest")
+    names = sorted(set(manifest["files"]) | {"manifest.json"})
+    if sum((directory / name).stat().st_size for name in names) > MAX_BUNDLE_BYTES:
+        raise ValueError("Model bundle exceeds the extraction limit")
+    base, bucket, headers = storage_settings()
+    root = directory.parent
+    with tempfile.TemporaryFile() as output:
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for name in names:
+                entry = zipfile.ZipInfo(name)
+                entry.compress_type = zipfile.ZIP_DEFLATED
+                with (directory / name).open("rb") as source, archive.open(entry, "w") as target:
+                    for block in iter(lambda: source.read(64 * 1024), b""):
+                        target.write(block)
+        size = output.tell()
+        if size > MAX_ARCHIVE_BYTES:
+            raise ValueError("Model archive exceeds the download limit")
+        output.seek(0)
+        with tempfile.TemporaryDirectory(prefix=".publish-check-", dir=root) as staging:
+            unpack_verified_bundle(output, staging, version, digest)
+        output.seek(0)
+        try:
+            with httpx.Client(base_url=f"{base}/", headers=headers,
+                              timeout=httpx.Timeout(60.0, connect=5.0), follow_redirects=False) as client:
+                if create_bucket:
+                    response = client.get(f"bucket/{bucket}")
+                    missing = response.status_code == 404 or (
+                        response.status_code == 400 and str(response.json().get("statusCode")) == "404")
+                    if missing:
+                        created = client.post("bucket", json={"id": bucket, "name": bucket, "public": False})
+                        if created.status_code not in (200, 201):
+                            raise BundleStoreUnavailable(f"Could not create private model bucket (HTTP {created.status_code})")
+                require_private_bucket(client, bucket)
+                response = client.post(f"object/{bucket}/{path}", content=output,
+                                       headers={"Content-Type": "application/zip", "x-upsert": "false"})
+                if response.status_code not in (200, 201):
+                    duplicate = response.status_code == 409
+                    if response.status_code == 400:
+                        try:
+                            payload = response.json()
+                        except ValueError:
+                            payload = {}
+                        duplicate = str(payload.get("statusCode")) == "409" or payload.get("error") == "Duplicate"
+                    if not allow_existing or not duplicate:
+                        raise BundleStoreUnavailable(f"Model publication failed without overwriting existing objects (HTTP {response.status_code})")
+                    with tempfile.TemporaryDirectory(prefix=".published-check-", dir=root) as staging:
+                        staging = Path(staging)
+                        archive_path = staging / "existing.zip"
+                        _download_archive(client, f"{bucket}/{path}", archive_path)
+                        extracted = staging / "bundle"
+                        extracted.mkdir()
+                        unpack_verified_bundle(archive_path, extracted, version, digest)
+        except httpx.HTTPError:
+            raise BundleStoreUnavailable("Model artifact publication request failed") from None
+    return {"version": version, "bucket": bucket, "object": path, "archive_bytes": size,
+            "private": True, "database_changed": False}
 
 
 def unpack_verified_bundle(archive_path, destination, version, digest):
@@ -106,18 +205,9 @@ def ensure_model_bundle(version, digest):
             with httpx.Client(base_url=f"{base}/", headers=headers,
                               timeout=httpx.Timeout(60.0, connect=5.0), follow_redirects=False) as client:
                 require_private_bucket(client, bucket)
-                with client.stream("GET", f"object/{bucket}/{path}") as response:
-                    if response.status_code != 200:
-                        raise RuntimeError(f"Registered model bundle is unavailable (HTTP {response.status_code})")
-                    received = 0
-                    with archive_path.open("xb") as output:
-                        for block in response.iter_bytes(64 * 1024):
-                            received += len(block)
-                            if received > MAX_ARCHIVE_BYTES:
-                                raise ValueError("Model archive exceeds the download limit")
-                            output.write(block)
+                _download_archive(client, f"{bucket}/{path}", archive_path)
         except httpx.HTTPError:
-            raise RuntimeError("Model artifact storage request failed") from None
+            raise BundleStoreUnavailable("Model artifact storage request failed") from None
         unpack_verified_bundle(archive_path, extracted, version, digest)
         if directory.exists():
             verify_artifacts(directory, digest)

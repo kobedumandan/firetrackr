@@ -15,6 +15,7 @@ from services.incident_events import actor_name
 from services.historical_incidents import attach_history, history, demo_times
 from services.reporting_periods import reporting_window
 from services.timing_metrics import EXCLUDED, measure, first_arrival
+from services.incident_scope import effective_response_kind, validate_classification
 
 UTC = timezone.utc
 MANILA = ZoneInfo("Asia/Manila")
@@ -89,6 +90,10 @@ def record_milestone(db, inc, kind, at, user, unit=None, key=None, response_kind
                 raise HTTPException(409, "This submission key was already used for a different event.")
             return previous
     if response_kind:
+        try:
+            validate_classification(inc.fire_dispatch_type, response_kind)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
         if inc.response_kind and inc.response_kind != response_kind:
             raise HTTPException(409, "Response classification is already verified.")
         inc.response_kind = response_kind
@@ -122,7 +127,7 @@ def record_milestone(db, inc, kind, at, user, unit=None, key=None, response_kind
         lower = [d.cleared_at for d in dispatches] + [v for v in (inc.report_received_at, inc.fire_out_at) if v]
         if at < max(lower):
             raise HTTPException(422, 'Operation completion cannot precede receipt, fire out or any dispatch clearance.')
-        if inc.response_kind == 'fire' and inc.fire_out_at is None:
+        if effective_response_kind(inc) == 'fire' and inc.fire_out_at is None:
             raise HTTPException(422, 'Record fire out before completing a fire operation.')
     if kind == "receipt":
         later = [d.dispatch_at for d in dispatches] + [v for v in (inc.suppression_started_at, inc.fire_out_at) if v]
@@ -140,27 +145,39 @@ def record_milestone(db, inc, kind, at, user, unit=None, key=None, response_kind
             raise HTTPException(422, "Departure must precede arrival.")
         if kind == "arrival" and unit.departed_at and at < unit.departed_at:
             raise HTTPException(422, "Arrival must follow departure.")
-        if kind == "arrival" and inc.suppression_started_at:
+        fire_times = [value for value in (inc.suppression_started_at, inc.fire_out_at) if value]
+        if kind == "arrival" and fire_times:
             arrivals = [unit_arrival(u) for d in dispatches for u in d.dispatch_trucks
                         if u is not unit and unit_arrival(u)]
             arrivals += [d.dispatch_arrived_at for d in dispatches if d.dispatch_arrived_at
                          and d.dispatch_arrived_at >= d.dispatch_at]
-            if min([at, *arrivals]) > inc.suppression_started_at:
-                raise HTTPException(422, "The first arrival must precede recorded suppression.")
+            if min([at, *arrivals]) > min(fire_times):
+                raise HTTPException(422, "The first arrival must precede recorded fire milestones.")
     if kind in ("suppression_start", "fire_out"):
-        if inc.response_kind != "fire":
+        if effective_response_kind(inc) != "fire":
             raise HTTPException(422, "Verify that this is a fire response before recording suppression.")
         arrivals = [unit_arrival(u) for d in dispatches for u in d.dispatch_trucks if unit_arrival(u)]
         arrivals += [d.dispatch_arrived_at for d in dispatches if d.dispatch_arrived_at
                      and d.dispatch_arrived_at >= d.dispatch_at]
         if inc.report_received_at and at < inc.report_received_at:
             raise HTTPException(422, "Suppression cannot precede report receipt.")
+        if dispatches and at < min(d.dispatch_at for d in dispatches):
+            raise HTTPException(422, "Fire milestones cannot precede the first dispatch.")
         if arrivals and at < min(arrivals):
             raise HTTPException(422, "Suppression cannot precede the first responding unit's arrival.")
         if kind == "suppression_start" and inc.fire_out_at and at > inc.fire_out_at:
             raise HTTPException(422, "Suppression start must precede fire out.")
-        if kind == "fire_out" and (inc.suppression_started_at is None or at < inc.suppression_started_at):
-            raise HTTPException(422, "Record suppression start before fire out.")
+        from services.report_timing import timeline
+        events = db.query(IncidentEvent).filter_by(fire_id=inc.fire_id).order_by(IncidentEvent.event_id).all()
+        controlled_value = timeline(db, inc, events)['controlled_at']
+        controlled = datetime.fromisoformat(controlled_value) if controlled_value else None
+        if kind == "suppression_start" and controlled and at > controlled:
+            raise HTTPException(422, "Suppression start must precede containment.")
+        if kind == "fire_out":
+            if inc.suppression_started_at and at < inc.suppression_started_at:
+                raise HTTPException(422, "Fire out must follow recorded suppression start.")
+            if controlled and at < controlled:
+                raise HTTPException(422, "Fire out must follow recorded containment.")
     payload = {**(metadata or {}), "submission": signature}
     if kind == "departure":
         # Offline events use the route choice known at departure, not today's route.
@@ -215,8 +232,8 @@ def incident_metrics(inc):
     return {
         "processing": measure(inc.report_received_at, first_dispatch, excluded=excluded),
         "cta": first_arrival(inc),
-        "suppression": measure(inc.suppression_started_at if inc.response_kind == "fire" else None,
-                               inc.fire_out_at if inc.response_kind == "fire" else None,
+        "suppression": measure(inc.suppression_started_at if effective_response_kind(inc) == "fire" else None,
+                               inc.fire_out_at if effective_response_kind(inc) == "fire" else None,
                                excluded=excluded, max_seconds=None),
         "operation": measure(inc.report_received_at, inc.operation_completed_at,
                              excluded=excluded, max_seconds=None),
@@ -243,11 +260,14 @@ def incident_times(inc):
 
 
 def record_dict(inc):
+    from services.response_workflow import stage, stage_label
     durations, units, first, _ = incident_times(inc)
     demo = demo_times(inc)
     source = history(inc)
     return {"fire_id": inc.fire_id, 'record_kind': inc.record_kind or 'unknown', "reported_at": iso(inc.report_received_at),
             "occurred_at": iso(inc.fire_incident_datetime), "response_kind": inc.response_kind,
+            "dispatch_type": inc.fire_dispatch_type or "",
+            "lifecycle_stage": stage(inc), "status_label": stage_label(inc), "effective_response_kind": effective_response_kind(inc),
             "status": inc.fire_status, "durations": {**durations, **(demo or {})}, "unit_count": len(units),
             "metrics": incident_metrics(inc) if not demo else {},
             'operation_completed_at': iso(inc.operation_completed_at),

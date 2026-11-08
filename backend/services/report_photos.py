@@ -97,7 +97,7 @@ def save_report_photo(file_name: str, data: bytes, content_type: str):
 
 
 def delete_report_photos(file_names: list[str]):
-    names = [_safe_name(name) for name in file_names]
+    names = list(dict.fromkeys(_safe_name(name) for name in file_names))
     if not names:
         return
     if config.REPORT_PHOTO_STORAGE == "supabase":

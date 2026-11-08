@@ -26,7 +26,8 @@ _loaded_signature = None
 def _read_overlay(db, model_source=None, force=False):
     path, style_path = constraint_paths(model_source)
     if path is None:
-        return "no-constraints", []
+        signature = "no-constraints"
+        return signature, None if not force and signature == _loaded_signature else []
     from models import GnnConstraint
     from services.constraint_segments import load_segment_index, overlay_features
 

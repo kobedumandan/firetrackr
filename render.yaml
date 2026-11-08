@@ -6,10 +6,10 @@ services:
     runtime: python
     plan: free
     region: singapore
-    rootDir: backend
+    # Keep training/ available for the Modal source compatibility check.
     autoDeployTrigger: "off"
-    buildCommand: python -m pip install --no-cache-dir -r requirements.txt
-    startCommand: python run.py
+    buildCommand: python -m pip install --no-cache-dir -r backend/requirements.txt -r backend/requirements-modal.txt
+    startCommand: cd backend && python run.py
     healthCheckPath: /health
     envVars:
       - key: HOST
@@ -52,6 +52,20 @@ services:
         value: report-photos
       - key: SUPABASE_MODEL_BUCKET
         value: model-artifacts
+      - key: MODEL_ARTIFACT_STORAGE
+        value: supabase
+      - key: RETRAIN_RUNNER
+        value: modal
+      - key: RETRAIN_MODAL_APP
+        value: firetrackr-training
+      - key: RETRAIN_MODAL_VOLUME
+        value: firetrackr-training-jobs
+      - key: RETRAIN_MODAL_ENVIRONMENT
+        value: main
+      - key: MODAL_TOKEN_ID
+        sync: false
+      - key: MODAL_TOKEN_SECRET
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL

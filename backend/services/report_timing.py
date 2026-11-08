@@ -3,9 +3,10 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException
 
-from models import IncidentEvent
+from models import IncidentEvent, IncidentReport
 from services.operational_times import audit, incident_metrics, iso, record_milestone, valid_time
 from services.timing_metrics import EXCLUDED
+from services.incident_scope import effective_response_kind, validate_classification
 
 
 def timeline(db, inc, events=None):
@@ -20,6 +21,7 @@ def timeline(db, inc, events=None):
     control = control or next((e for e in events if e.event_type == 'op_fire_control'), None)
     return {
         'response_kind': inc.response_kind,
+        'effective_response_kind': effective_response_kind(inc),
         'suppression_started_at': iso(inc.suppression_started_at),
         'controlled_at': iso(control.occurred_at or control.created_at) if control else None,
         'controlled_at_verified': control is not None,
@@ -30,7 +32,7 @@ def timeline(db, inc, events=None):
 
 def record_report_timing(db, inc, user, report_id, *, response_kind=None,
                          suppression_started_at=None, controlled_at=None, fire_out_at=None):
-    """The caller holds the incident lock; commit together with report and closure."""
+    """The caller holds the incident lock; commit together with field information."""
     recorded = timeline(db, inc)
     control = datetime.fromisoformat(recorded['controlled_at']) if recorded['controlled_at'] else None
     values = {key: valid_time(at) for key, at in {
@@ -42,7 +44,12 @@ def record_report_timing(db, inc, user, report_id, *, response_kind=None,
         raise HTTPException(409, 'Containment time is recorded when the incident is marked contained and cannot be changed in a report.')
     if response_kind and inc.response_kind and response_kind != inc.response_kind:
         raise HTTPException(409, 'Response classification is already verified.')
-    if values and (response_kind or inc.response_kind) != 'fire':
+    if response_kind:
+        try:
+            validate_classification(inc.fire_dispatch_type, response_kind)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+    if values and (effective_response_kind(inc) or response_kind) != 'fire':
         raise HTTPException(422, 'Confirm a fire response before recording fire-operation times.')
     if values and inc.operation_completed_at is not None:
         # Existing verified fields may be included unchanged by a prefilled form.
@@ -67,8 +74,6 @@ def record_report_timing(db, inc, user, report_id, *, response_kind=None,
         ordered = [at for at in (start, control, out) if at is not None]
         if ordered != sorted(ordered):
             raise HTTPException(422, 'Use chronological times: suppression start, fire under control, then fire out.')
-        if out is not None and start is None:
-            raise HTTPException(422, 'Record suppression start before fire out, or leave unknown times blank.')
         for field, kind in [('suppression_started_at', 'suppression_start'), ('fire_out_at', 'fire_out')]:
             if field in values:
                 # Unchanged prefilled fields do not create another audit event.
@@ -83,7 +88,39 @@ def record_report_timing(db, inc, user, report_id, *, response_kind=None,
     return result
 
 
+def capture_consolidated_timing(db, inc, report, user, at, *, phase):
+    """Keep each draft/review snapshot with the report revision it describes."""
+    return audit(db, inc, 'op_report_timing', at, user, source='dispatcher_report',
+                 metadata={'report_id': report.report_id, 'revision': report.revision,
+                           'phase': phase, 'timeline': timeline(db, inc)})
+
+
+def invalidate_consolidated_timing_review(db, inc):
+    """An audited clock correction must be reviewed against a new report version."""
+    reports = db.query(IncidentReport).filter_by(
+        fire_id=inc.fire_id, report_kind='consolidated').with_for_update().all()
+    for report in reports:
+        report.revision = (report.revision or 1) + 1
+        report.reviewed_at, report.reviewed_by_user_id = None, None
+    if reports:
+        inc.casualties_reviewed_at = None
+
+
 def report_timeline(db, report):
+    if report.report_kind == 'consolidated':
+        # Drafts reflect new field evidence. Review freezes the exact timeline
+        # for that revision; corrections invalidate review rather than rewrite it.
+        if report.reviewed_at:
+            reviewed = db.query(IncidentEvent).filter_by(
+                fire_id=report.fire_id, event_type='op_report_timing'
+            ).order_by(IncidentEvent.event_id.desc()).all()
+            saved = next((event for event in reviewed
+                          if (event.event_metadata or {}).get('report_id') == report.report_id
+                          and event.event_metadata.get('revision') == report.revision
+                          and event.event_metadata.get('phase') == 'reviewed'), None)
+            if saved:
+                return saved.event_metadata['timeline']
+        return timeline(db, report.fire_incident)
     events = db.query(IncidentEvent).filter_by(fire_id=report.fire_id, event_type='op_report_timing').order_by(IncidentEvent.event_id).all()
     saved = next((e for e in events if (e.event_metadata or {}).get('report_id') == report.report_id), None)
     current = timeline(db, report.fire_incident)

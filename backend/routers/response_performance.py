@@ -82,7 +82,7 @@ def csv_cell(value):
 @router.get("/incidents.csv")
 def incident_export(params: dict = Depends(incident_filters), db: Session = Depends(get_db)):
     rows = [operations.record(i, params["source"]) for i in operations.filtered_incidents(db, **params)]
-    columns = ["fire_id", "record_kind", "reported_at", "occurred_at", "location", "status", "timing_basis",
+    columns = ["fire_id", "record_kind", "reported_at", "occurred_at", "location", "status", "lifecycle_stage", "timing_basis",
                "dispatch_count", "unit_count", "operation_completed_at"]
     columns += [f"{key}_{suffix}" for key in operations.METRICS for suffix in ("seconds", "quality", "reason")]
 
@@ -95,6 +95,7 @@ def incident_export(params: dict = Depends(incident_filters), db: Session = Depe
             buffer.seek(0)
             buffer.truncate()
             flattened = dict(row)
+            flattened['status'] = row.get('status_label', row.get('lifecycle_stage', row.get('status')))
             for key in operations.METRICS:
                 flattened[f"{key}_seconds"] = row["durations"].get(key)
                 metric = row["metrics"].get(key, {})

@@ -21,6 +21,23 @@ from services.tracking_policy import duty, policy as tracking_policy
 router = APIRouter(tags=["personnel"])
 
 
+def _member_readiness(person, return_context=None):
+    """Prefer an existing response over a second idle membership."""
+    normalize = lambda value: (value or '').strip().lower().replace('_', '')
+    memberships = list(person.team_memberships)
+    def member_status(member):
+        status = normalize(member.member_status)
+        progress = (return_context or {}).get('teams', {}).get(member.team_id)
+        return progress['status'] if progress and status not in ('onscene', 'dispatched', 'offduty', 'inactive') else status
+    for status in ('onscene', 'dispatched', 'returning', 'standby', 'offduty'):
+        match = next((member for member in memberships if member_status(member) == status), None)
+        if match:
+            return status, match
+    legacy = normalize(person.per_designation)
+    return (legacy if legacy in ('dispatched', 'onscene', 'returning', 'standby', 'offduty') else 'standby',
+            memberships[0] if memberships else None)
+
+
 @router.get("/api/personnel")
 def get_personnel(
     db: Session = Depends(get_db),
@@ -34,6 +51,10 @@ def get_personnel(
         selectinload(Personnel.devices),
         selectinload(Personnel.team_memberships).joinedload(ResponseTeamMember.team),
     ).all()
+    from services.resource_availability import pending_return_context
+    return_context = pending_return_context(db, per_ids=[person.per_id for person in rows],
+        team_ids=[member.team_id for person in rows for member in person.team_memberships])
+    return_locks = {per_id: row['assignment_reason'] for per_id, row in return_context['drivers'].items()}
 
     # Map each team with an active dispatch to its incident reference, so a
     # dispatched/on-scene member can show which incident they're assigned to.
@@ -71,25 +92,20 @@ def get_personnel(
         else:
             iot = "offline"
 
-        # Personnel status comes from their team membership's member_status
-        # (cascaded by the dispatch path and the team-status PATCH endpoint).
-        # Fall back to per_designation for legacy rows, then "standby".
-        valid_statuses = {"dispatched", "onscene", "standby", "offduty"}
-        member_status = (
-            (p.team_memberships[0].member_status or "").lower()
-            if p.team_memberships else ""
-        )
-        if member_status in valid_statuses:
-            status = member_status
-        else:
-            designation = (p.per_designation or "standby").lower()
-            status = designation if designation in valid_statuses else "standby"
+        status, membership = _member_readiness(p, return_context)
+        if p.per_id in return_locks and status not in ('dispatched', 'onscene'):
+            team_progress = return_context['teams'].get(membership.team_id if membership else None, {})
+            status = 'returning' if team_progress.get('status') == 'returning' else return_context['drivers'][p.per_id]['status']
+        progress = return_context['drivers'].get(p.per_id) or return_context['teams'].get(membership.team_id if membership else None)
+        on_duty = duty(p)[0]
+        # Duty controls GPS collection. It does not declare an unfinished crew ready.
+        visible_status = status if on_duty or status in ('dispatched', 'onscene', 'returning') else 'offduty'
 
         joined = None
         if p.user and p.user.created_at:
             joined = p.user.created_at.strftime("%b %Y")
 
-        team_id = p.team_memberships[0].team_id if p.team_memberships else None
+        team_id = membership.team_id if membership else None
         # Only surface the incident for members who are actually deployed.
         incident = (
             team_incident.get(team_id, "—")
@@ -104,12 +120,15 @@ def get_personnel(
             "initials":    initials or "??",
             "rank":        p.per_rank        or "—",
             "designation": p.per_designation or "",
-            "status":      status if duty(p)[0] else 'offduty',
-            'on_duty': duty(p)[0],
+            "status":      visible_status,
+            'on_duty': on_duty,
+            'return_assignment_locked': p.per_id in return_locks,
+            'return_assignment_reason': return_locks.get(p.per_id, ''),
+            'dispatch_blocker': progress['blocker'] if progress else '',
             "station":     p.station.station_name if p.station else "—",
             "station_id":  p.station_id,
-            "team_id":     p.team_memberships[0].team_id   if p.team_memberships else None,
-            "team_name":   p.team_memberships[0].team.team_name if p.team_memberships else "—",
+            "team_id":     team_id,
+            "team_name":   membership.team.team_name if membership and membership.team else "—",
             "shift_id":    p.shift_id,
             "shift_name":  p.shift.shift_name if p.shift else "—",
             "incident":    incident,
@@ -150,6 +169,9 @@ def get_personnel_locations(
     assignments = {per_id: list(dispatches.values()) for per_id, dispatches in assignments.items()}
     latest = {per_id: dispatches[0] for per_id, dispatches in assignments.items()}
     arrivals = arrivals_for(db, latest)
+    from services.resource_availability import pending_return_context
+    return_context = pending_return_context(db, per_ids=[loc.per_id for loc in rows],
+        team_ids=[member.team_id for loc in rows if loc.personnel for member in loc.personnel.team_memberships])
     result = []
     for loc in rows:
         per = loc.personnel
@@ -164,8 +186,11 @@ def get_personnel_locations(
         is_stale    = age_s > STALE_MINUTES * 60 or not duty(per, now)[0]
 
         active_dispatch = latest.get(per.per_id)
+        tracking = tracking_policy(db, per, now, dispatches=assignments.get(per.per_id, []), arrivals=arrivals)
+        if tracking['mode'] == 'returning':
+            active_dispatch = db.get(DispatchRecord, tracking['dispatch_id'])
 
-        own_navigation = navigation_for(active_dispatch, per.per_id)
+        own_navigation = navigation_for(active_dispatch, per.per_id) if tracking['mode'] != 'returning' else {}
         own_arrival = arrivals.get((active_dispatch.dispatch_id, per.per_id)) if active_dispatch else None
         result.append({
             "per_id":           per.per_id,
@@ -176,10 +201,9 @@ def get_personnel_locations(
             "recorded_at":      rec_at.isoformat(),
             "age_minutes":      age_minutes,
             "is_stale":         is_stale,
-            'tracking': tracking_policy(db, per, now, dispatches=assignments.get(per.per_id, []),
-                                        arrivals=arrivals),
+            'tracking': tracking,
             "is_deviated":      bool(own_navigation.get('is_deviated')),
-            "personnel_status": personnel_status(active_dispatch, own_arrival),
+            "personnel_status": 'returning' if tracking['mode'] == 'returning' or (active_dispatch is None and _member_readiness(per, return_context)[0] == 'returning') else personnel_status(active_dispatch, own_arrival),
             "personnel_arrived_at": own_arrival.isoformat() if own_arrival else None,
             "dispatch_id":      active_dispatch.dispatch_id if active_dispatch else None,
             "manned_truck":     _manned_truck_dict(active_dispatch, per.per_id),

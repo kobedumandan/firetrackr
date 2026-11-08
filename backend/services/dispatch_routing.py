@@ -6,8 +6,8 @@ from fastapi import HTTPException
 
 import routing_pool
 import state
-from config import ROUTING_POOL_TIMEOUT
-from models import CurrentLocation, DispatchRecord, DispatchTruck, FireIncident, ResponseTeamMember, Route
+from config import DEVIATION_MAX_ACCURACY_M, ROUTING_POOL_TIMEOUT
+from models import CurrentLocation, DispatchRecord, DispatchTruck, FireIncident, LocationLog, ResponseTeamMember, Route
 from services.dispatch import _normalize_role
 from services.routing import _build_rerouted_payload, _load_active_obstructions
 from services.operational_times import snapshot_routes
@@ -46,9 +46,29 @@ def current_origin(db, dispatch, require_driver=False):
     return station.station_latitude, station.station_longitude, 'station', None
 
 
+def has_accurate_driver_fix(db, dispatch, per_id):
+    """Use accepted, recent phone GPS for automatic manning refreshes."""
+    location = db.get(CurrentLocation, per_id)
+    if location is None or location.source != 'mobile_app':
+        return False
+    at = location.recorded_at
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    if not now - timedelta(minutes=2) <= at <= now + timedelta(seconds=30):
+        return False
+    if dispatch.dispatch_at and at < dispatch.dispatch_at:
+        return False
+    sample = db.query(LocationLog).filter(
+        LocationLog.per_id == per_id, LocationLog.recorded_at == location.recorded_at,
+    ).order_by(LocationLog.log_id.desc()).first()
+    return bool(sample is not None and sample.accuracy_m is not None
+                and 0 <= sample.accuracy_m <= DEVIATION_MAX_ACCURACY_M)
+
+
 def recalculate(db, dispatch, preferred_type=None, reason='full_reroute', preferred_ordinal=0,
                 require_driver=False, allow_preference_fallback=False,
-                expected_route_id=None, expected_driver_id=None):
+                expected_route_id=None, expected_driver_id=None, defer_alternatives=False):
     """Compute before changing rows; replace this dispatch's routes atomically."""
     if dispatch.dispatch_status not in ACTIVE or not dispatch.fire_incident or dispatch.fire_incident.fire_status in ('closed', 'cancelled', 'canceled', 'recalled'):
         raise HTTPException(409, 'Dispatch is no longer active.')
@@ -59,6 +79,10 @@ def recalculate(db, dispatch, preferred_type=None, reason='full_reroute', prefer
     fire_id, dispatch_id = dispatch.fire_id, dispatch.dispatch_id
     obstructions = _load_active_obstructions(db)
     args = (lat, lon, incident.fire_latitude, incident.fire_longitude, obstructions, previous)
+    # Keep explicit fastest/alternative choices intact. The recommended path
+    # can be published without waiting for the optional route searches.
+    primary_only = defer_alternatives and preferred_type in (None, 'recommended')
+    compute_options = {'primary_only': True} if primary_only else {}
     if expected_driver_id is not None:
         # Automatic work only read inputs so far. Return this connection to the
         # small hosted pool while computing, then recheck ownership under locks.
@@ -67,14 +91,14 @@ def recalculate(db, dispatch, preferred_type=None, reason='full_reroute', prefer
         routes = None
         if source == 'station':
             from services.routing import _run_routing_via_pool
-            routes = _run_routing_via_pool('routes', *args[:5])
+            routes = _run_routing_via_pool('routes', *args[:5], **compute_options)
         elif state.routing_pool_executor is not None:
             try:
-                routes = state.routing_pool_executor.submit(routing_pool.compute_position_routes, *args).result(timeout=ROUTING_POOL_TIMEOUT)
+                routes = state.routing_pool_executor.submit(routing_pool.compute_position_routes, *args, **compute_options).result(timeout=ROUTING_POOL_TIMEOUT)
             except Exception:
                 logger.warning('Position routing worker failed; retrying in process.', exc_info=True)
         if routes is None and source != 'station':
-            routes = state.routing_engine.compute_routes_from_position(*args)
+            routes = state.routing_engine.compute_routes_from_position(*args, **compute_options)
     except Exception:
         logger.exception('Position routing failed for dispatch %s', dispatch_id)
         raise HTTPException(503, 'Route calculation failed. The previous route has been preserved.')
@@ -117,7 +141,7 @@ def recalculate(db, dispatch, preferred_type=None, reason='full_reroute', prefer
     dispatch.deviation_detected_at = None
     snapshot_routes(db, dispatch, reason=reason)
     payload = _build_rerouted_payload(dispatch, selected, saved, source)['data']
-    payload.update(origin_latitude=lat, origin_longitude=lon)
+    payload.update(origin_latitude=lat, origin_longitude=lon, alternatives_pending=primary_only)
     db.commit()
     return {**payload, 'route_id': selected.route_id, 'rank': selected.route_rank,
             'route_type': selected.route_type, 'is_selected': True,
@@ -138,16 +162,20 @@ def refresh_returning_driver(dispatch_id, per_id, expected_route_id):
                 return
             if not db.query(DispatchTruck).filter_by(dispatch_id=dispatch_id, manned_by_per_id=per_id).first():
                 return
+            if not has_accurate_driver_fix(db, dispatch, per_id):
+                return
             selected = db.get(Route, dispatch.route_id)
             ordinal = db.query(Route).filter(Route.dispatch_id == dispatch_id, Route.route_type == selected.route_type,
                                              Route.route_rank < selected.route_rank).count() if selected else 0
             data = recalculate(db, dispatch, preferred_type=selected.route_type if selected else None,
                                preferred_ordinal=ordinal, require_driver=True, allow_preference_fallback=True,
                                reason='driver_online_refresh', expected_route_id=expected_route_id,
-                               expected_driver_id=per_id)
+                               expected_driver_id=per_id, defer_alternatives=True)
             payload = {'type': 'dispatch_rerouted', 'data': data}
         except Exception as error:
             db.rollback()
             logger.warning('Driver-online route refresh failed for dispatch %s: %s', dispatch_id, error)
     if payload is not None:
         broadcast_threadsafe(payload)
+        from services.route_alternatives import queue_route_alternatives
+        queue_route_alternatives(payload['data'])

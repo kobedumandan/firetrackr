@@ -1060,6 +1060,7 @@ class GeoAIRoutingEngine:
         target_node: int,
         obstructions: Optional[List[Dict[str, Any]]] = None,
         previous_node: Optional[int] = None,
+        primary_only: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Generate up to 3 routes, each answering a different question.
@@ -1101,11 +1102,11 @@ class GeoAIRoutingEngine:
         # still apply -- a blocked road is blocked whatever you are optimising
         # for -- but the GAT multipliers and congestion schedule do not, so
         # this is what the router would do with no model at all.
-        time_costs: Dict[Tuple[int, int], float] = {
+        time_costs: Dict[Tuple[int, int], float] = {} if primary_only or not self._use_constraint_costs else {
             (u, v): data.get("travel_time_s", 60.0)
             for u, v, data in self.graph.G.edges(data=True)
         }
-        if obstructions:
+        if obstructions and time_costs:
             self.apply_obstructions(obstructions, time_costs)
 
         if not self._landmarks_valid:
@@ -1187,7 +1188,7 @@ class GeoAIRoutingEngine:
         # ── Objective 2: fastest on raw travel time (model switched off) ──────
         # Skipped when no constraint data is loaded, because the two objectives
         # are then the same function and this is just the primary search again.
-        if self._use_constraint_costs:
+        if self._use_constraint_costs and not primary_only:
             try:
                 fast_nodes, _ = self._alt_search(source_node, target_node, time_costs, previous_node)
             except ValueError as exc:
@@ -1207,7 +1208,7 @@ class GeoAIRoutingEngine:
                     _penalise(fast_nodes)
 
         # ── Remaining slots: penalty-based alternatives ───────────────────────
-        for _ in range(MAX_ALT_ATTEMPTS):
+        for _ in range(0 if primary_only else MAX_ALT_ATTEMPTS):
             if len(accepted) >= 3:
                 break
             try:
@@ -1267,7 +1268,8 @@ class GeoAIRoutingEngine:
                 return node_id
         return None
 
-    def compute_routes_from_position(self, lat, lon, dest_lat, dest_lon, obstructions=None, previous_position=None):
+    def compute_routes_from_position(self, lat, lon, dest_lat, dest_lon, obstructions=None, previous_position=None,
+                                     primary_only=False):
         """Choose the best available road direction from the current GPS fix.
 
         Geometry begins at the reported fix. A small GPS-to-road snap is explicit;
@@ -1277,6 +1279,8 @@ class GeoAIRoutingEngine:
         Both directions are considered on two-way roads. ``previous_position``
         remains accepted for existing callers but does not constrain departure:
         recent movement or GPS drift must not force a loop just to turn around.
+        Compare primary paths first; only generate alternatives for the winning
+        direction. ``primary_only`` returns that primary path immediately.
         """
         import math
         from .graph_builder import _haversine_km
@@ -1302,32 +1306,37 @@ class GeoAIRoutingEngine:
             if partial_m > 1 and not math.isfinite(costs.get((start, end), 0)):
                 continue
             routes = self.compute_routes_multi_alpha(end, targets[0][0], obstructions=obstructions,
-                                                     previous_node=start if partial_m > 1 else None)
+                                                     previous_node=start if partial_m > 1 else None,
+                                                     primary_only=True)
             edge_m = _haversine_km(graph.nodes[start]['lat'], graph.nodes[start]['lon'], end_data['lat'], end_data['lon']) * 1000
             access_m = _haversine_km(lat, lon, plat, plon) * 1000
             extra_seconds = graph[start][end].get('travel_time_s', 60) * partial_m / max(edge_m, 0.01) + access_m / 5
-            prepared = []
-            for route in routes:
-                coords = [(lon, lat), (plon, plat)]
-                coords += [(graph.nodes[node]['lon'], graph.nodes[node]['lat']) for node in route['route_nodes']]
-                clean = [coords[0]]
-                for point in coords[1:]:
-                    if _haversine_km(point[1], point[0], clean[-1][1], clean[-1][0]) * 1000 > .001:
-                        clean.append(point)
-                if len(clean) < 2:
-                    continue
-                prepared.append({**route, 'route_wkt': 'LINESTRING(' + ', '.join(f'{x} {y}' for x, y in clean) + ')',
-                                 'eta_seconds': round(route['eta_seconds'] + extra_seconds),
-                                 'route_distance_meters': round(float(route.get('route_distance_meters', 0) + partial_m + access_m), 1)})
-            if prepared:
+            if routes:
                 primary = routes[0]['route_nodes']
                 score = sum(costs.get((x, y), graph[x][y].get('travel_time_s', 60)) for x, y in zip(primary, primary[1:]))
                 if partial_m > .001:
                     score += costs.get((start, end), graph[start][end].get('travel_time_s', 60)) * partial_m / max(edge_m, .01)
-                choices.append((score, prepared))
+                choices.append((score, start, end, partial_m, access_m, extra_seconds, routes))
         if not choices:
             return []
-        return min(choices, key=lambda choice: choice[0])[1]
+        _, start, end, partial_m, access_m, extra_seconds, routes = min(choices, key=lambda choice: choice[0])
+        if not primary_only:
+            routes = self.compute_routes_multi_alpha(end, targets[0][0], obstructions=obstructions,
+                                                     previous_node=start if partial_m > 1 else None)
+        prepared = []
+        for route in routes:
+            coords = [(lon, lat), (plon, plat)]
+            coords += [(graph.nodes[node]['lon'], graph.nodes[node]['lat']) for node in route['route_nodes']]
+            clean = [coords[0]]
+            for point in coords[1:]:
+                if _haversine_km(point[1], point[0], clean[-1][1], clean[-1][0]) * 1000 > .001:
+                    clean.append(point)
+            if len(clean) < 2:
+                continue
+            prepared.append({**route, 'route_wkt': 'LINESTRING(' + ', '.join(f'{x} {y}' for x, y in clean) + ')',
+                             'eta_seconds': round(route['eta_seconds'] + extra_seconds),
+                             'route_distance_meters': round(float(route.get('route_distance_meters', 0) + partial_m + access_m), 1)})
+        return prepared
 
     def compute_connector(
         self,

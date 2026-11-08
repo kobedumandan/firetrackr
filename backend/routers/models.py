@@ -2,7 +2,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,7 @@ from database import get_db
 from models import ModelVersion, Users
 from security import require_admin
 from services import model_registry as registry
+from services.model_bundle_store import BundleStoreUnavailable
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["models"])
@@ -20,12 +21,30 @@ class PromoteRequest(BaseModel):
     expected_champion: str = Field(pattern=r"^v[1-9][0-9]*$", max_length=64)
 
 
+class ModelNameRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def trim_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class RetrainRequest(ModelNameRequest):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+
+
 def _operation(db, function, *args):
     try:
         return function(db, *args)
     except registry.RegistryError as exc:
         db.rollback()
         raise HTTPException(exc.status_code, str(exc)) from exc
+    except BundleStoreUnavailable as exc:
+        db.rollback()
+        logger.exception("Private model storage unavailable")
+        raise HTTPException(503, "Private model storage is unavailable; retry shortly or check the backend storage settings.") from exc
     except (ValueError, OSError, KeyError, ImportError) as exc:
         db.rollback()
         logger.exception("Model artifacts or snapshot unavailable")
@@ -56,8 +75,9 @@ def model_summary(db: Session = Depends(get_db), _auth: Users = Depends(require_
 
 
 @router.post("/api/models/retrain", status_code=202)
-def retrain(db: Session = Depends(get_db), actor: Users = Depends(require_admin)):
-    return registry.serialize_version(_operation(db, registry.start_retrain, actor.user_id))
+def retrain(body: RetrainRequest | None = None, db: Session = Depends(get_db),
+            actor: Users = Depends(require_admin)):
+    return registry.serialize_version(_operation(db, registry.start_retrain, actor.user_id, body.name if body else None))
 
 
 @router.get("/api/models/{version}")
@@ -76,6 +96,18 @@ def model_report(version: str, db: Session = Depends(get_db), _auth: Users = Dep
 @router.get("/api/models/{version}/preview")
 def model_preview(version: str, db: Session = Depends(get_db), _auth: Users = Depends(require_admin)):
     return _operation(db, registry.preview_version, version)
+
+
+@router.patch("/api/models/{version}")
+def rename_model(version: str, body: ModelNameRequest, db: Session = Depends(get_db),
+                 _auth: Users = Depends(require_admin)):
+    def rename(db):
+        row = registry.get_version(db, version)
+        row.name = body.name
+        db.commit()
+        db.refresh(row)
+        return registry.serialize_version(row)
+    return _operation(db, rename)
 
 
 @router.post("/api/models/{version}/reject")

@@ -28,6 +28,9 @@ RETRAIN_MODAL_ENVIRONMENT = os.getenv("RETRAIN_MODAL_ENVIRONMENT", "main")
 RETRAIN_POLL_SECONDS = 10
 MODEL_VERSIONS_ROOT = _RETRAIN_REPO_ROOT / "backend/ai/models/versions"
 RETRAIN_WORK_ROOT = _RETRAIN_REPO_ROOT / "backend/data/retraining/registry"
+MODEL_ARTIFACT_STORAGE = os.getenv("MODEL_ARTIFACT_STORAGE", "local").strip().lower()
+if MODEL_ARTIFACT_STORAGE not in {"local", "supabase"}:
+    raise ValueError("MODEL_ARTIFACT_STORAGE must be local or supabase")
 
 
 JWT_SECRET      = os.getenv("JWT_SECRET", "change-me")

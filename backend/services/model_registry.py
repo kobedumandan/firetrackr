@@ -15,11 +15,13 @@ from sqlalchemy import text
 
 from config import (MODEL_VERSIONS_ROOT, RETRAIN_WORK_ROOT, RETRAIN_PYTHON,
                     RETRAIN_TIMEOUT_MIN, RETRAIN_RUNNER, RETRAIN_POLL_SECONDS,
-                    RETRAIN_MODAL_APP, RETRAIN_MODAL_VOLUME, RETRAIN_MODAL_ENVIRONMENT)
+                    RETRAIN_MODAL_APP, RETRAIN_MODAL_VOLUME, RETRAIN_MODAL_ENVIRONMENT,
+                    MODEL_ARTIFACT_STORAGE)
 from models import ModelVersion
 from services.label_snapshot import build_snapshot, read_database_snapshot, write_snapshot
 from services.model_artifacts import verify_artifacts, sha256, read_json
-from services.retrain_runner import LocalRunner, RunnerUnavailable
+from services.model_bundle_store import BundleStoreUnavailable, check_model_storage, publish_model_bundle
+from services.retrain_runner import LocalRunner, RunnerConfigurationError, RunnerUnavailable
 from services.resource_limits import serialized_memory_work
 
 logger = logging.getLogger(__name__)
@@ -57,9 +59,18 @@ def get_version(db, version):
     return row
 
 
+def artifact_directory(row):
+    """A registered digest, rather than a surviving local cache, identifies a model."""
+    directory = version_directory(row.version)
+    if not directory.exists() and row.bundle_manifest_sha256:
+        from services.model_bundle_store import ensure_model_bundle
+        ensure_model_bundle(row.version, row.bundle_manifest_sha256)
+    return directory
+
+
 def serialize_version(row):
     payload = {key: getattr(row, key) for key in (
-        "version", "status", "label_hash", "split_version", "threshold", "metrics",
+        "version", "name", "status", "label_hash", "split_version", "threshold", "metrics",
         "job_id", "champion_version", "error", "created_by", "created_at", "updated_at",
         "promoted_by", "promoted_at", "rejected_by", "rejected_at")}
     payload["cancel_requested"] = bool((row.report or {}).get("cancel_requested_at")) and row.status == "training"
@@ -76,13 +87,15 @@ def registry_summary(db):
                 "can_initialize": db.query(ModelVersion).first() is None,
                 "can_retrain": False, "labels_changed": None, "snapshot": None}
     baseline = get_version(db, "v1")
-    baseline_dir = version_directory("v1")
+    baseline_dir = artifact_directory(baseline)
     verify_artifacts(baseline_dir, baseline.bundle_manifest_sha256)
     _, _, snapshot = read_database_snapshot(db, baseline_dir / "predicted_constraints.geojson", None)
     changed = snapshot["label_hash"] != champion.label_hash
     trained_count = (champion.report or {}).get("segments")
     if champion.version != "v1":
-        trained_count = read_json(version_directory(champion.version) / "snapshot_manifest.json")["segments"]
+        champion_dir = artifact_directory(champion)
+        verify_artifacts(champion_dir, champion.bundle_manifest_sha256)
+        trained_count = read_json(champion_dir / "snapshot_manifest.json")["segments"]
     return {"champion": {**serialize_version(champion), "label_count": trained_count},
             "training": serialize_version(training) if training else None,
             "can_initialize": False, "can_retrain": changed and training is None,
@@ -96,7 +109,7 @@ def preview_version(db, version):
     row = get_version(db, version)
     if row.status not in ("candidate", "champion", "archived", "rejected", "scheduled"):
         raise RegistryError("Preview is available after training completes")
-    directory = version_directory(version)
+    directory = artifact_directory(row)
     _, report, _ = verify_artifacts(directory, row.bundle_manifest_sha256)
     changes = {change["segment_uid"]: change for change in report.get("churn", [])}
     features = []
@@ -150,12 +163,14 @@ def local_runner():
         raise RegistryError("Configure RETRAIN_PYTHON with the isolated training interpreter", 503) from exc
 
 
-def retrain_runner(job_id=None):
+def retrain_runner(job_id=None, metadata=None):
     # An existing job keeps its original adapter even if configuration changes.
     if job_id:
         from services.retrain_contract import validate_job_id
         validate_job_id(job_id)
-        if (RETRAIN_WORK_ROOT / "modal_jobs" / job_id / "job.json").is_file():
+        if metadata:
+            runner_kind = metadata.get("runner")
+        elif (RETRAIN_WORK_ROOT / "modal_jobs" / job_id / "job.json").is_file():
             runner_kind = "modal"
         elif (RETRAIN_WORK_ROOT / "jobs" / job_id / "job.json").is_file():
             runner_kind = "local"
@@ -168,25 +183,29 @@ def retrain_runner(job_id=None):
     if runner_kind == "modal":
         try:
             from services.modal_retrain_runner import ModalRunner
-            return ModalRunner(RETRAIN_WORK_ROOT / "modal_jobs", RETRAIN_MODAL_APP,
-                               RETRAIN_MODAL_VOLUME, RETRAIN_MODAL_ENVIRONMENT, RETRAIN_TIMEOUT_MIN)
+            runner = ModalRunner(RETRAIN_WORK_ROOT / "modal_jobs", RETRAIN_MODAL_APP,
+                                 RETRAIN_MODAL_VOLUME, RETRAIN_MODAL_ENVIRONMENT, RETRAIN_TIMEOUT_MIN)
+            if job_id and metadata:
+                runner.resume(job_id, metadata)
+            return runner
         except (ValueError, ImportError) as exc:
             raise RegistryError("Configure the Modal runner and install backend/requirements-modal.txt", 503) from exc
     raise RegistryError("RETRAIN_RUNNER must be local or modal", 503)
 
 
 @serialized_memory_work
-def _reserve_retrain(db, actor):
+def _reserve_retrain(db, actor, name=None):
     registry_lock(db)
     if db.query(ModelVersion).filter_by(status="training").first():
         raise RegistryError("A retrain is already active")
     champion = db.query(ModelVersion).filter_by(status="champion").one_or_none()
     if champion is None:
         raise RegistryError("Initialize the verified baseline registry before retraining")
-    directory = version_directory(champion.version)
+    directory = artifact_directory(champion)
     manifest, _, _ = verify_artifacts(directory, champion.bundle_manifest_sha256)
-    baseline = version_directory("v1")
-    base_manifest, _, _ = verify_artifacts(baseline)
+    baseline_row = get_version(db, "v1")
+    baseline = artifact_directory(baseline_row)
+    base_manifest, _, _ = verify_artifacts(baseline, baseline_row.bundle_manifest_sha256)
     if base_manifest["files"]["predicted_constraints.geojson"] != (manifest.get("baseline_sha256") or manifest["files"]["predicted_constraints.geojson"]):
         raise RegistryError("The road/feature baseline changed; reconcile and verify it first", 422)
     runner = retrain_runner()
@@ -200,9 +219,12 @@ def _reserve_retrain(db, actor):
     job_id = uuid.uuid4().hex
     snapshot_dir = RETRAIN_WORK_ROOT / "snapshots" / job_id
     write_snapshot(snapshot_dir, collection, history, snapshot)
-    row = ModelVersion(version=version, status="training", label_hash=snapshot["label_hash"],
+    row = ModelVersion(version=version, name=name, status="training", label_hash=snapshot["label_hash"],
                        split_version=champion.split_version, champion_version=champion.version,
-                       job_id=job_id, created_by=actor)
+                       job_id=job_id, created_by=actor,
+                       report={"artifact_storage": MODEL_ARTIFACT_STORAGE})
+    if RETRAIN_RUNNER == "modal":
+        row.report = {**row.report, "runner": runner.reserve(job_id)}
     db.add(row)
     # Persist the job identity before spawning. A web-process crash after submit
     # can therefore be recovered by another worker without launching a second job.
@@ -210,21 +232,44 @@ def _reserve_retrain(db, actor):
     return row, runner, snapshot_dir, directory
 
 
-def start_retrain(db, actor):
+def start_retrain(db, actor, name=None):
+    if MODEL_ARTIFACT_STORAGE == "supabase":
+        try:
+            check_model_storage()
+        except (BundleStoreUnavailable, ValueError) as exc:
+            raise RegistryError("Private model storage is unavailable; check the backend Supabase settings and model bucket.", 503) from exc
     # Drop large snapshot locals and release the memory lock before cloud I/O.
-    row, runner, snapshot_dir, directory = _reserve_retrain(db, actor)
+    row, runner, snapshot_dir, directory = _reserve_retrain(db, actor, name)
+    if (row.report or {}).get("runner", {}).get("runner") == "modal":
+        def persist_metadata(metadata):
+            # Row locks serialize this short update with polling/cancellation;
+            # never retain the lock across Modal network calls.
+            db.refresh(row, with_for_update=True)
+            if row.status == "training":
+                row.report = {**(row.report or {}), "runner": metadata}
+            elif not metadata.get("call_id"):
+                # A stopped/expired reservation must never launch a late job.
+                db.rollback()
+                raise RegistryError("The training reservation ended before submission; refresh model status")
+            db.commit()
+        runner.on_job_update = persist_metadata
     try:
         runner.submit(snapshot_dir, directory, version=row.version, job_id=row.job_id)
     except RunnerUnavailable:
         # The request may have reached Modal before the connection dropped.
         # Keep the reservation and recover by job ID instead of launching twice.
+        db.rollback()  # Metadata acknowledgement may have failed during commit.
         logger.warning("Retrain acknowledgement pending for %s; polling its reserved job", row.version)
-    except Exception:
+    except Exception as exc:
+        db.rollback()
+        db.refresh(row, with_for_update=True)
         logger.exception("Retrain submission failed for %s", row.version)
         row.status = "failed"
-        row.error = "Retrain could not start; inspect the server log and runner configuration."
+        row.error = (str(exc) if isinstance(exc, RunnerConfigurationError) else
+                     "Retrain could not start; inspect the server log and runner configuration.")
         db.commit()
         raise RegistryError(row.error, 503)
+    db.refresh(row)
     return row
 
 
@@ -244,6 +289,7 @@ def cancel_retrain(db, version, actor):
     """Keep the training reservation until the runner acknowledges termination."""
     registry_lock(db)
     row = get_version(db, version)
+    db.refresh(row, with_for_update=True)
     if (row.report or {}).get("job_status") == "cancelled":
         return row
     if row.status != "training":
@@ -251,7 +297,7 @@ def cancel_retrain(db, version, actor):
     if (row.report or {}).get("cancel_requested_at"):
         return row
     try:
-        retrain_runner(row.job_id).cancel(row.job_id)
+        retrain_runner(row.job_id, (row.report or {}).get("runner")).cancel(row.job_id)
     except KeyError as exc:
         raise RegistryError("Training is still starting; retry cancellation shortly") from exc
     except RunnerUnavailable as exc:
@@ -298,6 +344,10 @@ def _complete_job(db, row, runner):
             raise ValueError(f"Candidate provenance mismatch: {key}")
     if manifest.get("validation_only"):
         raise ValueError("Synthetic-validation bundles cannot enter the admin registry")
+    if MODEL_ARTIFACT_STORAGE == "supabase" or (row.report or {}).get("artifact_storage") == "supabase":
+        # Commit candidate state only after durable, verified publication. A
+        # storage outage or interrupted acknowledgement is retried by polling.
+        publish_model_bundle(row.version, digest)
     row.status = "candidate"
     row.threshold = manifest["threshold"]
     row.metrics = report["challenger"]["metrics"]
@@ -316,18 +366,21 @@ def synchronize_jobs():
             registry_lock(db)
         except RegistryError:
             return []
-        rows = db.query(ModelVersion).filter_by(status="training").all()
+        rows = db.query(ModelVersion).filter_by(status="training").with_for_update().all()
         if not rows:
             return []
         events = []
         for row in rows:
             try:
-                runner = retrain_runner(row.job_id)
+                runner = retrain_runner(row.job_id, (row.report or {}).get("runner"))
                 event = _complete_job(db, row, runner)
                 if event:
                     events.append(event)
             except RunnerUnavailable:
                 logger.warning("Retrain status/download unavailable for %s; retrying next poll", row.version)
+            except BundleStoreUnavailable:
+                logger.warning("Model %s is waiting for private artifact storage; retrying next poll", row.version)
+                row.error = "Training finished; waiting for private model storage. Results will be retried automatically."
             except RegistryError:
                 # Missing SDK/config must not discard a job already in the cloud.
                 logger.exception("Retrain runner unavailable for %s", row.version)

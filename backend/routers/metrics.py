@@ -74,10 +74,19 @@ def metrics_summary(
     """
     now = datetime.now(timezone.utc)
     if period == "custom" or date_from is not None or date_to is not None:
+        if not date_from and not date_to:
+            raise HTTPException(422, "Choose a start or end date.")
+        today = now.astimezone(ZoneInfo("Asia/Manila")).date().isoformat()
         try:
-            start, now = custom_reporting_window(date_from, date_to, now)
+            start, now = custom_reporting_window(date_from or date_to, date_to or today, now)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
+        if not date_from:
+            earliest = db.query(func.min(FireIncident.fire_incident_datetime)).filter(
+                fire_incident_filter(), FireIncident.fire_incident_datetime < now,
+            ).scalar()
+            # Include all recorded history through To; keep an empty chart in its end month.
+            start, _ = reporting_window("all", now - timedelta(microseconds=1), earliest)
         period = "custom"
     else:
         earliest = db.query(func.min(FireIncident.fire_incident_datetime)).filter(fire_incident_filter()).scalar() if period == "all" else None

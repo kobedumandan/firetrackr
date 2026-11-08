@@ -18,6 +18,7 @@ from services.incident_events import record_changes, snapshot
 from services.heatmap import severity_weight
 from services.incident_scope import is_fire_incident
 from services.push import notify_dispatch_assigned
+from services.resource_availability import lock_personnel_assignments, team_unavailability
 from services.routing import _haversine_meters, _load_active_obstructions
 from state import manager
 
@@ -64,28 +65,14 @@ async def _perform_dispatch(
         raise HTTPException(409, 'This operation is already complete. Log a new incident for a renewed response.')
     if incident.fire_status in ('closed', 'cancelled', 'canceled', 'recalled'):
         raise HTTPException(409, 'This incident no longer accepts dispatches.')
-    active_statuses = ('dispatched', 'en_route', 'on_scene')
-    if db.query(DispatchRecord.dispatch_id).filter(
-        DispatchRecord.team_id == team_id,
-        DispatchRecord.dispatch_status.in_(active_statuses),
-    ).first():
-        raise HTTPException(409, 'This team is already assigned to an active dispatch.')
-    if (team.team_status or '').lower() in ('active', *active_statuses):
-        raise HTTPException(409, 'This team is not on standby.')
-    if team.station and team.station.station_status == 'inactive':
-        raise HTTPException(409, 'This team belongs to an inactive station.')
     members = db.query(ResponseTeamMember).filter_by(team_id=team_id).populate_existing().all()
-    if any((member.member_status or '').strip().lower() not in ('', 'standby') for member in members):
-        raise HTTPException(409, 'This team has members who are not on standby.')
+    lock_personnel_assignments(db, [member.per_id for member in members])
     truck = None
     if team.truck_id:
         truck = db.query(Truck).filter_by(truck_id=team.truck_id).populate_existing().with_for_update().one()
-        busy = db.query(DispatchTruck.dispatch_truck_id).join(DispatchRecord).filter(
-            DispatchTruck.truck_id == truck.truck_id,
-            DispatchRecord.dispatch_status.in_(active_statuses),
-        ).first()
-        if truck.truck_status != 'available' or busy:
-            raise HTTPException(409, 'This team\'s truck is unavailable or already dispatched.')
+    unavailable = team_unavailability(db, team, members=members, truck=truck)
+    if unavailable:
+        raise HTTPException(409, unavailable[1])
 
     from services.personnel_deployment import member_snapshot
     assigned_at = datetime.now(timezone.utc)
@@ -104,17 +91,18 @@ async def _perform_dispatch(
             "shift_name": team.shift.shift_name if team.shift else None,
             "truck_id": team.truck_id,
             "truck": team.truck.truck_platenum if team.truck else None,
-            'roster': [member_snapshot(member, assigned_at) for member in team.members],
+            'roster': [member_snapshot(member, assigned_at) for member in members],
         },
     )
     db.add(dispatch)
 
     incident.fire_units_assigned = (incident.fire_units_assigned or 0) + 1
     before = snapshot(incident)
-    incident.fire_status = "dispatched"
+    if incident.fire_status != 'contained':
+        incident.fire_status = "dispatched"
     record_changes(db, incident, before)
     team.team_status = "dispatched"
-    for m in team.members or []:
+    for m in members:
         m.member_status = "dispatched"
 
     # Attach the team's assigned truck to this dispatch (if any). This is what the
@@ -234,63 +222,6 @@ async def _perform_dispatch(
         "dispatch_at":     dispatch.dispatch_at.isoformat() if dispatch.dispatch_at else None,
         "origin_source":   origin_source,
         "routes":          [_route_dict(ro, r) for ro, r in saved_routes],
-    }
-
-
-def _complete_dispatch_and_release(dispatch: DispatchRecord, now: datetime) -> None:
-    """Wrap up a dispatch when its incident is closed: complete the dispatch and
-    return its team, members, and truck to standby/available — the reverse of the
-    "dispatched" state set in _perform_dispatch. Also clears any active manning so
-    the truck stops following a driver's phone. Idempotent; safe to call once per
-    active dispatch from either close path (report filing or a direct status edit)."""
-    dispatch.dispatch_status       = "completed"
-    dispatch.dispatch_completed_at = now
-
-    team = dispatch.team
-    if team:
-        team.team_status = "standby"
-        for m in team.members or []:
-            m.member_status = "standby"
-
-    for dt in dispatch.dispatch_trucks or []:
-        if dt.truck:
-            dt.truck.truck_status = "available"
-        dt.manned_by_per_id = None
-        dt.manned_since     = None
-
-
-def _released_payload(dispatches) -> dict:
-    """WS payload naming everything _complete_dispatch_and_release just returned
-    to standby.
-
-    Closing an incident used to broadcast only `incident_updated`, whose payload
-    is the incident dict — it says nothing about teams or trucks. The database
-    was correct immediately, but the Teams and Trucks pages had no way to hear
-    about it and kept showing a released crew as dispatched until a reload, which
-    reads as "the close didn't work".
-
-    Build this BEFORE db.commit(), while the released rows are still loaded in
-    the session; afterwards the default expire-on-commit would re-query every
-    attribute touched here.
-    """
-    dispatch_ids, team_ids, truck_ids, per_ids = set(), set(), set(), set()
-    for d in dispatches:
-        dispatch_ids.add(d.dispatch_id)
-        if d.team_id:
-            team_ids.add(d.team_id)
-        for m in (d.team.members if d.team else []) or []:
-            per_ids.add(m.per_id)
-        for dt in d.dispatch_trucks or []:
-            if dt.truck_id:
-                truck_ids.add(dt.truck_id)
-    return {
-        "type": "dispatch_completed",
-        "data": {
-            "dispatch_ids": sorted(dispatch_ids),
-            "team_ids":     sorted(team_ids),
-            "truck_ids":    sorted(truck_ids),
-            "per_ids":      sorted(per_ids),
-        },
     }
 
 

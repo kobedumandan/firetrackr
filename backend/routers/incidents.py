@@ -19,10 +19,13 @@ from security import require_admin
 from serializers import _incident_dict, _report_dict
 from services.dispatch import (
     _add_incident_to_heatmap, _barangay_id_for_point,
-    _complete_dispatch_and_release, _perform_dispatch, _released_payload,
+    _perform_dispatch,
 )
 from services.incident_events import event_dict, record_changes, snapshot
 from services.report_photos import cleanup_report_photos
+from services.reporting_periods import custom_reporting_window
+from services.resource_availability import ACTIVE
+from shift_utils import SHIFT_TZ
 from state import manager, report_session_phones, report_sessions
 
 
@@ -37,6 +40,8 @@ _SEV_SORT = case(
 @router.get("/api/incidents")
 def get_incidents(
     period:    str | None = None,   # "day" | "month" | "year"
+    date_from: str | None = None,
+    date_to:   str | None = None,
     status:    str | None = None,
     search:    str | None = None,
     sev:       str | None = None,
@@ -51,29 +56,48 @@ def get_incidents(
     q = db.query(FireIncident)
 
     # period filter
-    if period in ("day", "month", "year"):
+    if period == "custom" or date_from is not None or date_to is not None:
+        if not date_from and not date_to:
+            raise HTTPException(status_code=422, detail="Choose a start or end date.")
         now = datetime.now(timezone.utc)
+        today = now.astimezone(SHIFT_TZ).date().isoformat()
+        try:
+            start, end = custom_reporting_window(date_from or date_to, date_to or today, now)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if date_from:
+            q = q.filter(FireIncident.fire_incident_datetime >= start.astimezone(timezone.utc))
+        q = q.filter(FireIncident.fire_incident_datetime < end.astimezone(timezone.utc))
+    elif period in ("day", "month", "year"):
+        now = datetime.now(timezone.utc).astimezone(SHIFT_TZ)
         if period == "day":
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = start + timedelta(days=1)
         elif period == "month":
             start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            end = start.replace(year=start.year + 1, month=1) if start.month == 12 else start.replace(month=start.month + 1)
         else:
             start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        q = q.filter(FireIncident.fire_incident_datetime >= start)
+            end = start.replace(year=start.year + 1)
+        q = q.filter(FireIncident.fire_incident_datetime >= start.astimezone(timezone.utc),
+                     FireIncident.fire_incident_datetime < end.astimezone(timezone.utc))
 
     # Stats reflect the period before any list filters, in one database trip.
-    counts = dict(
-        q.with_entities(FireIncident.fire_status, func.count(FireIncident.fire_id))
-        .group_by(FireIncident.fire_status)
-        .all()
-    )
+    from services.response_workflow import stage_expression
+    counts, stages = {}, {}
+    for raw, stage, count in q.with_entities(
+        FireIncident.fire_status, stage_expression(), func.count(FireIncident.fire_id)
+    ).group_by(FireIncident.fire_status, stage_expression()).all():
+        counts[raw] = counts.get(raw, 0) + count
+        stages[stage] = stages.get(stage, 0) + count
     stats = {
         s: counts.get(s, 0)
         for s in ("pending", "active", "dispatched", "contained", "closed")
     }
+    stats.update({key: stages.get(key, 0) for key in ('responding', 'under_control', 'operation_complete')})
 
     if status and status != "all":
-        q = q.filter(FireIncident.fire_status == status)
+        q = q.filter(stage_expression() == status) if status in ('responding', 'under_control', 'operation_complete') else q.filter(FireIncident.fire_status == status)
     if sev:
         q = q.filter(FireIncident.fire_severity == sev)
     if alarm:
@@ -201,7 +225,25 @@ async def create_incident(
     if body.auto_dispatch and incident.fire_status == "pending":
         selection = select_best_team(db, incident, routing_engine=state.routing_engine)
         if selection.ok:
-            dispatch_result = await _perform_dispatch(db, incident.fire_id, selection.team_id)
+            saved_fire_id = incident.fire_id
+            try:
+                dispatch_result = await _perform_dispatch(db, saved_fire_id, selection.team_id)
+            except HTTPException as error:
+                if error.status_code not in (404, 409):
+                    raise
+                # Intake has already committed. A lost recommendation must not
+                # turn successful intake into an apparent failure and duplicate retry.
+                db.rollback()
+                incident = db.get(FireIncident, saved_fire_id)
+                if incident is None:
+                    raise HTTPException(404, 'The saved incident is no longer available.') from None
+                data = _incident_dict(incident)
+                data['auto_dispatch'] = {'status': 'no_team_available',
+                    'reason': 'selected_team_unavailable', 'detail': str(error.detail)}
+                await manager.broadcast({'type': 'auto_dispatch_failed', 'data': {
+                    'fire_id': saved_fire_id, 'reason': 'Selected team is no longer available. Incident saved; review another team.'}})
+                return data
+            data = _incident_dict(incident)
             data["auto_dispatch"] = {
                 "status":      "dispatched",
                 "dispatch_id": dispatch_result["dispatch_id"],
@@ -234,9 +276,32 @@ async def update_incident(
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found.")
     was_closed = inc.fire_status == "closed"
+    if body.fire_status == 'closed' and not was_closed:
+        raise HTTPException(409, 'Use Review & Close after operation completion and consolidated reporting.')
+    if was_closed and body.fire_status and body.fire_status != 'closed':
+        raise HTTPException(409, 'A closed incident cannot be reopened by a general edit. Record a new response.')
     if inc.operation_completed_at and body.fire_status and body.fire_status not in (inc.fire_status, 'closed'):
         raise HTTPException(409, 'This operation has a verified completion. Log a new incident for a renewed response.')
-    released = None
+    if 'fire_casualties' in body.model_fields_set:
+        if db.query(IncidentReport.report_id).filter_by(fire_id=fire_id, report_kind='consolidated').first():
+            raise HTTPException(409, 'Correct casualty outcomes through the consolidated report.')
+        inc.casualties_reviewed_at = None
+    if 'fire_dispatch_type' in body.model_fields_set and body.fire_dispatch_type != inc.fire_dispatch_type:
+        old_classification = {'operation': inc.fire_dispatch_type, 'response_kind': inc.response_kind}
+        # Declared operation type remains authoritative while old timing facts
+        # stay attached to their original record for review.
+        if body.fire_dispatch_type == 'Firefighting Operations':
+            inc.response_kind = 'fire'
+        elif body.fire_dispatch_type == 'Emergency Medical Services (EMS)':
+            inc.response_kind = 'medical'
+        elif body.fire_dispatch_type and inc.response_kind == 'fire':
+            inc.response_kind = 'other'
+        from services.operational_times import audit
+        audit(db, inc, 'op_classification', datetime.now(timezone.utc), _auth,
+              source='dispatcher_operation_correction', metadata={'before': old_classification,
+              'after': {'operation': body.fire_dispatch_type, 'response_kind': inc.response_kind}})
+        from services.report_timing import invalidate_consolidated_timing_review
+        invalidate_consolidated_timing_review(db, inc)
     before = snapshot(inc)
     for field, val in body.model_dump(exclude_unset=True).items():
         setattr(inc, field, val)
@@ -244,32 +309,12 @@ async def update_incident(
         inc.fire_alarm_level = None
         inc.fire_structure_type = None
     record_changes(db, inc, before, user=_auth)
-    # If this edit closes the incident, release any still-active dispatch crews
-    # and trucks — mirrors the report-filing close path.
-    if not was_closed and inc.fire_status == "closed":
-        now = datetime.now(timezone.utc)
-        active_dispatches = (
-            db.query(DispatchRecord)
-            .filter(
-                DispatchRecord.fire_id == fire_id,
-                DispatchRecord.dispatch_status.in_(["dispatched", "en_route", "on_scene"]),
-            )
-            .all()
-        )
-        for d in active_dispatches:
-            _complete_dispatch_and_release(d, now)
-        # An incident can close with nothing dispatched to it; stay quiet then.
-        released = _released_payload(active_dispatches) if active_dispatches else None
     if inc.fire_status == 'closed' and (not was_closed or 'fire_dispatch_type' in body.model_fields_set):
         _add_incident_to_heatmap(db, inc, datetime.now(timezone.utc))
     db.commit()
     db.refresh(inc)
     data = _incident_dict(inc)
     await manager.broadcast({"type": "incident_updated", "data": data})
-    # Tells the Teams/Trucks pages what just went back to standby; without it
-    # they stay stale until a reload.
-    if released:
-        await manager.broadcast(released)
     return data
 
 
@@ -279,12 +324,24 @@ async def delete_incident(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    # Serialize deletion with report submission/correction before collecting
-    # object names, so a concurrent upload cannot be missed by cleanup.
+    # Match dispatch assignment/clearance and report submission's incident lock
+    # so the eligibility check and deletion see one consistent response state.
     inc = (db.query(FireIncident).filter_by(fire_id=fire_id)
            .populate_existing().with_for_update().first())
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found.")
+
+    if db.query(DispatchRecord.dispatch_id).filter(
+        DispatchRecord.fire_id == fire_id,
+        DispatchRecord.dispatch_status.in_(ACTIVE),
+    ).first():
+        raise HTTPException(409, 'Cannot delete an incident with an ongoing dispatch. Clear all responding teams first.')
+    if db.query(DispatchTruck.dispatch_truck_id).join(DispatchRecord).filter(
+        DispatchRecord.fire_id == fire_id,
+        DispatchTruck.return_started_at.is_not(None),
+        DispatchTruck.ready_at.is_(None),
+    ).first():
+        raise HTTPException(409, 'Cannot delete an incident while a truck return or readiness confirmation is pending.')
 
     photo_names = [name for (name,) in db.query(ReportPhoto.file_name)
                    .join(IncidentReport).filter(IncidentReport.fire_id == fire_id).all()]
@@ -340,7 +397,7 @@ def get_incident_report(
     Returns the most recently submitted report, or null when none exists yet."""
     report = (
         db.query(IncidentReport)
-        .filter(IncidentReport.fire_id == fire_id)
+        .filter(IncidentReport.fire_id == fire_id, IncidentReport.report_kind == 'consolidated')
         .order_by(IncidentReport.report_submitted_at.desc(), IncidentReport.report_id.desc())
         .first()
     )
@@ -413,9 +470,12 @@ async def _save_incident_report(fire_id, body, db, user, photos=()):
             'dispatch_id': report.dispatch_id, 'filed_by': report_data['author'],
             'edited_by': actor_name(user), 'photo_count': len(report.photos),
             'incident': incident_data,
+            'report_kind': report.report_kind,
         },
     })
     await manager.broadcast({'type': 'incident_updated', 'data': incident_data})
+    from routers.response_workflow import notify
+    await notify(db, 'report_prepared' if creating else 'report_corrected', inc)
     if released:
         await manager.broadcast(released)
     return {'report': report_data, 'incident': incident_data}
