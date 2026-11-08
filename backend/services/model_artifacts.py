@@ -24,6 +24,14 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def iter_features(path):
+    """Read one GeoJSON feature at a time without decoding the whole export."""
+    import ijson
+
+    with Path(path).open('rb') as source:
+        yield from ijson.items(source, 'features.item', use_float=True)
+
+
 def verify_artifacts(directory, expected_digest=None):
     directory = Path(directory).resolve()
     manifest_path = directory / "manifest.json"

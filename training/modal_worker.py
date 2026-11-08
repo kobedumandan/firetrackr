@@ -11,6 +11,27 @@ import sys
 from backend.services.retrain_contract import MAX_TRAINING_SECONDS, PROTOCOL_VERSION, source_hashes, validate_job_id
 
 
+def prepare_cloud_snapshot(directory):
+    """Build and verify the complete training snapshot inside the Modal worker."""
+    from backend.services.retrain_contract import cloud_snapshot_files
+    from backend.services.label_snapshot import build_snapshot, write_snapshot
+    from backend.services.model_artifacts import read_json, verify_artifacts
+
+    directory = Path(directory)
+    inputs = directory / 'snapshot-inputs'
+    cloud_snapshot_files(inputs)
+    manifest = read_json(inputs / 'cloud_snapshot.json')
+    champion, _, _ = verify_artifacts(directory / 'champion')
+    expected_baseline = champion.get('baseline_sha256') or champion['files']['predicted_constraints.geojson']
+    if manifest['files']['baseline.geojson'] != expected_baseline:
+        raise ValueError('Cloud snapshot changes the champion road baseline')
+    collection, history, snapshot = build_snapshot(inputs / 'baseline.geojson',
+                                                   read_json(inputs / 'annotations.json'), manifest.get('created_by'))
+    if snapshot['label_hash'] != manifest['label_hash']:
+        raise ValueError('Cloud snapshot effective labels disagree with the reserved job')
+    return write_snapshot(directory / 'snapshot', collection, history, snapshot)
+
+
 def run_job(job_id, volume, root="/jobs", source_root="/opt/firetrackr", device="cuda"):
     from modal import current_function_call_id
 
@@ -53,6 +74,9 @@ def run_job(job_id, volume, root="/jobs", source_root="/opt/firetrackr", device=
         if config.get("parameters"):
             raise ValueError("Cloud jobs use the fixed registry training parameters")
         publish("running")
+        if config.get('snapshot_mode') == 'cloud':
+            prepare_cloud_snapshot(directory)
+            volume.commit()
         command = [sys.executable, "-u", "-m", "training.train_constraints",
                    "--snapshot", str(directory / "snapshot"), "--champion", str(directory / "champion"),
                    "--out", str(directory / "bundle"), "--style", str(directory / "style_config.json"),

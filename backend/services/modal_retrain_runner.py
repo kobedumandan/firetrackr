@@ -13,7 +13,8 @@ from grpclib.exceptions import StreamTerminatedError
 
 from .model_artifacts import CANDIDATE_FILES, read_json, verify_artifacts
 from .retrain_runner import RunnerConfigurationError, RunnerUnavailable
-from .retrain_contract import MAX_TRAINING_SECONDS, PROTOCOL_VERSION, source_hashes, snapshot_files, validate_job_id
+from .retrain_contract import (MAX_TRAINING_SECONDS, PROTOCOL_VERSION, source_hashes,
+                              snapshot_files, cloud_snapshot_files, validate_job_id)
 
 
 class ModalRunner:
@@ -99,7 +100,8 @@ class ModalRunner:
         if not isinstance(version, str) or not re.fullmatch(r"v[1-9][0-9]*", version):
             raise ValueError("A registry-assigned version is required")
         snapshot_dir, champion_dir = Path(snapshot_dir), Path(champion_dir)
-        snapshot_names = snapshot_files(snapshot_dir)
+        cloud_snapshot = (snapshot_dir / 'cloud_snapshot.json').is_file()
+        snapshot_names = cloud_snapshot_files(snapshot_dir) if cloud_snapshot else snapshot_files(snapshot_dir)
         champion, _, _ = verify_artifacts(champion_dir)
         hashes = source_hashes(self.repo_root)
         job_id = job_id or uuid.uuid4().hex
@@ -110,6 +112,8 @@ class ModalRunner:
         job = self._job(job_id) if job_id in self.jobs else self.reserve(job_id)
         request = {"protocol": PROTOCOL_VERSION, "version": version, "parameters": {},
                    "source_hashes": hashes, "timeout_seconds": self.timeout_seconds, "created_at": job["created_at"]}
+        if cloud_snapshot:
+            request['snapshot_mode'] = 'cloud'
         self._save_job(job_id, job)
         # Persist the marker before cold starts/network I/O, so another polling
         # worker cannot mistake a slow submission for a missing reservation.
@@ -119,11 +123,16 @@ class ModalRunner:
                 "The Modal trainer is out of date. Update the deployed trainer to match "
                 "the backend, then retry retraining.")
         volume = self._volume(job)
-        with volume.batch_upload() as batch:
-            for name in snapshot_names:
-                batch.put_file(snapshot_dir / name, f"/{job_id}/snapshot/{name}")
-            for name in sorted(set(champion["files"]) | {"manifest.json"}):
+        # Flush one artifact at a time so the SDK cannot buffer multiple large
+        # baseline/champion exports concurrently on a small API instance.
+        target = 'snapshot-inputs' if cloud_snapshot else 'snapshot'
+        for name in snapshot_names:
+            with volume.batch_upload() as batch:
+                batch.put_file(snapshot_dir / name, f"/{job_id}/{target}/{name}")
+        for name in sorted(set(champion["files"]) | {"manifest.json"}):
+            with volume.batch_upload() as batch:
                 batch.put_file(champion_dir / name, f"/{job_id}/champion/{name}")
+        with volume.batch_upload() as batch:
             batch.put_file(self.repo_root / "backend/data/constraint_style_config.json", f"/{job_id}/style_config.json")
             batch.put_file(io.BytesIO(json.dumps(request).encode()), f"/{job_id}/request.json")
         # Record intent before spawn. An interrupted acknowledgement is recovered

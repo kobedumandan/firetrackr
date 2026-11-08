@@ -140,11 +140,18 @@ An expired queue item refuses to start after 24 hours. Training is billed by Mod
 when an admin submits a changed-label retrain from Settings > Model.
 
 Only the source files listed in `backend/services/retrain_contract.py` are included in
-the image. Submission verifies deployed source hashes, then uploads the exact
-snapshot files, hashed champion artifacts and style file into the named Modal
+the image. Submission verifies deployed source hashes, then uploads frozen
+annotation/baseline inputs, their hashes, champion artifacts and style into the named Modal
 Volume. Whole repository/environment mounts are disabled. The image contains no
 database module or connection credentials. Backend runtime credentials, incident
 records, report uploads and personnel data are not part of the transfer.
+
+Protocol 2 constructs the complete GeoJSON/Parquet snapshot inside the cloud
+worker. It verifies baseline lineage and the effective label hash reserved by
+the API before training. The backend uses `ijson` for compact, streamed label
+summaries and uploads artifacts one at a time; it does not write a full snapshot
+for Modal jobs. Local-runner snapshots retain their existing behavior. Update
+both the private trainer and backend when changing this shared protocol/source.
 
 `ModalRunner.submit/status/fetch` persists credential-free recovery metadata in
 the existing training row's report JSON before submission, updating it with the

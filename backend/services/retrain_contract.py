@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import re
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 MAX_TRAINING_SECONDS = 3600
 SOURCE_FILES = (
     "training/__init__.py", "training/audit.py", "training/bundle.py",
@@ -48,3 +48,26 @@ def snapshot_files(directory):
     if (directory / "manifest.json").is_symlink():
         raise ValueError("Snapshot manifest must be a regular file")
     return sorted(expected | {"manifest.json"})
+
+
+def cloud_snapshot_files(directory):
+    """Validate raw label inputs that Modal will turn into a full snapshot."""
+    from .model_artifacts import read_json, sha256
+
+    directory = Path(directory)
+    marker = directory / 'cloud_snapshot.json'
+    if marker.is_symlink():
+        raise ValueError('Cloud snapshot manifest must be a regular file')
+    manifest = read_json(marker)
+    expected = {'baseline.geojson', 'annotations.json'}
+    if (not isinstance(manifest, dict) or manifest.get('schema_version') != 1
+            or not isinstance(manifest.get('files'), dict)
+            or set(manifest.get('files', {})) != expected
+            or not isinstance(manifest.get('label_hash'), str)
+            or not re.fullmatch(r'[a-f0-9]{64}', manifest['label_hash'])):
+        raise ValueError('Invalid cloud snapshot inputs')
+    for name, digest in manifest['files'].items():
+        path = directory / name
+        if path.is_symlink() or sha256(path) != digest:
+            raise ValueError(f'Cloud snapshot integrity check failed: {name}')
+    return sorted(expected | {'cloud_snapshot.json'})

@@ -8,7 +8,49 @@ Blueprint's Settings page if you want to apply configuration changes manually.
 
 This is a trial configuration, not evidence of a working hosted deployment.
 
-## Model processing memory exhaustion — November 9, 2026
+## Cloud snapshot preparation — November 9, 2026
+
+Later runtime logs repeatedly report `memory.current` around 507 MB against a
+536,870,912-byte limit: about 484 MiB used with only 28 MiB remaining. Model
+summary returned 503 while liveness stayed healthy. The original 96 MiB guard
+therefore prevented Model settings from checking effective labels or retraining.
+
+Modal submission now transfers a frozen annotation list, the verified original
+baseline export, a hashed input manifest, champion artifacts and style. Protocol
+version 2 builds the complete GeoJSON/Parquet snapshot inside the Modal worker,
+checks the baseline digest against the champion lineage, and verifies that the
+effective label hash matches the backend reservation before starting training.
+The API computes only a compact label summary by streaming features with `ijson`;
+it retains coordinates only for edge selections and legacy drawings that need
+them. Local training still writes its full snapshot in the API.
+
+Model summary, initialization, Modal reservation and result completion use a
+32 MiB working-set allowance; local snapshot reservation retains 96 MiB. The
+cgroup guard subtracts inactive file cache (`inactive_file` on v2 and
+`total_inactive_file` on v1), following standard
+[Linux container memory accounting](https://docs.docker.com/reference/cli/docker/container/stats/).
+Unreadable cache counters fall back to the total. When headroom is insufficient,
+the API collects unreachable objects and releases unused glibc heap pages before
+checking again. It still refuses processing when the working set is too large.
+This cannot reserve memory against unrelated requests or guarantee every workload
+fits the host. Modal uploads flush one artifact at a time to bound overlap.
+Candidate preview and geometry/cost validation stream exports rather than holding
+two decoded road layers during review.
+
+Six annotation scenarios preserve complete-snapshot label hashes and summary
+counts. Isolated SQLite/mocked-cloud checks cover creation of the full snapshot
+in the worker, refusal of altered annotations/labels/baselines, submission with
+62 MiB free that the old guard refused, lost acknowledgements, restart recovery,
+storage and streamed validation. The Windows Panabo graph/map profile measured
+357.90 MiB peak with the previous full-snapshot preparation and 344.77 MiB with
+compact preparation across three submissions. These are not Render measurements.
+
+Both backend and Modal must use this protocol/source revision. Deploy the private
+trainer from the same checkout, then manually deploy the latest backend commit.
+Keep `/health/live`; no database migration or new credentials are required.
+Existing running jobs retain their original deployed worker and recovery metadata.
+
+## Initial model processing memory guard — November 9, 2026
 
 The Events screenshot for 02:02 Asia/Manila explicitly reports usage above the
 512 MB instance limit. `/health/live` continued returning 200 through 02:02:54,

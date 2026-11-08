@@ -6,9 +6,11 @@ Activation is handled separately by model_promoter after explicit admin review.
 """
 import asyncio
 from datetime import datetime, timezone
+import json
 import logging
 from pathlib import Path
 import re
+import shutil
 import uuid
 
 from sqlalchemy import text
@@ -18,11 +20,12 @@ from config import (MODEL_VERSIONS_ROOT, RETRAIN_WORK_ROOT, RETRAIN_PYTHON,
                     RETRAIN_MODAL_APP, RETRAIN_MODAL_VOLUME, RETRAIN_MODAL_ENVIRONMENT,
                     MODEL_ARTIFACT_STORAGE)
 from models import ModelVersion
-from services.label_snapshot import build_snapshot, read_database_snapshot, write_snapshot
-from services.model_artifacts import verify_artifacts, sha256, read_json
+from services.label_snapshot import (read_database_snapshot, write_snapshot,
+                                    read_database_annotations, label_summary)
+from services.model_artifacts import verify_artifacts, sha256, read_json, iter_features
 from services.model_bundle_store import BundleStoreUnavailable, check_model_storage, publish_model_bundle
 from services.retrain_runner import LocalRunner, RunnerConfigurationError, RunnerUnavailable
-from services.resource_limits import container_memory, serialized_memory_work
+from services.resource_limits import container_memory, release_unused_memory, serialized_memory_work
 
 logger = logging.getLogger(__name__)
 _REGISTRY_LOCK_KEY = 74120933
@@ -34,14 +37,17 @@ class RegistryError(Exception):
         self.status_code = status_code
 
 
-def _require_model_memory():
-    # Snapshots still need temporary decoded GIS data even with cloud training.
-    # Refuse before allocating when the host is already near its hard limit.
+def _require_model_memory(required_mib=96):
+    # Bound the operation's temporary work before an already pressured host
+    # reaches its hard limit. Cloud preparation uses compact label records.
     budget = container_memory()
+    if budget is not None and budget[1] - budget[0] < required_mib * 1024 * 1024:
+        release_unused_memory()
+        budget = container_memory()
     if budget is not None:
         used, limit = budget
-        if limit - used < 96 * 1024 * 1024:
-            logger.warning('Model operation deferred: container memory used=%s limit=%s', used, limit)
+        if limit - used < required_mib * 1024 * 1024:
+            logger.warning('Model operation deferred: container working_set=%s limit=%s required_mib=%s', used, limit, required_mib)
             raise RegistryError('Insufficient backend memory for model processing. Retry after load decreases or use an instance with more memory.', 503)
 
 
@@ -91,7 +97,7 @@ def serialize_version(row):
 
 @serialized_memory_work
 def registry_summary(db):
-    _require_model_memory()
+    _require_model_memory(32)
     champion = db.query(ModelVersion).filter_by(status="champion").one_or_none()
     training = db.query(ModelVersion).filter_by(status="training").one_or_none()
     if champion is None:
@@ -101,7 +107,7 @@ def registry_summary(db):
     baseline = get_version(db, "v1")
     baseline_dir = artifact_directory(baseline)
     verify_artifacts(baseline_dir, baseline.bundle_manifest_sha256)
-    _, _, snapshot = read_database_snapshot(db, baseline_dir / "predicted_constraints.geojson", None)
+    snapshot = label_summary(baseline_dir / "predicted_constraints.geojson", read_database_annotations(db))
     changed = snapshot["label_hash"] != champion.label_hash
     trained_count = (champion.report or {}).get("segments")
     if champion.version != "v1":
@@ -127,7 +133,7 @@ def preview_version(db, version):
     features = []
     if changes:
         from services.constraint_segments import segment_uid
-        for feature in read_json(directory / "predicted_constraints.geojson")["features"]:
+        for feature in iter_features(directory / "predicted_constraints.geojson"):
             uid = segment_uid(feature)
             if uid not in changes:
                 continue
@@ -144,6 +150,7 @@ def preview_version(db, version):
 
 
 def initialize_registry(db, actor):
+    _require_model_memory(32)
     registry_lock(db)
     existing = db.query(ModelVersion).first()
     if existing:
@@ -159,7 +166,7 @@ def initialize_registry(db, actor):
     from ai import Config
     if not Config.PREDICTED_CONSTRAINTS_PATH or sha256(Config.PREDICTED_CONSTRAINTS_PATH) != manifest["files"]["predicted_constraints.geojson"]:
         raise RegistryError("Verified v1 does not match the configured routing export", 422)
-    _, _, snapshot = build_snapshot(directory / "predicted_constraints.geojson", [], actor)
+    snapshot = label_summary(directory / "predicted_constraints.geojson", [], actor)
     row = ModelVersion(version="v1", status="champion", label_hash=snapshot["label_hash"],
                        split_version=manifest["split_version"], threshold=manifest["threshold"],
                        report=report, bundle_manifest_sha256=digest, created_by=actor)
@@ -207,7 +214,7 @@ def retrain_runner(job_id=None, metadata=None):
 
 @serialized_memory_work
 def _reserve_retrain(db, actor, name=None):
-    _require_model_memory()
+    _require_model_memory(32 if RETRAIN_RUNNER == 'modal' else 96)
     registry_lock(db)
     if db.query(ModelVersion).filter_by(status="training").first():
         raise RegistryError("A retrain is already active")
@@ -222,7 +229,11 @@ def _reserve_retrain(db, actor, name=None):
     if base_manifest["files"]["predicted_constraints.geojson"] != (manifest.get("baseline_sha256") or manifest["files"]["predicted_constraints.geojson"]):
         raise RegistryError("The road/feature baseline changed; reconcile and verify it first", 422)
     runner = retrain_runner()
-    collection, history, snapshot = read_database_snapshot(db, baseline / "predicted_constraints.geojson", actor)
+    if RETRAIN_RUNNER == 'modal':
+        annotations = read_database_annotations(db)
+        snapshot = label_summary(baseline / 'predicted_constraints.geojson', annotations, actor)
+    else:
+        collection, history, snapshot = read_database_snapshot(db, baseline / "predicted_constraints.geojson", actor)
     if snapshot["label_hash"] == champion.label_hash:
         raise RegistryError("No new effective labels since the champion; retraining refused")
     numbers = [int(v[1:]) for v, in db.query(ModelVersion.version).all() if re.fullmatch(r"v[1-9][0-9]*", v)]
@@ -231,7 +242,16 @@ def _reserve_retrain(db, actor, name=None):
         raise RegistryError("Unregistered model artifacts already occupy the next version; inspect them first")
     job_id = uuid.uuid4().hex
     snapshot_dir = RETRAIN_WORK_ROOT / "snapshots" / job_id
-    write_snapshot(snapshot_dir, collection, history, snapshot)
+    if RETRAIN_RUNNER == 'modal':
+        snapshot_dir.mkdir(parents=True, exist_ok=False)
+        shutil.copyfile(baseline / 'predicted_constraints.geojson', snapshot_dir / 'baseline.geojson')
+        with (snapshot_dir / 'annotations.json').open('w', encoding='utf-8') as output:
+            json.dump(annotations, output, allow_nan=False)
+        inputs = {'schema_version': 1, 'label_hash': snapshot['label_hash'], 'created_by': actor,
+                  'files': {name: sha256(snapshot_dir / name) for name in ('baseline.geojson', 'annotations.json')}}
+        (snapshot_dir / 'cloud_snapshot.json').write_text(json.dumps(inputs), encoding='utf-8')
+    else:
+        write_snapshot(snapshot_dir, collection, history, snapshot)
     row = ModelVersion(version=version, name=name, status="training", label_hash=snapshot["label_hash"],
                        split_version=champion.split_version, champion_version=champion.version,
                        job_id=job_id, created_by=actor,
@@ -323,7 +343,7 @@ def cancel_retrain(db, version, actor):
 
 @serialized_memory_work
 def _complete_job(db, row, runner):
-    _require_model_memory()
+    _require_model_memory(32)
     try:
         status = runner.status(row.job_id)
     except KeyError:

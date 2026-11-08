@@ -19,16 +19,19 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ### Model-processing memory budget (2026-11-09)
 
-Snapshot building avoids unconditional spatial indexes and duplicate prediction
-properties, and streams label hashing and JSON writes while preserving existing
-snapshot labels and hashes. Model summary, retrain reservation and result
-completion require 96 MiB available in readable finite Linux cgroup budgets;
-requests return 503 under pressure and completion polling retries without
-discarding the training reservation. Result completion shares the memory-work
-lock with snapshots and coverage. The guard cannot reserve memory against
-unrelated requests. Redeploy the Modal trainer with backend changes to the
-shared snapshot source and artifact-hashing dependency; the source gate rejects
-older trainers. See [Render trial notes](documentation/render-free-trial.md).
+Modal protocol 2 submits verified baseline/annotation inputs; the cloud worker
+builds the complete training snapshot and checks its effective label hash against
+the backend reservation. The API streams compact label summaries using `ijson`,
+without prediction attributes or local Parquet/GeoJSON snapshot writes. Local
+training retains full snapshots. Preview and export review also stream features.
+Model summary/initialization, Modal reservation and result completion require
+32 MiB working-set headroom in finite Linux cgroups; local reservation retains
+96 MiB. The guard excludes reclaimable inactive file cache and retries after
+garbage collection/glibc heap release before returning 503. Completion polling
+retains pressured jobs for retry. The shared memory-work lock limits overlapping
+large operations but cannot reserve memory against unrelated requests. Redeploy
+Modal and the backend together; the source/protocol gate rejects older trainers.
+See [Render trial notes](documentation/render-free-trial.md).
 
 ### Hosted health checks and road catalog (2026-11-09)
 

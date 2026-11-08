@@ -82,7 +82,7 @@ def override_preserves_labels(feature, row):
     return kind == current['constraint_type'] and severity == current['narrow_severity']
 
 
-def build_snapshot(baseline_path, annotations, created_by=None, purpose="training"):
+def build_snapshot(baseline_path, annotations, created_by=None, purpose="training", *, label_only=False):
     from .constraint_segments import SegmentIndex, segment_uid
 
     if purpose not in ("training", "synthetic_validation"):
@@ -100,8 +100,21 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
     from .model_artifacts import sha256
 
     baseline_digest = sha256(baseline_path)
-    with Path(baseline_path).open(encoding='utf-8') as source:
-        original = json.load(source)["features"]
+    if label_only:
+        from .model_artifacts import iter_features
+
+        needs_geometry = any(row.get('segment_uids') is None or any(
+            uid.startswith('edge-v1-') for uid in (row.get('segment_uids') or [])) for row in annotations)
+        original = []
+        for feature in iter_features(baseline_path):
+            props = feature['properties']
+            original.append({'type': 'Feature',
+                             'geometry': feature['geometry'] if needs_geometry else None,
+                             'properties': {**{key: props[key] for key in LABEL_FIELDS if key in props},
+                                            'segment_uid': segment_uid(feature)}})
+    else:
+        with Path(baseline_path).open(encoding='utf-8') as source:
+            original = json.load(source)["features"]
     # Only legacy drawings without saved IDs need metric snapping. Modern
     # overrides and edge selections do not need a second projected road index.
     index = SegmentIndex(original) if any(row.get('segment_uids') is None for row in annotations) else None
@@ -258,6 +271,11 @@ def write_snapshot(directory, collection, history, manifest):
 
 def read_database_snapshot(db, baseline_path, created_by):
     """Read annotations once, retaining tombstones; no DB writes or credentials."""
+    return build_snapshot(baseline_path, read_database_annotations(db), created_by)
+
+
+def read_database_annotations(db):
+    """Transfer only the explicit label fields; never users or backend settings."""
     from models import GnnConstraint
 
     rows = db.query(GnnConstraint).order_by(GnnConstraint.constraint_id).all()
@@ -267,7 +285,12 @@ def read_database_snapshot(db, baseline_path, created_by):
                     "traffic_schedule": row.traffic_schedule,
                     "baseline_segment_uid": row.baseline_segment_uid,
                     "is_active": row.is_active} for row in rows]
-    return build_snapshot(baseline_path, annotations, created_by)
+    return annotations
+
+
+def label_summary(baseline_path, annotations, created_by=None):
+    """Compute effective labels without retaining prediction attributes or writing files."""
+    return build_snapshot(baseline_path, annotations, created_by, label_only=True)[2]
 
 
 def snapshot_from_database(db, baseline_path, directory, created_by):

@@ -8,7 +8,7 @@ from ai import Config
 from models import ModelVersion
 from services import model_registry as registry
 from services import routing_reload
-from services.model_artifacts import read_json, verify_artifacts
+from services.model_artifacts import read_json, verify_artifacts, iter_features
 from services.model_source import source_for_version
 
 logger = logging.getLogger(__name__)
@@ -17,19 +17,23 @@ FIXED_PARAMETERS = {"epochs": 700, "lr": 0.002, "patience": 80, "seed": 42, "thr
 
 def _check_export(directory, original_directory, style_path):
     from services.constraint_segments import segment_uid
-    def geometries(path):
-        features = read_json(path).get("features", [])
+    def geometries(path, validate_multiplier=False):
         result = {}
-        for feature in features:
+        for feature in iter_features(path):
             uid = segment_uid(feature)
             if uid in result:
                 raise registry.RegistryError("Model export contains duplicate road identities")
             result[uid] = segment_uid({"geometry": feature["geometry"], "properties": {}})
+            multiplier = (feature.get('properties') or {}).get('routing_multiplier')
+            if validate_multiplier and multiplier is not None and (
+                    isinstance(multiplier, bool) or not isinstance(multiplier, (int, float))
+                    or not math.isfinite(multiplier) or multiplier < 1):
+                raise registry.RegistryError("Model export has an invalid routing multiplier")
         if not result:
             raise registry.RegistryError("Model export has no road segments")
-        return features, result
-    features, actual = geometries(directory / "predicted_constraints.geojson")
-    _, original = geometries(original_directory / "predicted_constraints.geojson")
+        return result
+    actual = geometries(directory / "predicted_constraints.geojson", validate_multiplier=True)
+    original = geometries(original_directory / "predicted_constraints.geojson")
     if actual != original:
         raise registry.RegistryError("Model export changes the verified road identities or geometry")
     style = read_json(style_path) if style_path else {}
@@ -40,11 +44,6 @@ def _check_export(directory, original_directory, style_path):
             multiplier = value["routing_multiplier"]
             if isinstance(multiplier, bool) or not isinstance(multiplier, (int, float)) or not math.isfinite(multiplier) or multiplier < 1:
                 raise registry.RegistryError("Model style has an invalid routing multiplier")
-    for feature in features:
-        props = feature.get("properties", {})
-        multiplier = props.get("routing_multiplier")
-        if multiplier is not None and (isinstance(multiplier, bool) or not isinstance(multiplier, (int, float)) or not math.isfinite(multiplier) or multiplier < 1):
-            raise registry.RegistryError("Model export has an invalid routing multiplier")
 
 
 def check_promotion(db, row, champion):
