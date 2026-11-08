@@ -10,7 +10,7 @@ services:
     autoDeployTrigger: "off"
     buildCommand: python -m pip install --no-cache-dir -r backend/requirements.txt -r backend/requirements-modal.txt
     startCommand: cd backend && python run.py
-    healthCheckPath: /health
+    healthCheckPath: /health/live
     envVars:
       - key: HOST
         value: "0.0.0.0"

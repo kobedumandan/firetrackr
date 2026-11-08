@@ -3,6 +3,8 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import cast, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -36,13 +38,15 @@ def _road_edges():
 
 @router.get('/api/constraints/road-edges')
 def get_road_edges(_auth: Users = Depends(require_admin)):
-    return {'type': 'FeatureCollection', 'features': list(_road_edges().values())}
+    # Construct the response in this synchronous worker as well: returning a
+    # dict makes FastAPI walk/encode every coordinate on the event loop.
+    return JSONResponse({'type': 'FeatureCollection', 'features': list(_road_edges().values())})
 
 
 @router.post('/api/constraints/edge-selection', status_code=201)
 async def create_edge_selection(body: ConstraintEdgeSelection, db: Session = Depends(get_db),
                                 _auth: Users = Depends(require_admin)):
-    edges = _road_edges()
+    edges = await run_in_threadpool(_road_edges)
     uids = list(dict.fromkeys(body.segment_uids))
     if any(uid not in edges for uid in uids):
         raise HTTPException(422, 'A selected road has changed. Reload the road network and select it again.')

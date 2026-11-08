@@ -53,3 +53,9 @@ def root():
 def health():
     db_ok = check_connection()
     return {"api": "ok", "database": "ok" if db_ok else "unavailable"}
+
+
+@router.get("/health/live")
+async def liveness():
+    """Check the serving event loop without waiting on the DB or thread pool."""
+    return {"api": "ok"}

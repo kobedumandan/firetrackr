@@ -8,6 +8,8 @@ from functools import lru_cache
 import hashlib
 import json
 
+from services.resource_limits import serialized_memory_work
+
 
 def edge_uid(coordinates):
     points = tuple(tuple(round(float(v), 6) for v in p[:2]) for p in coordinates)
@@ -56,11 +58,14 @@ def build_road_edges(features):
     return result
 
 
-@lru_cache(maxsize=2)
+@serialized_memory_work
+@lru_cache(maxsize=1)
 def _load(path, modified_ns):
     import geopandas as gpd
-    roads = gpd.read_file(path).to_crs(epsg=4326)
-    return build_road_edges(json.loads(roads.to_json())['features'])
+    # Only these attributes are used by the catalog. Stream features rather
+    # than retaining a full GeoJSON string and its decoded copy together.
+    roads = gpd.read_file(path, columns=['name', 'highway', 'surface']).to_crs(epsg=4326)
+    return build_road_edges(roads.iterfeatures())
 
 
 def load_road_edges():

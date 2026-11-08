@@ -8,6 +8,36 @@ Blueprint's Settings page if you want to apply configuration changes manually.
 
 This is a trial configuration, not evidence of a working hosted deployment.
 
+## Road catalog and health timeout — November 9, 2026
+
+The supplied logs last show a health response at 01:33:10 Asia/Manila, a road-edge
+preflight at 01:33:13, shutdown at 01:33:55 and an instance restart at 01:34:01.
+The Events screenshot reports a five-second HTTP health timeout. There is no
+traceback or explicit memory-exhaustion event in this excerpt; CPU, memory and
+database metrics are needed to establish the exact hosted cause.
+
+`/health` retains the dashboard's database/PostGIS diagnostic response. That
+probe can wait for a pooled connection or a database connection whose configured
+timeout exceeds Render's five-second health deadline. The Blueprint now probes
+`/health/live`, an async endpoint with no database or worker-thread dependency.
+It checks event-loop responsiveness after startup; it does not certify database
+or routing readiness. After deploying this code to an existing manually managed
+service, set **Settings → Health Check Path** to `/health/live` (or synchronize the
+Blueprint). Deploy the route before changing the path on a running old version.
+
+The road catalog now reads only its required attributes and streams features
+without the full GeoJSON encode/decode copy. Cold loads share the existing
+memory-work lock, which also prevents duplicate concurrent catalog builds.
+The road-edge GET encodes its JSON response in the endpoint's worker thread;
+edge-selection saves also load the catalog in a worker thread.
+
+The standalone `backend/tests/check_road_edge_liveness.py` uses no database or
+external requests. It confirms identical catalogs and stable IDs for all 6,657
+Panabo and 1,343 New Corella edges, rejects anonymous catalog access, preserves
+the database diagnostic response, and checks liveness within 200 ms while a
+database probe or road-response encoding is deliberately blocked. These local
+checks do not reproduce Render CPU throttling or prove the hosted issue resolved.
+
 ## Local resource screen — November 4, 2026
 
 The actual FastAPI lifespan and Panabo road graph were exercised on Windows with
@@ -332,6 +362,7 @@ reporter sessions are still lost when the service restarts.
 1. Confirm `/health` reports both API and database `ok`, then confirm
    `/api/routing/status` reports `online`, `panabo` and exported inference.
    `/health` alone is not a routing-readiness check and always returns HTTP 200.
+   Configure Render to probe `/health/live`; it reports API liveness only.
 2. Log in and exercise dashboard reads, the constraint layer, coverage, routing
    and WebSocket reconnection while watching Render's memory and CPU metrics.
 3. Run an incident/dispatch/rerouting lifecycle only against the test database.

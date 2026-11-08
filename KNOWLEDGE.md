@@ -17,6 +17,16 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### Hosted health checks and road catalog (2026-11-09)
+
+Render's Blueprint probes public `GET /health/live`, which checks the serving
+event loop without a database query or thread-pool dependency. The dashboard
+continues using `/health` for its API/database diagnostic. Neither certifies
+routing readiness. Existing manually managed services must deploy the new route
+and update their Health Check Path. Road catalogs stream only required GIS
+attributes under the shared memory-work lock, and road-edge GET JSON encoding
+runs in the worker thread. See [Render trial notes](documentation/render-free-trial.md).
+
 ### Response and Operations shift comparison (2026-11-09)
 
 Shift comparison appears below team analysis in a separate `.ro-shift-analysis`
@@ -2023,6 +2033,7 @@ bodies for exact query parameters and response shapes.
 | Method and path | Responsibility | Access |
 | --- | --- | --- |
 | `GET /`, `GET /health` | Liveness message; database/PostGIS check | Public |
+| `GET /health/live` | API event-loop liveness without database access | Public |
 | `WS /ws?token=...` | Events and ping/pong | JWT signature/expiry at connect; limitations below |
 | `POST /api/auth/login` | Dashboard admin sign-in | Public credentials |
 | `POST /login_user` | Personnel client sign-in | Public credentials |
