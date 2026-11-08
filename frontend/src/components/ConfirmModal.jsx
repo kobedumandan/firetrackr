@@ -7,10 +7,11 @@ import "../styles/ConfirmModal.css";
 const ICONS = {
   delete: "M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z",
   logout: "M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h280v80H200v560h280v80H200Zm440-160-55-58 102-102H360v-80h327L585-622l55-58 200 200-200 200Z",
+  release: "M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z",
 };
 
 /**
- * Reusable confirmation dialog (destructive actions, sign out).
+ * Reusable confirmation dialog (destructive actions, sign out, team release).
  *
  * Props:
  *   className    – optional panel class for scoped styling
@@ -18,8 +19,9 @@ const ICONS = {
  *   title        – heading text
  *   message      – body text / node describing the consequence
  *   details      – optional [{ label, value }] summarising the affected record
- *   icon         – badge icon: "delete" (default) | "logout"
+ *   icon         – badge icon: "delete" (default) | "logout" | "release"
  *   confirmLabel – confirm button text (default "Delete")
+ *   confirmDisabled – disables confirmation when the action is unavailable
  *   cancelLabel  – cancel button text (default "Cancel")
  *   onConfirm    – async fn run when confirmed; may throw to show an inline error
  *   onClose      – fn to dismiss the dialog
@@ -32,6 +34,7 @@ export default function ConfirmModal({
   details,
   icon = "delete",
   confirmLabel = "Delete",
+  confirmDisabled = false,
   cancelLabel = "Cancel",
   onConfirm,
   onClose,
@@ -91,7 +94,7 @@ export default function ConfirmModal({
           <button className="apm-btn-cancel" onClick={onClose} disabled={busy} autoFocus>
             {cancelLabel}
           </button>
-          <button className="cfm-btn-danger" onClick={handleConfirm} disabled={busy}>
+          <button className="cfm-btn-danger" onClick={handleConfirm} disabled={busy || confirmDisabled}>
             {busy ? <span className="apm-spinner" /> : confirmLabel}
           </button>
         </div>

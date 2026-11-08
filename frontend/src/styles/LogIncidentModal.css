@@ -1,0 +1,28 @@
+.log-incident-modal > .cfm-head {
+  flex-shrink: 0;
+}
+
+.log-incident-modal .eim-section-head p,
+.log-incident-modal .intake-disclosure-summary {
+  font-style: italic;
+}
+
+.log-incident-modal .frm-hint,
+.log-incident-modal #nim-barangay-hint,
+.log-incident-modal #lim-barangay-hint {
+  font-style: italic;
+}
+
+.log-incident-modal .intake-location .eim-section-head,
+.log-incident-modal .lim-location .eim-section-head,
+.log-incident-modal .lim-assessment .eim-section-head {
+  margin-bottom: 24px;
+}
+
+.log-incident-modal .intake-disclosure[open] > summary {
+  padding-bottom: 20px;
+}
+
+.log-incident-modal .receipt-section .receipt-note {
+  margin-top: 16px;
+}

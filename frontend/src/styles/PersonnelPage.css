@@ -178,6 +178,7 @@
 /* ── Toolbar ── */
 .per-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 4px 20px 12px;
@@ -229,6 +230,11 @@
   outline: none;
   cursor: pointer;
 }
+.per-filter-select.is-active,
+.per-search-wrap:has(input:not(:placeholder-shown)) .per-search-icon {
+  color: var(--text-primary);
+}
+
 .per-filter-select option { background: var(--bg-card); }
 
 .per-result-count {
@@ -390,7 +396,7 @@
 .per-row-meta {
   font-family: var(--font-condensed);
   font-size: 10.8px;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 75%, transparent);
 }
 .per-row-meta.is-empty { color: var(--text-tertiary); }
 .per-row-time {
@@ -430,6 +436,7 @@
 .per-tone-amber { background: var(--accent-amber-dim); color: var(--accent-amber); }
 .per-tone-fire  { background: var(--accent-fire-dim);  color: var(--accent-fire); }
 .per-tone-muted { background: var(--chip-muted-bg);    color: var(--chip-muted-fg); }
+.per-status-pill.per-tone-muted { color: var(--text-secondary); }
 
 .per-blink-dot {
   width: 5px;
@@ -643,7 +650,7 @@
   border: 1px solid var(--border-dim);
   border-radius: 12px;
   padding: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 28px;
 }
 
 .per-hero-top {
@@ -701,8 +708,8 @@
   font-weight: 600;
   letter-spacing: -0.1px;
   text-transform: uppercase;
-  color: var(--text-secondary);
-  margin-bottom: 5px;
+  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
+  margin-bottom: 10px;
 }
 .per-ds-value {
   font-family: var(--font-condensed);
@@ -720,7 +727,7 @@
   text-transform: uppercase;
 }
 
-.per-info-section { margin-bottom: 16px; }
+.per-info-section { margin-bottom: 28px; }
 
 .per-info-title {
   font-family: var(--font-condensed);
@@ -728,7 +735,7 @@
   font-weight: 600;
   letter-spacing: -0.2px;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border-dim);
   margin-bottom: 12px;
@@ -784,7 +791,7 @@
 
 .per-muted { color: var(--text-tertiary); }
 
-/* Blue (standby) joins the tone set the page shares with Trucks. */
+/* Blue tone utilities. */
 .per-tile-blue { background: var(--accent-blue-dim); color: var(--accent-blue); }
 .per-tone-blue { background: var(--accent-blue-dim); color: var(--accent-blue); }
 .per-text-blue { color: var(--accent-blue); }
@@ -943,6 +950,14 @@
 .per-info-empty {
   font-size: 10.8px;
   color: var(--text-secondary);
+}
+
+.per-readiness-blocker {
+  margin: 6px 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: normal;
 }
 
 /* Columns sum to 805px (Actions is the last 120). Below that the Actions

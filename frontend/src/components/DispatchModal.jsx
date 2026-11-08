@@ -3,11 +3,18 @@ import { createPortal } from "react-dom";
 import { fetchTeams, createDispatch } from "../api";
 import { getCurrentShift } from "../utils/shift";
 import "../styles/AppModal.css";
+import "../styles/ConfirmModal.css";
+import "../styles/DispatchModal.css";
 import { ICON_CLOSE, ICON_TRUCK, ICON_CHEVRON, ICON_ROUTE } from "./incidentFormOptions";
 import { Icon, SectionHead, Callout } from "./incidentForm";
 
 const isLeader = (m) => m.member_role === "Team Leader";
 const stationOf = (t) => (t.station_name && t.station_name !== "—" ? t.station_name : null);
+const separator = <span className="dpm-separator" aria-hidden="true"> | </span>;
+const readinessBlocker = (team) => team.dispatch_blocker
+  || (team.truck_id && team.truck_status && team.truck_status !== 'available' ? 'Assigned truck is unavailable.' : '')
+  || (team.members || []).find(member => member.return_assignment_locked)?.return_assignment_reason
+  || '';
 
 export default function DispatchModal({ incident, onClose, onDispatched }) {
   const [teams, setTeams] = useState([]);
@@ -34,7 +41,7 @@ export default function DispatchModal({ incident, onClose, onDispatched }) {
   }, [onClose, saving, selected]);
 
   async function handleDispatch() {
-    if (!selected) return;
+    if (!selected || readinessBlocker(selected)) return;
     setSaving(true);
     setError(null);
     try {
@@ -62,7 +69,7 @@ export default function DispatchModal({ incident, onClose, onDispatched }) {
   const shiftLetter = getCurrentShift().letter;
   const availableTeams = teams.filter(
     (t) => t.team_status === "standby" && t.shift_name === `Shift ${shiftLetter}`
-  );
+  ).sort((a, b) => Number(!readinessBlocker(b)) - Number(!readinessBlocker(a)));
   const crew = selected
     ? [...(selected.members || [])].sort((a, b) => isLeader(b) - isLeader(a))
     : [];
@@ -70,30 +77,33 @@ export default function DispatchModal({ incident, onClose, onDispatched }) {
 
   return createPortal(
     <div className="apm-overlay adm-overlay" onMouseDown={(e) => e.target === e.currentTarget && !saving && onClose()}>
-      <div className="apm-panel eim-panel adm-panel" role="dialog" aria-modal="true" aria-labelledby="dpm-title">
-        <div className="eim-header">
-          <div className="eim-header-main">
+      <div className="apm-panel eim-panel adm-panel dpm-panel" role="dialog" aria-modal="true" aria-labelledby="dpm-title">
+        <div className="cfm-head dpm-header">
+          <span className="cfm-badge">
+            <Icon d={ICON_TRUCK} className="cfm-badge-icon" />
+          </span>
+          <div className="cfm-head-text">
             <div className="apm-eyebrow">DISPATCH</div>
-            <div id="dpm-title" className="eim-title">
+            <div id="dpm-title" className="cfm-title">
               {selected ? "Confirm dispatch" : "Send a team"}
-            </div>
-            <div className="adm-context">
-              <span className="adm-context-code">{incident.id}</span>
-              {incident.loc && <span>{incident.loc}</span>}
-              {incident.sev && <span>{incident.sev}</span>}
             </div>
           </div>
           <button className="eim-close" onClick={onClose} aria-label="Close" disabled={saving}>
             <Icon d={ICON_CLOSE} />
           </button>
+          <div className="eim-subtitle">
+            <span className="eim-chip eim-chip-code">{incident.id}</span>
+            {incident.loc && <span className="eim-chip">{incident.loc}</span>}
+            {incident.sev && <span className="eim-chip">{incident.sev}</span>}
+          </div>
         </div>
 
         <div className="eim-body">
           {!selected ? (
             <section className="eim-section">
               <SectionHead
-                title="Available teams"
-                desc={loading ? "Loading…" : `${availableTeams.length} on standby · Shift ${shiftLetter}`}
+                title="Standby Teams"
+                desc={loading ? "Loading…" : <>{availableTeams.length} on standby{separator}Shift {shiftLetter}</>}
               />
               {loading ? (
                 <div className="adm-cands" aria-busy="true">
@@ -114,20 +124,33 @@ export default function DispatchModal({ incident, onClose, onDispatched }) {
                   {availableTeams.map((team) => {
                     const leader = (team.members || []).find(isLeader);
                     const station = stationOf(team);
+                    const blocker = readinessBlocker(team);
+                    const truckReadiness = blocker.match(/^Truck not ready:\s*(.*?)\.\s*([\s\S]*)$/i);
+                    const truckNotReady = /^Truck not ready:/i.test(blocker) || (team.truck_status && team.truck_status !== "available");
+                    const truckPlate = team.truck_platenum || truckReadiness?.[1];
                     return (
                       <li key={team.team_id}>
-                        <button type="button" className="dpm-team" onClick={() => setSelected(team)}>
+                        <button type="button" className={`dpm-team${!blocker ? " dpm-team-eligible" : ""}`} disabled={!!blocker} title={blocker || undefined} onClick={() => setSelected(team)}>
                           <span className="dpm-team-av"><Icon d={ICON_TRUCK} /></span>
                           <span className="dpm-team-info">
                             <span className="dpm-team-name">
                               {team.team_name}
-                              {team.team_code && <span className="dpm-team-code">{team.team_code}</span>}
                             </span>
                             <span className="dpm-team-meta">
-                              {[leader?.name, station || "No station assigned"].filter(Boolean).join(" · ")}
-                              {!team.station_latitude && <span className="dpm-flag"> · no station GPS</span>}
-                              {team.station_status === "inactive" && <span className="dpm-flag"> · station inactive</span>}
+                              {leader?.name && <>{leader.name}{separator}</>}
+                              {station || "No station assigned"}
+                              {!team.station_latitude && <>{separator}<span className="dpm-flag">no station GPS</span></>}
+                              {team.station_status === "inactive" && <>{separator}<span className="dpm-flag">station inactive</span></>}
                             </span>
+                            {blocker && (
+                              <span className="dpm-readiness dpm-flag">
+                                <span className="dpm-readiness-title">
+                                  {truckNotReady ? "Truck not Ready" : "Team not ready"}
+                                  {truckNotReady && truckPlate && <>{separator}{truckPlate}</>}
+                                </span>
+                                <span className="dpm-readiness-reason">{truckReadiness ? truckReadiness[2] : blocker}</span>
+                              </span>
+                            )}
                           </span>
                           <span className="dpm-team-count">{team.member_count} crew</span>
                           <Icon d={ICON_CHEVRON} className="eim-icon dpm-team-chev" />
@@ -145,7 +168,6 @@ export default function DispatchModal({ incident, onClose, onDispatched }) {
                 <span className="adm-result-text">
                   <span className="adm-result-title">
                     {selected.team_name}
-                    {selected.team_code && <span className="dpm-team-code">{selected.team_code}</span>}
                   </span>
                   <span className="adm-result-desc">{stationOf(selected) || "No station assigned"}</span>
                 </span>
@@ -155,7 +177,7 @@ export default function DispatchModal({ incident, onClose, onDispatched }) {
               </div>
 
               <section className="eim-section">
-                <SectionHead title="Crew" desc={`${crew.length} ${crew.length === 1 ? "person" : "people"} will be notified.`} />
+                <SectionHead title="Crew" desc={`${crew.length} ${crew.length === 1 ? "Person" : "People"} will be Notified`} />
                 {crew.length === 0 ? (
                   <div className="dpm-empty">
                     <strong>No personnel assigned to this team.</strong>
@@ -194,7 +216,7 @@ export default function DispatchModal({ incident, onClose, onDispatched }) {
         </div>
 
         <div className="eim-footer">
-          <span className="eim-changes">{selected ? "Step 2 of 2 · Review" : "Step 1 of 2 · Choose a team"}</span>
+          <span className="eim-changes">Step {selected ? 2 : 1} of 2{separator}{selected ? "Review" : "Choose a Team"}</span>
           <div className="eim-footer-actions">
             {!selected ? (
               <button className="apm-btn-cancel" onClick={onClose}>Cancel</button>

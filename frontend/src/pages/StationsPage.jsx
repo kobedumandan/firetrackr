@@ -110,18 +110,18 @@ function dbToStation(s) {
 const TABS = ["all", "main", "sub"];
 const TAB_LABELS = { all: "All", main: "Main Stations", sub: "Substations" };
 
-// Status pills keep to the three accents: green = ready, amber = committed,
-// fire = on scene / out of service; anything else is neutral.
+// Status pills: green = ready, amber = committed / on scene,
+// fire = out of service; anything else is neutral.
 const TONE = {
-  personnel: { standby: "green", dispatched: "amber", onscene: "fire", offduty: "muted" },
-  team: { standby: "green", dispatched: "amber", active: "amber", inactive: "muted" },
-  truck: { available: "green", dispatched: "amber", maintenance: "amber", unavailable: "fire" },
+  personnel: { standby: "green", dispatched: "amber", onscene: "amber", returning: "amber", offduty: "muted" },
+  team: { standby: "green", dispatched: "amber", active: "amber", on_scene: "amber", returning: "amber", inactive: "muted" },
+  truck: { available: "green", dispatched: "amber", on_scene: "amber", returning: "amber", maintenance: "amber", unavailable: "fire" },
 };
-const LABEL = { onscene: "On scene", offduty: "Off duty" };
+const LABEL = { onscene: "On scene", on_scene: "On scene", offduty: "Off duty" };
 
 function Pill({ kind, status }) {
   const tone = TONE[kind][status] || "muted";
-  const live = status === "dispatched" || status === "onscene";
+  const live = ["dispatched", "onscene", "returning"].includes(status);
   const label = LABEL[status] || (status ? status.charAt(0).toUpperCase() + status.slice(1) : "—");
   return (
     <span className={`sta-pill sta-pill-${tone}`}>
@@ -652,7 +652,7 @@ export default function StationsPage({ onShowOnMap, initialStationId = null, onS
           />
         </div>
         <select
-          className="sta-filter-select"
+          className={`sta-filter-select${statusFilter ? " is-active" : ""}`}
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           aria-label="Filter by status"

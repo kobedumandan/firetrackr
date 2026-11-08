@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import AppModal from './AppModal'
+import PhotoViewer from './PhotoViewer'
 import { saveIncidentReport } from '../api'
-import { Field, SectionHead, FormStatus, LockedNote, ReviewChanges } from './incidentForm'
+import { Field, SectionHead, FormStatus, LockedNote, ReviewChanges, Icon } from './incidentForm'
+import { ICON_DOC } from '../utils/exportIcons'
+import '../styles/DispatchModal.css'
 import '../styles/EditFormModal.css'
 import '../styles/AfterActionReport.css'
 
@@ -18,27 +21,35 @@ const MAX_PHOTOS = 8
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024
 const PHOTO_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp'])
 
-export default function AfterActionReportModal({ incident, report, onClose, onSaved }) {
+export default function AfterActionReportModal({ incident, report, sourceReport, fieldReports = [], onClose, onSaved }) {
+  const source = report || sourceReport
   const [initial] = useState(() => ({
-    cause: text(report?.cause),
-    casualties: text(report?.casualties ?? incident.casualties),
-    damage_estimate: text(report?.damage_estimate),
+    cause: text(source?.cause),
+    casualties: text(source?.casualties ?? incident.casualties),
+    damage_estimate: text(source?.damage_estimate),
     remarks: text(incident.remarks),
-    narrative: text(report?.narrative ?? incident.remarks),
-    recommendations: text(report?.recommendations),
+    narrative: text(source?.narrative ?? incident.remarks),
+    recommendations: text(source?.recommendations),
   }))
   const [form, setForm] = useState(initial)
   const [reviewing, setReviewing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [photos, setPhotos] = useState([])
+  const [fieldPhotos, setFieldPhotos] = useState([])
+  const [photoIndex, setPhotoIndex] = useState(null)
   const [dragging, setDragging] = useState(false)
   const photoInput = useRef(null)
   const dragDepth = useRef(0)
   const previewUrls = useRef(new Set())
   const nextPhotoId = useRef(0)
   const existingPhotos = report?.photos ?? []
-  const photoCount = existingPhotos.length + photos.length
+  const photoCount = existingPhotos.length + photos.length + fieldPhotos.length
+  const attachedNames = new Set((report?.photo_attachments || []).map(photo => photo.file_name))
+  const photoReports = fieldReports.length ? fieldReports : sourceReport ? [sourceReport] : []
+  const availablePhotos = photoReports.flatMap(fieldReport => (fieldReport.photo_attachments || [])
+    .map((photo, index) => ({ photo, fieldReport, index })))
+    .filter((item, index, items) => items.findIndex(other => other.photo.file_name === item.photo.file_name) === index)
   useEffect(() => {
     const urls = previewUrls.current
     return () => {
@@ -48,16 +59,31 @@ export default function AfterActionReportModal({ incident, report, onClose, onSa
   const creating = !report
   const values = Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim()]))
   const changes = FIELDS.filter(([key]) => values[key] !== initial[key].trim())
-  const blocked = !values.narrative || (!creating && changes.length === 0 && photos.length === 0)
+  const blocked = !values.narrative || (!creating && changes.length === 0 && photos.length === 0 && fieldPhotos.length === 0)
   const rows = (creating ? FIELDS.filter(([key]) => values[key] !== '') : changes).map(([key, label, long]) => ({
     key, label, long, before: creating ? '' : initial[key], after: values[key],
   }))
-  const closing = incident.status === 'contained'
   if (photos.length) rows.push({
     key: 'photos', label: 'Scene photos', long: true,
     before: `${existingPhotos.length} attached`,
     after: `${photos.length} added: ${photos.map(photo => photo.file.name).join(', ')}`,
   })
+  if (fieldPhotos.length) rows.push({
+    key: 'fieldPhotos', label: 'Field report photos', long: true, before: '',
+    after: fieldPhotos.map(photo => `Field report #${photo.reportId}: ${photo.original_name || `Photo ${photo.index + 1}`}`).join(', '),
+  })
+
+  function toggleFieldPhoto(photo, fieldReport, index) {
+    const selected = fieldPhotos.some(item => item.file_name === photo.file_name)
+    if (!selected && photoCount >= MAX_PHOTOS) {
+      setError(`A report can have up to ${MAX_PHOTOS} photos, including those already attached.`)
+      return
+    }
+    setFieldPhotos(previous => selected
+      ? previous.filter(item => item.file_name !== photo.file_name)
+      : [...previous, { ...photo, reportId: fieldReport.report_id, index }])
+    setError('')
+  }
 
   function set(key, value) {
     setForm(previous => ({ ...previous, [key]: value }))
@@ -130,6 +156,8 @@ export default function AfterActionReportModal({ incident, report, onClose, onSa
     try {
       const body = {
         report_id: report?.report_id ?? null,
+        revision: report?.revision ?? null,
+        ...(fieldPhotos.length ? { field_photo_ids: fieldPhotos.map(photo => photo.photo_id) } : {}),
         ...Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value || null])),
       }
       const result = photos.length
@@ -144,18 +172,23 @@ export default function AfterActionReportModal({ incident, report, onClose, onSa
 
   return <>
     <AppModal
-      eyebrow={creating ? 'ADD AFTER-ACTION REPORT' : 'EDIT AFTER-ACTION REPORT'}
+      variant="badged"
+      icon={<Icon d={ICON_DOC} className="cfm-badge-icon" />}
+      eyebrow={creating ? 'PREPARE INCIDENT REPORT' : 'EDIT INCIDENT REPORT'}
       title={incident.loc || incident.id || 'Incident report'}
       subtitle={incident.id}
       width={620}
-      className="eim-panel edit-form-modal"
+      className="eim-panel edit-form-modal aar-report-modal"
       onClose={onClose}
-      dismissible={!saving && !reviewing}
+      dismissible={!saving && !reviewing && photoIndex === null}
       manageFocus
     >
-      <form onSubmit={handleSubmit} inert={reviewing || undefined}>
+      <form onSubmit={handleSubmit} inert={reviewing || photoIndex !== null || undefined}>
         <div className="eim-body">
           <fieldset className="aar-editor-fields" disabled={saving}>
+            {creating && sourceReport && <LockedNote>
+              Started from {sourceReport.author || `field report #${sourceReport.report_id}`}. Verify the findings before saving. The original submission and its photos remain in Field Reports.
+            </LockedNote>}
             <section className="eim-section">
               <SectionHead title="Outcome" desc="Cause, casualties and estimated damage" />
               <Field label="Reported cause" changed={changes.some(([key]) => key === 'cause')}>
@@ -183,11 +216,29 @@ export default function AfterActionReportModal({ incident, report, onClose, onSa
               </Field>
               {report && <LockedNote>
                 {report.author ? <>Originally filed by <strong>{report.author}</strong>. </> : null}
-                Corrections are recorded under your administrator account
+                Corrections are recorded under your dispatcher account
               </LockedNote>}
             </section>
             <section className="eim-section" aria-label="Report photos">
               <SectionHead title="Scene photos" desc="Complete the incident record" />
+              <div className="aar-field-photo-picker">
+                {!availablePhotos.length && <p className="frm-hint">No field report photos available yet.</p>}
+                {!!availablePhotos.length && <div className="aar-field-photo-carousel" role="region" aria-label="Submitted scene photos">
+                    {availablePhotos.map(({ photo, fieldReport, index }, photoIndex) => {
+                      const attached = attachedNames.has(photo.file_name)
+                      const selected = fieldPhotos.some(item => item.file_name === photo.file_name)
+                      const name = photo.original_name || `Photo ${photoIndex + 1}`
+                      return <div key={photo.photo_id} className={`aar-field-photo${attached || selected ? ' is-selected' : ''}`} title={`${name} · ${fieldReport.author || `Field report #${fieldReport.report_id}`}`}>
+                        <button type="button" className="aar-field-photo-view" aria-label={`View field report ${fieldReport.report_id} photo ${index + 1}`} onClick={() => setPhotoIndex(photoIndex)}>
+                          <img src={photo.url} alt={`Field report ${fieldReport.report_id} scene photo ${index + 1}`} loading="lazy" />
+                        </button>
+                        <label><input type="checkbox" aria-label={`Use field report ${fieldReport.report_id} photo ${index + 1}`} checked={attached || selected}
+                          disabled={attached || (!selected && photoCount >= MAX_PHOTOS)} onChange={() => toggleFieldPhoto(photo, fieldReport, index)} />
+                          <span className="aar-field-photo-name">{attached ? 'Already attached' : name}</span></label>
+                      </div>
+                    })}
+                </div>}
+              </div>
               <div className={`aar-photo-dropzone${dragging && photoCount < MAX_PHOTOS ? ' is-dragging' : ''}${photoCount >= MAX_PHOTOS ? ' is-full' : ''}`}
                 onDragEnter={dragEnter} onDragOver={dragOver} onDragLeave={dragLeave} onDrop={dropPhotos}>
                 <input ref={photoInput} type="file" multiple hidden aria-label="Choose report photos"
@@ -232,7 +283,7 @@ export default function AfterActionReportModal({ incident, report, onClose, onSa
           {error && !reviewing && <div className="apm-error" role="alert">{error}</div>}
         </div>
         <div className="eim-footer">
-          {creating ? <FormStatus missing={values.narrative ? [] : ['narrative']} /> : <FormStatus changeCount={changes.length + (photos.length ? 1 : 0)} />}
+          {creating ? <FormStatus missing={values.narrative ? [] : ['narrative']} /> : <FormStatus changeCount={changes.length + (photos.length || fieldPhotos.length ? 1 : 0)} />}
           <div className="eim-footer-actions">
             <button type="button" className="apm-btn-cancel" onClick={onClose} disabled={saving}>Cancel</button>
             <button type="submit" className="apm-btn-submit" disabled={blocked || saving}>Review &amp; save</button>
@@ -240,10 +291,19 @@ export default function AfterActionReportModal({ incident, report, onClose, onSa
         </div>
       </form>
     </AppModal>
+    {photoIndex !== null && availablePhotos[photoIndex] && <PhotoViewer
+      photos={availablePhotos.map(({ photo }) => photo.url)}
+      index={photoIndex}
+      onIndexChange={setPhotoIndex}
+      onClose={() => setPhotoIndex(null)}
+      caption={availablePhotos[photoIndex].photo.original_name || incident.id}
+    />}
     {reviewing && <ReviewChanges
+      className="aar-report-review"
+      icon={<Icon d={ICON_DOC} className="cfm-badge-icon" />}
       code={incident.id}
       rows={rows}
-      note={closing ? 'Filing this report closes the incident and releases all responding teams and trucks.' : null}
+      note="Saving records the incident report without releasing teams or closing the incident. After operation completion, use Review & Close Incident to finalize it."
       saving={saving}
       error={error}
       onBack={() => { setError(''); setReviewing(false) }}

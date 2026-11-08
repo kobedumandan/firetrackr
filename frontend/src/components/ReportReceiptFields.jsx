@@ -10,8 +10,9 @@ const RECORD_KINDS = [
   { value: 'unknown', label: 'Unknown' },
 ]
 
-export default function ReportReceiptFields({ receivedAt, kind, onReceipt, onKind, recordKind, onRecordKind }) {
+export default function ReportReceiptFields({ receivedAt, kind, onReceipt, onKind, recordKind, onRecordKind, dispatchType }) {
   const noteId = useId()
+  const classificationLocked = dispatchType === 'Firefighting Operations' || dispatchType === 'Emergency Medical Services (EMS)'
 
   return (
     <section className="eim-section receipt-section">
@@ -37,13 +38,14 @@ export default function ReportReceiptFields({ receivedAt, kind, onReceipt, onKin
       </div>
       <div className={`receipt-classification${onRecordKind ? '' : ' receipt-classification-single'}`}>
         <Field label="Response classification">
-          <select aria-label="Response classification" value={kind || ''} onChange={e => onKind(e.target.value)}>
+          <select aria-label="Response classification" value={kind || ''} onChange={e => onKind(e.target.value)} disabled={classificationLocked}>
             <option value="">Not yet verified</option>
-            <option value="fire">Fire</option>
+            {(!dispatchType || dispatchType === 'Firefighting Operations') && <option value="fire">Fire</option>}
             <option value="medical">Medical</option>
             <option value="rescue">Rescue</option>
             <option value="other">Other</option>
           </select>
+          <span className="frm-hint">{classificationLocked ? 'Set automatically from dispatch type.' : 'Confirm the response type when known.'}</span>
         </Field>
         {onRecordKind && (
           <Field label="Record kind">

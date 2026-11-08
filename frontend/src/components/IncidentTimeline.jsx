@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { fetchDispatches, fetchIncidentEvents } from "../api";
+import { incidentControl, incidentStatusLabel } from '../utils/incidentOperations';
 
 function clock(iso) {
   if (!iso) return null;
@@ -19,14 +20,6 @@ function span(fromIso, toMs) {
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
-const STATUS_LABEL = {
-  pending: "Awaiting a crew",
-  active: "Crew responding",
-  dispatched: "Crew responding",
-  contained: "Fire contained",
-  closed: "Incident closed",
-};
-
 const ALARM_RANK = { "1st Alarm": 1, "2nd Alarm": 2, "3rd Alarm": 3, "General Alarm": 4 };
 const SEV_RANK = { Minor: 1, Moderate: 2, Critical: 3 };
 
@@ -34,12 +27,12 @@ const by = (actor) => (actor ? `by ${actor}` : null);
 
 /* One logged status / alarm / severity change → a timeline row, or null when
    another row already tells the story (dispatch rows cover "dispatched"). */
-function changeRow(ev, hasDispatches) {
+function changeRow(ev, hasDispatches, incident) {
   const base = { key: `ev-${ev.event_id}`, at: ev.at };
   if (ev.type === "status") {
     if (ev.to === "dispatched" && hasDispatches) return null;
     const rows = {
-      contained:  { tone: "green", title: "Fire contained" },
+      contained:  { tone: "green", title: incidentControl(incident).label },
       closed:     { tone: "green", title: "Incident closed" },
       dispatched: { tone: "amber", title: "Marked dispatched" },
       pending:    { tone: "amber", title: "Set back to Pending" },
@@ -86,7 +79,7 @@ function buildEvents(incident, dispatches, changes, now) {
     });
   }
   for (const ev of changes) {
-    const row = changeRow(ev, dispatches.length > 0);
+    const row = changeRow(ev, dispatches.length > 0, incident);
     if (row) events.push(row);
   }
   for (const d of dispatches) {
@@ -106,7 +99,7 @@ function buildEvents(incident, dispatches, changes, now) {
       events.push({
         key: `${d.dispatch_id}-arrived`,
         at: d.arrived_at,
-        tone: "green",
+        tone: "amber",
         title: `${team} on scene`,
         desc: response ? `Response time ${response}` : null,
       });
@@ -115,7 +108,7 @@ function buildEvents(incident, dispatches, changes, now) {
       events.push({
         key: `${d.dispatch_id}-arrived`,
         at: null,
-        tone: "green",
+        tone: "amber",
         title: `${team} on scene`,
         desc: "Just arrived",
       });
@@ -135,7 +128,7 @@ function buildEvents(incident, dispatches, changes, now) {
         at: d.completed_at,
         tone: "muted",
         title: `${team} released`,
-        desc: "Back on standby",
+        desc: d.cleared_at ? 'Truck return/readiness remains separate' : 'Legacy completion; readiness not recorded',
       });
     }
   }
@@ -151,10 +144,10 @@ export default function IncidentTimeline({ incident, liveDispatches = [] }) {
   const [state, setState] = useState({ fireId: null, rows: null, changes: [] });
   const [now, setNow] = useState(() => Date.now());
 
-  // App state drops a dispatch once it completes, so fetch this incident's full
-  // history, and refetch whenever its units, status, alarm or severity move.
+  // Fetch authoritative timestamps and full history, including after live clearance.
+  // Refetch whenever its units, status, alarm or severity move.
   const liveKey = liveDispatches.map((d) => `${d.dispatch_id}:${d.dispatch_status}`).join("|");
-  const incKey = `${incident?.status}|${incident?.alarm}|${incident?.sev}`;
+  const incKey = `${incident?.status}|${incident?.operation_completed_at}|${incident?.alarm}|${incident?.sev}`;
   useEffect(() => {
     if (fireId == null) return;
     let cancelled = false;
@@ -219,7 +212,7 @@ export default function IncidentTimeline({ incident, liveDispatches = [] }) {
             <span className="itl-dot" />
             <div className="itl-main">
               <div className="itl-head">
-                <span className="itl-title">{STATUS_LABEL[incident.status] || "Now"}</span>
+                <span className="itl-title">{incidentStatusLabel(incident.status, incident)}</span>
                 <span className="itl-time">Now</span>
               </div>
               {elapsed && <div className="itl-desc">{elapsed} since report</div>}

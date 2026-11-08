@@ -4,6 +4,7 @@ import { sendReporterSms } from "../api";
 import { IntakeSection, IntakeDisclosure } from "./IncidentIntakeSection";
 import { ICON_COPY, ICON_CHECK, ICON_SEND, ICON_LINK, ICON_PIN } from "./incidentFormOptions";
 import { Icon, Field } from "./incidentForm";
+import "../styles/DispatchModal.css";
 import "../styles/LocationRequestModal.css";
 
 // The reporter page is served by the API, including when it is hosted separately.
@@ -124,6 +125,8 @@ export default function LocationRequestModal({
 
   return (
     <AppModal
+      variant="badged"
+      icon={<Icon d={ICON_PIN} className="cfm-badge-icon" />}
       eyebrow="REPORTER LINK"
       title={received ? "Reporter location received" : "Request the reporter's location"}
       subtitle={received ? "Use the shared pin to start an incident report." : "Send a link so the reporter can share their GPS pin."}
@@ -149,7 +152,7 @@ export default function LocationRequestModal({
         </div>
 
         {received ? (
-          <IntakeSection icon={ICON_PIN} title="Reporter location" desc="Ready to log an incident">
+          <IntakeSection title="Reporter location" desc="Ready to log an incident">
             <div className="lrm-coordinates">
               <div><span className="lrm-coordinate-label">Latitude</span><span className="lrm-coordinate-value">{Number(receivedData.lat).toFixed(6)}</span></div>
               <div><span className="lrm-coordinate-label">Longitude</span><span className="lrm-coordinate-value">{Number(receivedData.lng).toFixed(6)}</span></div>
@@ -158,7 +161,7 @@ export default function LocationRequestModal({
           </IntakeSection>
         ) : (
           <>
-            <IntakeSection icon={ICON_SEND} title="Send by SMS" desc="Send the link directly">
+            <IntakeSection title="Send by SMS" desc="Send the link directly">
               <form onSubmit={handleSendSms} aria-busy={sending}>
                 <Field label="Reporter mobile number">
                   <div className="lrm-send">
@@ -187,7 +190,7 @@ export default function LocationRequestModal({
               )}
             </IntakeSection>
 
-            <IntakeSection icon={ICON_LINK} title="Share manually" desc="Copy the link for any chat app">
+            <IntakeSection title="Share manually" desc="Copy the link for any chat app">
               <Field label="Reporter link">
                 <div className="lrm-link">
                   <Icon d={ICON_LINK} />

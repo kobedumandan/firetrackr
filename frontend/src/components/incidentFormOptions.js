@@ -1,4 +1,5 @@
 // Option lists and icon paths shared by the incident log/edit modals.
+import { incidentControl } from '../utils/incidentOperations'
 
 export const DISPATCH_TYPES = [
   'Fire Safety Enforcement',
@@ -11,10 +12,17 @@ export const DISPATCH_TYPES = [
 
 export const STATUSES = [
   { value: 'pending',    label: 'Pending',    hint: 'Reported and awaiting a crew.' },
-  { value: 'dispatched', label: 'Dispatched', hint: 'A crew is on the way or on scene.' },
-  { value: 'contained',  label: 'Contained',  hint: 'Fire is under control. Casualties can now be recorded.' },
-  { value: 'closed',     label: 'Closed',     hint: 'Incident is resolved. Add the final remarks below.' },
+  { value: 'dispatched', label: 'Responding', hint: 'A crew is on the way or on scene.' },
+  { value: 'contained',  label: 'Under Control', hint: 'The situation is under control. Crews may still need to remain on scene.' },
+  { value: 'closed',     label: 'Closed',     hint: 'The incident report is reviewed and the incident is administratively closed.' },
 ]
+// A derived lifecycle stage, never a status that incident forms may submit.
+export const OPERATION_COMPLETE_STATUS = {
+  value: 'operation_complete',
+  label: 'Operation Complete',
+  hint: 'Scene operations are complete. Review the incident report before closing in Response & Reporting.',
+  disabled: true,
+}
 export const SEVERITIES = [
   { value: 'Minor',    tone: 'green' },
   { value: 'Moderate', tone: 'amber' },
@@ -22,13 +30,23 @@ export const SEVERITIES = [
 ]
 export const ALARMS     = ['1st Alarm', '2nd Alarm', '3rd Alarm']
 export const supportsFireAlarm = dispatchType => !dispatchType || dispatchType === 'Firefighting Operations'
+export const defaultResponseKind = dispatchType => ({
+  'Firefighting Operations': 'fire',
+  'Emergency Medical Services (EMS)': 'medical',
+  'Fire Safety Enforcement': 'other',
+  'Fire/Arson Investigation': 'other',
+}[dispatchType] || '')
 export const STRUCTURES = [
   'Residential', 'Residential 2-storey', 'Commercial', 'Industrial',
   'Institutional', 'Informal Settlement', 'Vegetation', 'Vehicle', 'Other',
 ]
 export const CASUALTIES = ['None', 'Unconfirmed', 'Minor Injuries', 'Serious Injuries', 'Fatalities']
 
-export const statusMetaOf = value => STATUSES.find(s => s.value === value) || STATUSES[0]
+export const statusMetaOf = (value, incident) => {
+  if (value === OPERATION_COMPLETE_STATUS.value) return OPERATION_COMPLETE_STATUS
+  const meta = STATUSES.find(s => s.value === value) || STATUSES[0]
+  return value === 'contained' ? { ...meta, label: incidentControl(incident).label } : meta
+}
 
 export const ICON_CLOSE = 'm256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z'
 export const ICON_CHECK = 'm382-354 339-339q12-12 28-12t28 12q12 12 12 28.5T777-636L410-268q-12 12-28 12t-28-12L182-440q-12-12-11.5-28.5T183-497q12-12 28.5-12t28.5 12l142 143Z'

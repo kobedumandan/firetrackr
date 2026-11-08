@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import AppModal from './AppModal'
+import '../styles/DispatchModal.css'
+import '../styles/PersonnelFormModal.css'
 import '../styles/EditFormModal.css'
 import { fetchStations, fetchTeams, fetchShifts, updatePersonnel } from '../api'
 import { RANKS, DESIGNATIONS, phoneError, emailError, passwordErrors, ICON_KEY } from './resourceFormOptions'
@@ -126,6 +128,8 @@ export default function EditPersonnelModal({ personnel, onClose, onSubmit }) {
   return (
     <>
       <AppModal
+        variant="badged"
+        icon={<Icon d="M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 18l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm640-584-56-56 56 56ZM619-619l-28-29 57 57-29-28Z" className="cfm-badge-icon" />}
         eyebrow="EDIT PERSONNEL"
         title={fullName || 'Unnamed personnel'}
         subtitle={subtitle.length > 0 ? subtitle.map((part, index) => (
@@ -136,7 +140,7 @@ export default function EditPersonnelModal({ personnel, onClose, onSubmit }) {
         )) : null}
         onClose={onClose}
         width={600}
-        className="eim-panel edit-form-modal"
+        className="eim-panel edit-form-modal personnel-form-modal"
         dismissible={!saving && !reviewing}
       >
         <form onSubmit={handleSubmit} noValidate>

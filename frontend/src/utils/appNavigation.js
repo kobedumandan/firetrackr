@@ -24,17 +24,24 @@ export function parseAppPath(value) {
     if (path !== target) continue
     if (nav === 'Analysis') return { path, nav, tab: 'response' }
     const stationId = nav === 'Stations' ? positiveId(url.searchParams.get('station')) : null
-    return { path: path + (stationId ? `?station=${stationId}` : ''), nav, stationId }
+    const personnelId = nav === 'Personnel' ? positiveId(url.searchParams.get('personnel')) : null
+    return { path: path + (stationId ? `?station=${stationId}` : personnelId ? `?personnel=${personnelId}` : ''), nav, stationId,
+      ...(nav === 'Personnel' ? { personnelId } : {}) }
   }
   if (path === '/analysis' || path === '/analysis/operational') return { path: PAGE_PATHS.Analysis, nav: 'Analysis', tab: 'response' }
   if (path === '/analysis/coverage' || path === '/analysis/reports') return { path, nav: 'Analysis', tab: path.split('/')[2] }
   const incident = path.match(/^\/incidents\/([1-9]\d*)$/)
-  if (incident && positiveId(incident[1])) return { path, nav: 'Incidents', incidentId: Number(incident[1]) }
+  if (incident && positiveId(incident[1])) {
+    const incidentSection = url.searchParams.get('section') === 'response-reporting' ? 'response-reporting' : null
+    return { path: path + (incidentSection ? `?section=${incidentSection}` : ''), nav: 'Incidents', incidentId: Number(incident[1]), incidentSection }
+  }
   const detail = path.match(/^\/analysis\/response\/(incidents|dispatches)\/([1-9]\d*)$/)
   if (detail && positiveId(detail[2])) {
     const fireId = detail[1] === 'dispatches' ? positiveId(url.searchParams.get('incident')) : null
+    const analysisSection = detail[1] === 'incidents' && url.searchParams.get('section') === 'incident-milestones' ? 'incident-milestones' : null
+    const query = fireId ? `?incident=${fireId}` : analysisSection ? `?section=${analysisSection}` : ''
     return {
-      path: path + (fireId ? `?incident=${fireId}` : ''), nav: 'Analysis', tab: 'response',
+      path: path + query, nav: 'Analysis', tab: 'response', analysisSection,
       detail: { kind: detail[1] === 'incidents' ? 'incident' : 'dispatch', id: Number(detail[2]), fireId },
     }
   }

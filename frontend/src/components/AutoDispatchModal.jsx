@@ -1,8 +1,13 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import "../styles/AppModal.css";
+import "../styles/ConfirmModal.css";
+import "../styles/DispatchModal.css";
+import "../styles/AutoDispatchModal.css";
 import { ICON_CLOSE, ICON_TRUCK, ICON_WARN } from "./incidentFormOptions";
 import { Icon, SectionHead } from "./incidentForm";
+
+const separator = <span className="dpm-separator" aria-hidden="true"> | </span>;
 
 // Human-friendly copy for each backend `reason` code returned when no team
 // could be auto-dispatched (see auto_dispatch.select_best_team).
@@ -66,22 +71,25 @@ export default function AutoDispatchModal({ incident, onClose, onViewDispatch })
 
   return createPortal(
     <div className="apm-overlay adm-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="apm-panel eim-panel adm-panel" role="dialog" aria-modal="true" aria-labelledby="adm-title">
-        <div className="eim-header">
-          <div className="eim-header-main">
+      <div className="apm-panel eim-panel adm-panel auto-dispatch-modal" role="dialog" aria-modal="true" aria-labelledby="adm-title">
+        <div className="cfm-head dpm-header">
+          <span className="cfm-badge">
+            <Icon d={ICON_TRUCK} className="cfm-badge-icon" />
+          </span>
+          <div className="cfm-head-text">
             <div className="apm-eyebrow">AUTO-DISPATCH</div>
-            <div id="adm-title" className="eim-title">
+            <div id="adm-title" className="cfm-title">
               {dispatched ? "Team dispatched" : "No team available"}
-            </div>
-            <div className="adm-context">
-              <span className="adm-context-code">{incident?.id}</span>
-              {incident?.loc && <span>{incident.loc}</span>}
-              {incident?.sev && <span>{incident.sev}</span>}
             </div>
           </div>
           <button className="eim-close" onClick={onClose} aria-label="Close">
             <Icon d={ICON_CLOSE} />
           </button>
+          <div className="eim-subtitle">
+            <span className="eim-chip eim-chip-code">{incident?.id}</span>
+            {incident?.loc && <span className="eim-chip">{incident.loc}</span>}
+            {incident?.sev && <span className="eim-chip">{incident.sev}</span>}
+          </div>
         </div>
 
         <div className="eim-body">
@@ -94,7 +102,7 @@ export default function AutoDispatchModal({ incident, onClose, onViewDispatch })
                     {winner?.team_name || `Team #${ad.team_id}`}
                   </span>
                   <span className="adm-result-desc">
-                    {winner?.station_name || `Station #${ad.station_id}`} · nearest available crew
+                    {winner?.station_name || `Station #${ad.station_id}`}{separator}Nearest Available Crew
                   </span>
                 </span>
                 <span className="adm-eta">
@@ -119,10 +127,10 @@ export default function AutoDispatchModal({ incident, onClose, onViewDispatch })
                             {i === 0 && <span className="adm-cand-tag">Sent</span>}
                           </span>
                           <span className="adm-cand-meta">
-                            {c.station_name ? `${c.station_name} · ` : ""}
+                            {c.station_name && <>{c.station_name}{separator}</>}
                             {(c.haversine_m / 1000).toFixed(1)} km
                             {c.eta_source === "haversine_fallback" && (
-                              <span className="adm-cand-flag"> · estimate, routing offline</span>
+                              <>{separator}<span className="adm-cand-flag">estimate, routing offline</span></>
                             )}
                           </span>
                         </span>

@@ -10,10 +10,17 @@ export function attachProjectedPopup(leaflet, project, enabled = () => true) {
     const element = popup?.getElement?.()
     if (!element) return
     const point = project(popup)
-    if (!point) { element.style.visibility = 'hidden'; return }
-    element.style.visibility = 'visible'
-    element.style.setProperty('left', `${point.x}px`, 'important')
-    element.style.setProperty('top', `${point.y - 18}px`, 'important')
+    if (!point) {
+      if (element.style.visibility !== 'hidden') element.style.visibility = 'hidden'
+      return
+    }
+    if (element.style.visibility !== 'visible') element.style.visibility = 'visible'
+    // Avoid creating another mutation when the projection is already correct.
+    for (const [property, value] of [['left', `${point.x}px`], ['top', `${point.y - 18}px`]]) {
+      if (element.style.getPropertyValue(property) !== value || element.style.getPropertyPriority(property) !== 'important') {
+        element.style.setProperty(property, value, 'important')
+      }
+    }
   }
   // Leaflet/React can rewrite popup coordinates while moving a marker or
   // updating its content. Reproject after those updates, keeping the same card.
@@ -38,9 +45,11 @@ export function attachProjectedPopup(leaflet, project, enabled = () => true) {
     popup?.on?.('contentupdate', schedule)
     const element = popup?.getElement?.()
     if (element && typeof MutationObserver !== 'undefined') {
-      // Watch React's card content, not the positioning styles we set ourselves.
+      // Leaflet also rewrites positioning on unchanged-content route refreshes.
+      // update() is idempotent so observing style changes cannot keep scheduling.
       observer = new MutationObserver(schedule)
-      observer.observe(element, { childList: true, subtree: true, characterData: true })
+      observer.observe(element, { childList: true, subtree: true, characterData: true,
+        attributes: true, attributeFilter: ['style'] })
     }
     update()
     schedule()

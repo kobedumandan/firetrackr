@@ -9,7 +9,7 @@ export function IntakeSection({ icon, title, desc, children, className = '' }) {
   return (
     <section className={`eim-section intake-section ${className}`}>
       <SectionHead
-        title={<><span className="intake-step" aria-hidden="true"><Icon d={icon} /></span><span className="intake-section-title">{title}</span></>}
+        title={<>{icon && <span className="intake-step" aria-hidden="true"><Icon d={icon} /></span>}<span className="intake-section-title">{title}</span></>}
         desc={desc && help.map((part, index) => <span key={index}>{index > 0 && <span className="intake-help-separator" aria-hidden="true">|</span>}{part}</span>)}
       />
       {children}

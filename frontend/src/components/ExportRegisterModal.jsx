@@ -8,6 +8,7 @@ import {
   downloadBlob, fetchAllIncidents, registerToCsv, safeFileName,
 } from '../utils/incidentRegister'
 import { buildResourceRegister } from '../utils/resourceExport'
+import '../styles/DispatchModal.css'
 import '../styles/ExportModal.css'
 import { ICON_DOC } from '../utils/exportIcons'
 
@@ -101,6 +102,7 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
   const noColumns = options.columns.length === 0
   const columns = resource?.columns ?? COLUMNS
   const defaultColumns = resource ? columns.map(column => column.key) : DEFAULT_COLUMNS
+  const useBadgedHeader = !resource || ['Personnel', 'Teams', 'Stations', 'Trucks'].includes(resource.name)
   const { parts: scopeParts, sort: scopeSort } = resource ? { parts: resource.filters, sort: resource.sort } : describeQuery(query)
 
   // ── Scope: every matching incident, fetched once ──
@@ -246,6 +248,8 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
 
   return (
     <AppModal
+      variant={useBadgedHeader ? 'badged' : 'default'}
+      icon={<Icon d={ICON_DOWNLOAD} className="cfm-badge-icon" />}
       eyebrow="EXPORT"
       title={resource ? `${resource.name} export preview` : 'Incident register'}
       subtitle="Preview the report, adjust it on the right, then download or print."
@@ -350,7 +354,7 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
             </div>
           </section>
 
-          <section className="eim-section">
+          <section className={`eim-section${useBadgedHeader ? ' xpm-incident-scope' : ''}`}>
             <SectionHead title="Scope" desc={`Set on the ${resource?.name ?? 'Incidents'} page`} />
             <div className="xpm-scope">
               <div className="xpm-scope-count">

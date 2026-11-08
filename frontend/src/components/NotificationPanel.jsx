@@ -1,28 +1,20 @@
 // The alert history behind the rail's bell. A toast is gone in seconds; this
 // is what a dispatcher who looked away comes back to.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { kindMeta, BellIcon, CloseIcon } from "./notificationUi";
-import { formatLoginStamp } from "../utils/session";
+import { kindMeta, BellIcon, CloseIcon, NotificationDescription } from "./notificationUi";
+import useNotificationClock from "../hooks/useNotificationClock";
+import { formatNotificationAge } from "../utils/notificationTime";
+import { notificationDescription, notificationTitle, notificationWorkflowKind } from "../utils/notificationContent";
+import { hasTrackerLocation } from "../utils/trackerStatus";
 import "../styles/Notifications.css";
 
 const TABS = [
   { key: "all", label: "All" },
   { key: "incidents", label: "Incidents" },
   { key: "dispatch", label: "Dispatch" },
-  { key: "devices", label: "Devices" },
+  { key: "devices", label: "Tracking" },
   { key: "models", label: "Models" },
 ];
-
-/* Relative for the first hour — "4m ago" is what matters on a live board —
-   then the same absolute stamp the toasts use. */
-function relTime(iso, now) {
-  const secs = Math.round((now - new Date(iso).getTime()) / 1000);
-  if (Number.isNaN(secs)) return "—";
-  if (secs < 45) return "Just now";
-  const mins = Math.round(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  return formatLoginStamp(iso);
-}
 
 export default function NotificationPanel({
   items,
@@ -30,17 +22,14 @@ export default function NotificationPanel({
   onDismiss,
   onClear,
   onOpenIncident,
+  onOpenDetails,
+  onViewLastLocation,
+  trackerTargets,
   activeFireIds,
 }) {
   const panelRef = useRef(null);
   const [tab, setTab] = useState("all");
-  // Ticks the relative stamps while the panel is open; the panel only exists
-  // while open, so nothing runs in the background.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNotificationClock();
 
   // Close on Escape or on a click outside — the same dismissal grammar the
   // modals already use, minus the scrim, since this is a popover and the map
@@ -130,18 +119,31 @@ export default function NotificationPanel({
           </div>
         ) : (
           visible.map((n) => {
-            const { Icon, accent, label } = kindMeta(n.kind);
-            // Only an incident still on the board can be jumped to; a closed
-            // one has no pin left to focus.
+            const workflowKind = notificationWorkflowKind(n);
+            const { Icon, accent, label } = kindMeta(n.kind, n.incident, workflowKind);
+            const description = notificationDescription(n);
+            const details = n.kind === "workflow";
+            const detailsLabel = workflowKind === 'suppression_start' ? 'View response analysis' : 'View details';
+            const offline = n.kind === "deviceOffline";
+            const tracker = n.tracker || trackerTargets?.get(n.id);
+            // Detail links remain available after an incident leaves the map.
             const openable = Boolean(
-              onOpenIncident && n.fireId != null && activeFireIds?.has(n.fireId),
+              offline ? onViewLastLocation && tracker?.per_id != null && hasTrackerLocation(tracker)
+                : n.fireId != null && (details ? onOpenDetails : onOpenIncident && activeFireIds?.has(n.fireId)),
             );
+            const open = () => {
+              if (offline) onViewLastLocation(tracker);
+              else if (details) onOpenDetails(n.fireId, workflowKind);
+              else onOpenIncident(n.fireId);
+            };
             return (
               <div
                 key={n.id}
                 className={`notif-item${n.read ? "" : " unread"}${openable ? " openable" : ""}`}
+                data-kind={n.kind}
+                data-workflow-kind={workflowKind}
                 style={{ "--n-accent": `var(--accent-${accent}-rgb)` }}
-                onClick={openable ? () => onOpenIncident(n.fireId) : undefined}
+                onClick={openable ? open : undefined}
                 role={openable ? "button" : undefined}
                 tabIndex={openable ? 0 : undefined}
                 onKeyDown={
@@ -149,7 +151,7 @@ export default function NotificationPanel({
                     ? (e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          onOpenIncident(n.fireId);
+                          open();
                         }
                       }
                     : undefined
@@ -160,22 +162,24 @@ export default function NotificationPanel({
                 </div>
                 <div className="notif-item-body">
                   <div className="notif-item-meta">
-                    <span className="notif-item-kind">{label}</span>
-                    {n.severity === "critical" && (
+                    <div className="notif-item-kind">{label}</div>
+                    {n.severity === "critical" && n.kind !== "newIncident" && n.kind !== "escalation" && (
                       <span className="notif-item-crit">Critical</span>
                     )}
-                    <span
+                    <time
                       className="notif-item-time"
-                      title={new Date(n.at).toLocaleString()}
+                      dateTime={n.at}
+                      title={n.at ? new Date(n.at).toLocaleString() : undefined}
+                      aria-live="off"
                     >
-                      {relTime(n.at, now)}
-                    </span>
+                      {formatNotificationAge(n.at, now)}
+                    </time>
                   </div>
-                  <div className="notif-item-title">{n.title}</div>
-                  {n.body && <div className="notif-item-sub">{n.body}</div>}
+                  <div className="notif-item-title">{notificationTitle(n)}</div>
+                  {description && <div className="notif-item-sub"><NotificationDescription kind={n.kind} text={description} /></div>}
                   {openable && (
                     <div className="notif-item-link">
-                      View on map
+                      {offline ? "View last location" : details ? detailsLabel : "View on map"}
                       <span className="material-symbols-outlined">arrow_forward</span>
                     </div>
                   )}

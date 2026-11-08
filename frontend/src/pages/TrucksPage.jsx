@@ -4,18 +4,21 @@ import KpiCard from "../components/KpiCard";
 import AddTruckModal from "../components/AddTruckModal";
 import EditTruckModal from "../components/EditTruckModal";
 import ConfirmModal from "../components/ConfirmModal";
+import TruckReturnReadiness from "../components/TruckReturnReadiness";
 import { formatReported } from "../components/incidentUi";
 import { fetchTrucks, createTruck, deleteTruck } from "../api";
 import useSplitPane from "../hooks/useSplitPane";
 import ExportRegisterModal from "../components/ExportRegisterModal";
 import { createResourceExport } from "../utils/resourceExport";
 
-const STATUS_OPTIONS = ["available", "dispatched", "maintenance", "unavailable"];
+const STATUS_OPTIONS = ["available", "dispatched", "on_scene", "returning", "maintenance", "unavailable"];
 const STATUS_TABS = ["all", ...STATUS_OPTIONS];
 const TAB_LABELS = {
   all: "All",
   available: "Available",
   dispatched: "Dispatched",
+  on_scene: "On Scene",
+  returning: "Returning",
   maintenance: "Maintenance",
   unavailable: "Unavailable",
 };
@@ -26,11 +29,24 @@ const TAB_LABELS = {
 const STATUS_TONE = {
   available: "green",
   dispatched: "amber",
+  on_scene: "amber",
+  returning: "amber",
   maintenance: "fire",
   unavailable: "muted",
 };
 
 const truckCode = (id) => `TRK-${String(id).padStart(3, "0")}`;
+
+function UpdatedTimestamp({ value }) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return <span className="trk-row-time is-empty">—</span>;
+  return (
+    <span className="trk-row-time">
+      <span>{date.toLocaleDateString("en-US", { timeZone: "Asia/Manila", year: "numeric", month: "long", day: "numeric" })}</span>
+      <span className="trk-row-time-clock">{date.toLocaleTimeString("en-US", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })}</span>
+    </span>
+  );
+}
 
 /* "4m ago" reads faster than a timestamp when the question is "is this truck's
    position fresh?". The absolute time stays one hover away. */
@@ -129,7 +145,7 @@ function EditIcon() {
 function StatusPill({ status }) {
   return (
     <span className={`trk-status-pill trk-tone-${STATUS_TONE[status] ?? "muted"}`}>
-      {status === "dispatched" && <span className="trk-blink-dot" />}
+      {["dispatched", "returning"].includes(status) && <span className="trk-blink-dot" />}
       {TAB_LABELS[status] ?? status}
     </span>
   );
@@ -143,7 +159,7 @@ function TruckTile({ status, size = "md" }) {
   );
 }
 
-function TruckDetail({ t, onEdit, onDelete, onShowOnMap }) {
+function TruckDetail({ t, onEdit, onDelete, onShowOnMap, onReturnRecorded }) {
   if (!t) {
     return (
       <div className="trk-no-selection">
@@ -167,7 +183,7 @@ function TruckDetail({ t, onEdit, onDelete, onShowOnMap }) {
             <TruckTile status={t.truck_status} size="lg" />
             <div>
               <div className={`trk-hero-tag trk-text-${tone}`}>
-                Fire Truck · {TAB_LABELS[t.truck_status] ?? t.truck_status}
+                Fire Truck<span className="trk-meta-separator" aria-hidden="true"> | </span>{TAB_LABELS[t.truck_status] ?? t.truck_status}
               </div>
               <div className="trk-hero-name">{t.truck_platenum}</div>
               <div className="trk-hero-code">
@@ -212,6 +228,8 @@ function TruckDetail({ t, onEdit, onDelete, onShowOnMap }) {
             { label: "Truck ID", value: truckCode(t.truck_id), mono: true },
             { label: "Station", value: t.station_name || "—" },
             { label: "Status", value: TAB_LABELS[t.truck_status] ?? t.truck_status },
+            { label: 'Not-ready reason', value: t.not_ready_reason || 'None recorded' },
+            { label: 'Last readiness confirmation', value: t.readiness_note || 'Not recorded' },
           ].map(({ label, value, mono }) => (
             <div key={label} className="trk-info-row">
               <span className="trk-info-label">{label}</span>
@@ -220,6 +238,8 @@ function TruckDetail({ t, onEdit, onDelete, onShowOnMap }) {
           ))}
         </div>
       </div>
+
+      <TruckReturnReadiness key={t.truck_id} truck={t} onRecorded={onReturnRecorded} />
 
       {/* Location */}
       <div className="trk-info-section">
@@ -357,6 +377,19 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
     setSelectedId((prev) => (prev === id ? null : id));
   }
 
+  function handleReturnRecorded(unit, source) {
+    setTrucks(rows => rows.map(truck => truck.truck_id === unit.truck_id ? {
+      ...truck,
+      truck_status: unit.status,
+      not_ready_reason: unit.reason,
+      pending_return: unit.ready_at ? null : { ...unit, team: truck.pending_return?.team },
+      readiness_note: unit.ready_at ? source : truck.readiness_note,
+      readiness_confirmed_at: unit.ready_at || truck.readiness_confirmed_at,
+    } : truck));
+    fetchTrucks().then(rows => { setTrucks(rows); setFetchError(null); })
+      .catch(failure => setFetchError(failure.message || 'Could not refresh truck details.'));
+  }
+
   async function confirmDelete() {
     const truck = deleting;
     await deleteTruck(truck.truck_id);
@@ -454,7 +487,7 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
             />
           </div>
           <select
-            className="trk-filter-select"
+            className={`trk-filter-select${stationFilter ? " is-active" : ""}`}
             value={stationFilter}
             onChange={(e) => setStationFilter(e.target.value)}
           >
@@ -618,16 +651,7 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
                               </span>
                             </td>
                             <td>
-                              <span
-                                className="trk-row-time"
-                                title={
-                                  t.truck_last_updated
-                                    ? new Date(t.truck_last_updated).toLocaleString()
-                                    : undefined
-                                }
-                              >
-                                {formatReported(t.truck_last_updated)}
-                              </span>
+                              <UpdatedTimestamp value={t.truck_last_updated} />
                             </td>
                             <td>
                               <div
@@ -752,6 +776,7 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
               onEdit={() => setEditing(selected)}
               onDelete={() => setDeleting(selected)}
               onShowOnMap={onShowOnMap ? () => onShowOnMap(selected) : undefined}
+              onReturnRecorded={handleReturnRecorded}
             />
           </div>
         </div>

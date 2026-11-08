@@ -1,0 +1,12 @@
+.station-marker {
+  width: 28px;
+  height: 28px;
+  background: var(--map-eco-surface);
+  border: 1px solid rgba(var(--accent-green-rgb), 0.7);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  box-shadow: 0 0 10px rgba(var(--accent-green-rgb), 0.7);
+}

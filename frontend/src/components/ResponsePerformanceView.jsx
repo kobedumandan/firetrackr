@@ -7,6 +7,7 @@ import { ALL_METRICS, STAGES, dateTime, duration } from '../utils/operationalTim
 import { SeverityBadge, StatusPill } from './incidentUi'
 import OperationalTrendChart from './OperationalTrendChart'
 import DurationTrendChart from './DurationTrendChart'
+import ShiftComparison from './ShiftComparison'
 import '../styles/ResponsePerformance.css'
 import '../styles/OperationalTimePage.css'
 import '../styles/ResponseOperations.css'
@@ -26,15 +27,15 @@ function TeamFilter({ teams, selected, onChange }) {
     document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape) }
   }, [open])
-  const label = selected.length === 0 ? 'All teams' : selected.length === 1 ? teams.find(t => String(t.id) === selected[0])?.name || '1 team selected' : `${selected.length} teams selected`
+  const label = selected.length === 0 ? 'All Teams' : selected.length === 1 ? teams.find(t => String(t.id) === selected[0])?.name || '1 Team Selected' : `${selected.length} Teams Selected`
   return <div className="rp-team-field" ref={pickerRef} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false) }}>
     <span id="rp-teams-label" className="rp-field-label">Teams</span>
     <button ref={triggerRef} type="button" className="rp-team-trigger" aria-labelledby="rp-teams-label rp-teams-value" aria-expanded={open} aria-controls="rp-team-options" onClick={() => setOpen(value => !value)}>
       <span id="rp-teams-value">{label}</span><PerformanceIcon name="chevron" />
     </button>
     {open && <div className="rp-team-options" id="rp-team-options" role="group" aria-label="Select teams">
-      <p>Choose teams to compare</p>
-      <label><input type="checkbox" checked={!selected.length} onChange={() => onChange([])} />All teams</label>
+      <p>Choose Teams to Compare</p>
+      <label><input type="checkbox" checked={!selected.length} onChange={() => onChange([])} />All Teams</label>
       {teams.map(team => <label key={team.id}><input type="checkbox" checked={selected.includes(String(team.id))} onChange={event => onChange(event.target.checked ? [...selected, String(team.id)] : selected.filter(id => id !== String(team.id)))} />{team.name}</label>)}
       {!teams.length && <small>No teams in this date range.</small>}
     </div>}
@@ -125,6 +126,7 @@ function LifecyclePanel({ data, loading, demo, selectedTimeframe, onTimeframeCha
   const [measurementMode, setMeasurementMode] = useState('all')
   const allValid = measurementMode === 'all'
   const selectedPoint = data?.trends?.find(point => point.at === selectedTimeframe)
+  const summary = selectedPoint ? selectedPoint.summary : data?.summary
   const breakdown = selectedPoint ? selectedPoint.breakdown : data?.breakdown
   const stageValues = allValid
     ? Object.fromEntries(ALL_METRICS.map(stage => [stage.key, selectedPoint ? selectedPoint.values[stage.key] : data?.summary?.[stage.key]?.mean_seconds]))
@@ -138,31 +140,31 @@ function LifecyclePanel({ data, loading, demo, selectedTimeframe, onTimeframeCha
   }))
   const timeframeLabel = selectedPoint && (data.trend_period === '1d' ? dateTime(selectedPoint.at) : new Date(selectedPoint.at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', ...(data.trend_period !== 'all' ? { day: 'numeric' } : {}) }))
   const metrics = [
-    { key: 'cta', label: 'Call-to-first-arrival', description: 'Report receipt → first eligible arrival' },
-    ...(!demo ? [{ key: 'operation', label: 'Overall operation time', description: 'Report receipt → confirmed operation completion / all units cleared' }] : []),
+    { key: 'cta', label: 'Call-to-First-Arrival', description: 'Report Receipt → First Eligible Arrival' },
+    ...(!demo ? [{ key: 'operation', label: 'Overall Operation Time', description: 'Report Receipt → Confirmed Operation Completion' }] : []),
   ]
   const total = STAGES.reduce((sum, stage) => sum + (stageValues[stage.key] || 0), 0)
   const largest = Math.max(0, ...STAGES.map(stage => stageValues[stage.key] || 0))
   const hasMeasurements = STAGES.some(stage => Number.isFinite(stageValues[stage.key]))
   return <>
     <div className={`ro-overview${demo ? ' is-demo' : ''}`}>{metrics.map(({ key, label, description }) => <section className="ro-overview-card" key={key} aria-label={label}>
-      <div className="ro-metric-heading"><span className="ro-metric-icon"><PerformanceIcon name={key === 'cta' ? 'response' : 'acknowledgement'} /></span><div className="ro-metric-copy"><h2>{label}</h2><p className="ro-metric-definition">{description}</p></div><span className="ro-unit-label">Per incident</span></div>
-      {loading ? <span className="rp-value-skeleton kpi-sk" /> : <strong className={`rp-overall${data?.summary[key]?.mean_seconds == null ? ' is-empty' : ''}`}>{duration(data?.summary[key]?.mean_seconds)}</strong>}
-      <span className="ro-mean-caption">Mean duration<span>{loading ? 'Loading measurements' : `${data?.summary[key]?.valid || 0} measured incidents`}</span></span>
-      <Quality stat={data?.summary[key]} />
+      <div className="ro-metric-heading"><span className="ro-metric-icon"><PerformanceIcon name={key === 'cta' ? 'response' : 'acknowledgement'} /></span><div className="ro-metric-copy"><h2>{label}</h2><p className="ro-metric-definition">{description}</p></div><span className="ro-unit-label">Per Incident</span></div>
+      {loading ? <span className="rp-value-skeleton kpi-sk" /> : <strong className={`rp-overall${summary?.[key]?.mean_seconds == null ? ' is-empty' : ''}`}>{duration(summary?.[key]?.mean_seconds)}</strong>}
+      <span className="ro-mean-caption">Average Duration<span>{loading ? 'Loading Measurements' : `${summary?.[key]?.valid || 0} Measured Incidents`}{timeframeLabel ? ` · ${timeframeLabel}` : ''}</span></span>
+      <Quality stat={summary?.[key]} />
     </section>)}</div>
     <section className="ro-stages-panel" aria-label="Operation stages">
     <div className="rp-section-heading"><div className="ro-stage-heading-copy"><span className="ro-team-summary-icon"><PerformanceIcon name="response" /></span><div><div className="rp-heading-title"><h2>Where the time goes</h2></div><p>Compare average durations across report processing, preparation, travel and fire suppression</p></div></div><span className="ro-section-hint">Select a stage to explore its trend</span></div>
     <div className="rp-kpis ro-stage-kpis">{STAGES.map((stage, index) => {
-      const stat = data?.summary[stage.key]
+      const stat = summary?.[stage.key]
       const unit = ['preparation', 'travel'].includes(stage.key) && !demo
       return <section className={`rp-metric-card${trendMetric === stage.key ? ' is-selected' : ''}`} key={stage.key}>
         <span className="ro-stage-number">0{index + 1}</span>
         <KpiCard label={stage.key === 'processing' ? 'Report processing' : stage.label} icon={<PerformanceIcon name={stage.key} />} accent="fire" loading={loading}
           value={stat?.mean_seconds == null ? KPI_EMPTY : duration(stat.mean_seconds)}
           onClick={() => setTrendMetric(stage.key)} actionLabel={`View ${stage.label.toLowerCase()} trend`}
-          sub={`${unit ? 'Per truck' : stage.key === 'suppression' ? 'Per fire incident' : 'Per incident'} · ${stage.key === 'processing' ? 'receipt → first dispatch' : stage.key === 'preparation' ? 'dispatch → departure' : stage.key === 'travel' ? 'departure → arrival' : 'suppression start → fire out'}`}
-          trend={stat?.change_percent == null ? null : { dir: stat.change_percent > 0 ? 'up' : 'down', text: `${Math.abs(stat.change_percent).toFixed(1)}% vs preceding window` }} />
+          sub={<>{unit ? 'Per Truck' : stage.key === 'suppression' ? 'Per Fire Incident' : 'Per Incident'} <span className="ro-label-separator" aria-hidden="true">|</span> {stage.key === 'processing' ? 'Receipt → First Dispatch' : stage.key === 'preparation' ? 'Dispatch → Departure' : stage.key === 'travel' ? 'Departure → Arrival' : 'Suppression Start → Fire Out'}</>}
+          trend={stat?.change_percent == null ? null : { dir: stat.change_percent > 0 ? 'up' : 'down', text: `${Math.abs(stat.change_percent).toFixed(1)}% vs Preceding Window` }} />
         <Quality stat={stat} compact />
       </section>
     })}</div>
@@ -266,7 +268,7 @@ function IncidentRecords({ query, revision, onOpenAnalysis, demo, month, months,
     {(error || exportError) && <p role="alert" className="rp-error">{error || exportError}{error && <button onClick={() => setRetry(n => n + 1)}>Retry incidents</button>}</p>}
     <div className="rp-scroll"><table><thead><tr>{['Incident', 'Report received', 'Location / response', 'Dispatches / trucks', 'Call-to-first-arrival', 'Suppression', 'Overall operation', 'Actions'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>
       {loading ? [0, 1, 2].map(n => <tr key={n} aria-hidden="true">{Array.from({ length: 8 }, (_, i) => <td key={i}><span className="rp-cell-skeleton kpi-sk" /></td>)}</tr>) : data?.records.map(record => <tr key={record.fire_id}>
-        <td><div className="ro-record-incident">INC-{record.fire_id}{record.status ? <StatusPill status={record.status} /> : <MissingValue />}</div></td>
+        <td><div className="ro-record-incident">INC-{record.fire_id}{record.status ? <StatusPill status={record.status} incident={record} /> : <MissingValue />}</div></td>
         <td><ReceiptDateTime value={record.synthetic_timeline?.report_received_at || record.reported_at || record.occurred_at} />{!record.reported_at && (record.synthetic_timeline?.report_received_at || record.occurred_at) && <small>{demo ? 'Synthesized receipt' : <>Occurrence date <span className="ro-label-separator" aria-hidden="true">|</span> receipt unknown</>}</small>}</td>
         <td>{record.location || record.barangay || <MissingValue />}<small>{record.response_kind ? responseKindLabel(record.response_kind) : <MissingValue />}</small></td>
         <td><span className="ro-unit-count">{record.dispatch_count == null ? <MissingValue /> : <>{record.dispatch_count} {record.dispatch_count === 1 ? 'Dispatch' : 'Dispatches'}</>}<small>{record.unit_count == null ? <MissingValue /> : <>{record.unit_count} {record.unit_count === 1 ? 'Truck' : 'Trucks'}</>}</small></span></td>
@@ -404,22 +406,21 @@ export default function ResponsePerformanceView({ onOpenAnalysis, onOpenDispatch
   }
   return <main className="rp-view" aria-busy={loading}><div className="ro-workspace">
     <header className="rp-page-heading"><div><span className="ro-eyebrow">Incident lifecycle &amp; team analysis</span><h1>Response &amp; Operations</h1><p>From the first call to the final clearance.</p></div>
-      <div className="ro-heading-actions"><button className="rp-refresh" onClick={() => setRevision(n => n + 1)} disabled={loading}><PerformanceIcon name="refresh" />{loading ? 'Updating…' : 'Refresh'}</button></div>
     </header>
     <section className="rp-filter-panel" aria-label="Response filters">
-      <div className="rp-filter-title"><span><PerformanceIcon name="filter" />Analysis window</span><button className="ro-reset-filters" onClick={() => { setFilters({ ...initialDates(), period: 'custom', source: 'recorded', kind: 'operational', teams: [], station: '', barangay: '', severity: '' }); setPage(1); setMonth('') }}>Reset filters</button></div>
+      <div className="rp-filter-title"><span><PerformanceIcon name="filter" />Analysis Window</span><button className="ro-reset-filters" onClick={() => { setFilters({ ...initialDates(), period: 'custom', source: 'recorded', kind: 'operational', teams: [], station: '', barangay: '', severity: '' }); setPage(1); setMonth('') }}>Reset Filters</button></div>
       <div className="rp-filters">
-        <label>Reporting period<select value={filters.period} onChange={e => setPeriod(e.target.value)}>{Object.entries({ custom: 'Custom dates', '1d': 'Past day', '1w': 'Past week', '1m': 'Past month', '6m': 'Past six months', '1y': 'Past year', all: 'All recorded dates' }).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label>Timing data<select value={filters.source} onChange={e => update('source', e.target.value)}><option value="recorded">Recorded operational times</option><option value="demo">BFP history · synthesized demo</option></select></label>
-        <label>Start date<input type="date" disabled={filters.period === 'all'} aria-describedby="rp-date-help" value={filters.period === 'all' && operations?.start ? new Date(new Date(operations.start).getTime() + 8 * 3600000).toISOString().slice(0, 10) : filters.start} onChange={e => update('start', e.target.value)} /></label>
-        <label>End date<input type="date" aria-describedby="rp-date-help" value={filters.end} onChange={e => update('end', e.target.value)} /></label>
-        <label>Record kind<select disabled={demo} value={demo ? 'all' : filters.kind} onChange={e => update('kind', e.target.value)}>{['operational', 'drill', 'test', 'unknown', 'all'].map(k => <option key={k} value={k}>{k[0].toUpperCase() + k.slice(1)}</option>)}</select></label>
+        <label>Reporting Period<select value={filters.period} onChange={e => setPeriod(e.target.value)}>{Object.entries({ custom: 'Custom Dates', '1d': 'Past Day', '1w': 'Past Week', '1m': 'Past Month', '6m': 'Past Six Months', '1y': 'Past Year', all: 'All Recorded Dates' }).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label>Timing Data<select value={filters.source} onChange={e => update('source', e.target.value)}><option value="recorded">Recorded Operational Times</option></select></label>
+        <label>Start Date<input type="date" disabled={filters.period === 'all'} aria-describedby="rp-date-help" value={filters.period === 'all' && operations?.start ? new Date(new Date(operations.start).getTime() + 8 * 3600000).toISOString().slice(0, 10) : filters.start} onChange={e => update('start', e.target.value)} /></label>
+        <label>End Date<input type="date" aria-describedby="rp-date-help" value={filters.end} onChange={e => update('end', e.target.value)} /></label>
+        <label>Record Kind<select disabled={demo} value={demo ? 'all' : filters.kind} onChange={e => update('kind', e.target.value)}>{['operational', 'drill', 'test', 'unknown', 'all'].map(k => <option key={k} value={k}>{k[0].toUpperCase() + k.slice(1)}</option>)}</select></label>
       </div>
-      {!demo && <details className="ro-refinements"><summary><span><PerformanceIcon name="filter" />Refine by team, station or location{refinementCount > 0 && <span className="rp-count">{refinementCount} active</span>}</span><PerformanceIcon name="chevron" /></summary><div className="rp-filters ro-refinement-fields">
+      {!demo && <details className="ro-refinements"><summary><span><PerformanceIcon name="filter" />Refine by Team, Station or Location{refinementCount > 0 && <span className="rp-count">{refinementCount} Active</span>}</span><PerformanceIcon name="chevron" /></summary><div className="rp-filters ro-refinement-fields">
         {!demo && <TeamFilter teams={choices?.teams || []} selected={filters.teams} onChange={value => update('teams', value)} />}
-        {!demo && <label>Station<select value={filters.station} onChange={e => update('station', e.target.value)}><option value="">All stations</option>{choices?.stations?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
-        {!demo && <label>Barangay<select value={filters.barangay} onChange={e => update('barangay', e.target.value)}><option value="">All barangays</option>{choices?.barangays?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>}
-        {!demo && <label>Severity<select value={filters.severity} onChange={e => update('severity', e.target.value)}><option value="">All severities</option>{['Minor', 'Moderate', 'Critical'].map(s => <option key={s}>{s}</option>)}</select></label>}
+        {!demo && <label>Station<select value={filters.station} onChange={e => update('station', e.target.value)}><option value="">All Stations</option>{choices?.stations?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
+        {!demo && <label>Barangay<select value={filters.barangay} onChange={e => update('barangay', e.target.value)}><option value="">All Barangays</option>{choices?.barangays?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>}
+        {!demo && <label>Severity<select value={filters.severity} onChange={e => update('severity', e.target.value)}><option value="">All Severities</option>{['Minor', 'Moderate', 'Critical'].map(s => <option key={s}>{s}</option>)}</select></label>}
       </div></details>}
       {!demo && activeRefinements.length > 0 && <div className="ro-filter-chips" aria-label="Active refinements">{activeRefinements.map(item => <button key={item.key} onClick={() => update(item.key, item.value)} aria-label={`Remove ${item.label} filter`}>{item.label}<span aria-hidden="true">×</span></button>)}</div>}
       <span id="rp-date-help" className="rp-sr-only">Dates in PHT · end date excluded</span>
@@ -481,6 +482,7 @@ export default function ResponsePerformanceView({ onOpenAnalysis, onOpenDispatch
       </section>
       </div>
       </details>}
+      {!demo && <ShiftComparison data={data?.shift_comparison} loading={loading} />}
       {data?.notice && <p className="rp-notice"><PerformanceIcon name="info" />{data.notice}</p>}
     </>}
     {csvReview != null && <CsvReviewModal csv={csvReview} fileName="response-performance.csv" title="Response Performance CSV" onClose={() => setCsvReview(null)} />}

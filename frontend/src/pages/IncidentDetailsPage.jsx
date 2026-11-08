@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
+import { useState, useEffect, useRef } from "react";
+import PhotoViewer from "../components/PhotoViewer";
 import "../styles/IncidentDetailsPage.css";
 import DetailsLayout, {
   DetailsSection,
@@ -14,22 +14,29 @@ import {
   formatReported,
 } from "../components/incidentUi";
 import { fetchIncidentReport, fetchDispatches } from "../api";
-import ResponderRouteHistory from "../components/ResponderRouteHistory";
-import AfterActionReport from "../components/AfterActionReport";
+import AfterActionReport, { ReportTime } from "../components/AfterActionReport";
 import AfterActionReportModal from "../components/AfterActionReportModal";
+import IncidentExportModal from "../components/IncidentExportModal";
+import IncidentWorkflowPanel from '../components/IncidentWorkflowPanel';
+import IncidentTeamResponseActions from '../components/IncidentTeamResponseActions';
+import { Icon } from '../components/incidentForm';
+import { ICON_CHECK, supportsFireAlarm } from '../components/incidentFormOptions';
+import useIncidentWorkflow from '../hooks/useIncidentWorkflow';
+import { incidentControl, incidentStage } from '../utils/incidentOperations';
 
 const STEPS = [
   { key: "pending", label: "Reported" },
-  { key: "dispatched", label: "Dispatched" },
-  { key: "contained", label: "Contained" },
+  { key: "responding", label: "Responding" },
+  { key: "under_control", label: "Under Control" },
+  { key: "operation_complete", label: "Operation Complete" },
   { key: "closed", label: "Closed" },
 ];
-const STEP_INDEX = { pending: 0, active: 1, dispatched: 1, contained: 2, closed: 3 };
+const STEP_INDEX = { pending: 0, responding: 1, under_control: 2, operation_complete: 3, closed: 4 };
 
 const DISPATCH_STATUS = {
   dispatched: { label: "Dispatched", tone: "amber" },
   en_route: { label: "En Route", tone: "amber" },
-  on_scene: { label: "On Scene", tone: "blue" },
+  on_scene: { label: "On Scene", tone: "amber" },
   completed: { label: "Completed", tone: "green" },
   cancelled: { label: "Cancelled", tone: "muted" },
 };
@@ -38,7 +45,7 @@ function clock(iso) {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("en-PH", { timeZone: 'Asia/Manila', hour: "2-digit", minute: "2-digit" });
 }
 
 // "1h 12m" between two instants — used for time-on-incident and response time.
@@ -73,24 +80,25 @@ function StatTile({ label, value, sub, tone }) {
 
 /* Report closure comes from the recorded status event, independently of a
    report added later by an administrator. */
-function Progress({ status, reportedAt, dispatchedAt, closedAt }) {
-  const current = STEP_INDEX[status] ?? 0;
-  const times = [reportedAt, dispatchedAt, null, closedAt];
+function Progress({ incident, reportedAt, dispatchedAt, closedAt }) {
+  const current = STEP_INDEX[incidentStage(incident)] ?? 0;
+  const timelineRef = useRef(null);
+  const times = [reportedAt, dispatchedAt, null, incident.operation_completed_at, closedAt];
+  useEffect(() => {
+    const timeline = timelineRef.current;
+    const step = timeline?.children[current];
+    if (step) timeline.scrollLeft = Math.max(0, step.offsetLeft - (timeline.clientWidth - step.clientWidth) / 2);
+  }, [current]);
   return (
-    <div className="idp-steps">
+    <div className={`idp-steps eim-steps${incident.status === 'closed' ? ' complete' : ''}`} ref={timelineRef} tabIndex={0} role="list" aria-label="Incident progress">
       {STEPS.map((s, i) => {
         const state = i < current ? "done" : i === current ? "current" : "todo";
         return (
-          <div key={s.key} className={`idp-step is-${state}`}>
-            <div className="idp-step-track">
-              <span className="idp-step-dot">
-                {state === "done" && (
-                  <span className="material-symbols-outlined">check</span>
-                )}
-              </span>
-              {i < STEPS.length - 1 && <span className="idp-step-line" />}
-            </div>
-            <div className="idp-step-label">{s.label}</div>
+          <div key={s.key} className={`idp-step eim-step ${state} is-${state}`} role="listitem" aria-current={state === 'current' ? 'step' : undefined}>
+            <span className="eim-step-node" aria-hidden="true">
+              {state === "done" ? <Icon d={ICON_CHECK} className="eim-step-icon" /> : i + 1}
+            </span>
+            <div className="idp-step-label eim-step-label">{s.key === 'under_control' ? incidentControl(incident).label : s.label}</div>
             <div className="idp-step-time">
               {state !== "todo" ? clock(times[i]) ?? "—" : "Pending"}
             </div>
@@ -101,10 +109,12 @@ function Progress({ status, reportedAt, dispatchedAt, closedAt }) {
   );
 }
 
-function UnitCard({ d, now }) {
-  const st = DISPATCH_STATUS[d.dispatch_status] ?? { label: d.dispatch_status, tone: "muted" };
-  const response = d.arrived_at ? span(d.dispatch_at, new Date(d.arrived_at).getTime()) : null;
-  const live = !d.arrived_at && ["dispatched", "en_route"].includes(d.dispatch_status);
+function UnitCard({ d, now, workflow }) {
+  const assignment = workflow.data?.dispatches.find(dispatch => dispatch.dispatch_id === d.dispatch_id);
+  const dispatchStatus = assignment?.dispatch_status || d.dispatch_status;
+  const st = (assignment?.cleared_at || d.cleared_at) ? { label: "Cleared", tone: "green" }
+    : DISPATCH_STATUS[dispatchStatus] ?? { label: dispatchStatus, tone: "muted" };
+  const live = !d.arrived_at && ["dispatched", "en_route"].includes(dispatchStatus);
   const members = d.members ?? [];
   return (
     <div className="idp-unit">
@@ -115,7 +125,7 @@ function UnitCard({ d, now }) {
         <div className="idp-unit-info">
           <div className="idp-unit-name">{d.team_name}</div>
           <div className="idp-unit-sub">
-            {[d.team_code, d.station_name].filter(Boolean).join(" · ") || "—"}
+            {d.station_name || "—"}
           </div>
         </div>
         <Tone tone={st.tone} dot={live}>
@@ -132,7 +142,7 @@ function UnitCard({ d, now }) {
           <span>{d.arrived_at ? "Arrived" : "En route for"}</span>
           <span>
             {d.arrived_at
-              ? `${clock(d.arrived_at)}${response ? ` · ${response}` : ""}`
+              ? clock(d.arrived_at) ?? "—"
               : live
               ? span(d.dispatch_at, now) ?? "—"
               : "—"}
@@ -163,91 +173,8 @@ function UnitCard({ d, now }) {
           </span>
         </div>
       )}
+      <IncidentTeamResponseActions dispatch={assignment} workflow={workflow} />
     </div>
-  );
-}
-
-/* Full-screen scene-photo lightbox: counter + caption up top, prev/next,
-   a thumbnail strip to jump around, Esc / ← / → from the keyboard. */
-function PhotoViewer({ photos, index, onIndexChange, onClose, caption }) {
-  const count = photos.length;
-  const go = (delta) => onIndexChange((index + delta + count) % count);
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowLeft" && count > 1) onIndexChange((index - 1 + count) % count);
-      else if (e.key === "ArrowRight" && count > 1) onIndexChange((index + 1) % count);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [index, count, onClose, onIndexChange]);
-
-  return createPortal(
-    <div
-      className="idp-viewer"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Scene photo ${index + 1} of ${count}`}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="idp-viewer-bar">
-        <div className="idp-viewer-meta">
-          <span className="idp-viewer-count">
-            Photo {index + 1} <span>of {count}</span>
-          </span>
-          {caption && <span className="idp-viewer-caption">{caption}</span>}
-        </div>
-        <div className="idp-viewer-tools">
-          <a
-            className="idp-viewer-btn"
-            href={photos[index]}
-            target="_blank"
-            rel="noreferrer"
-            title="Open full size in a new tab"
-            aria-label="Open full size in a new tab"
-          >
-            <span className="material-symbols-outlined">open_in_new</span>
-          </a>
-          <button type="button" className="idp-viewer-btn" onClick={onClose} aria-label="Close viewer" autoFocus>
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="idp-viewer-stage" onClick={(e) => e.target === e.currentTarget && onClose()}>
-        {count > 1 && (
-          <button type="button" className="idp-viewer-btn idp-viewer-nav prev" onClick={() => go(-1)} aria-label="Previous photo">
-            <span className="material-symbols-outlined">chevron_left</span>
-          </button>
-        )}
-        <img key={photos[index]} className="idp-viewer-img" src={photos[index]} alt={`Scene photo ${index + 1}`} />
-        {count > 1 && (
-          <button type="button" className="idp-viewer-btn idp-viewer-nav next" onClick={() => go(1)} aria-label="Next photo">
-            <span className="material-symbols-outlined">chevron_right</span>
-          </button>
-        )}
-      </div>
-
-      {count > 1 && (
-        <div className="idp-viewer-strip" role="tablist" aria-label="All photos">
-          {photos.map((url, i) => (
-            <button
-              key={url}
-              type="button"
-              role="tab"
-              aria-selected={i === index}
-              aria-label={`Photo ${i + 1}`}
-              className={`idp-viewer-thumb${i === index ? " active" : ""}`}
-              onClick={() => onIndexChange(i)}
-            >
-              <img src={url} alt="" loading="lazy" />
-            </button>
-          ))}
-        </div>
-      )}
-    </div>,
-    document.body
   );
 }
 
@@ -259,22 +186,30 @@ function PhotoViewer({ photos, index, onIndexChange, onClose, caption }) {
  * @param onEdit      open the edit modal for this incident
  * @param onDelete    open the delete confirmation for this incident
  * @param onViewOnMap jump to the Command map focused on this incident
+ * @param onViewAnalysis open response analysis for this incident
  */
 export default function IncidentDetailsPage({
   incident,
-  theme = "dark",
   onBack,
   onEdit,
   onDelete,
   onViewOnMap,
+  onViewAnalysis,
   onUpdated,
+  section = null,
+  sectionFocusNonce = 0,
 }) {
   const [reportState, setReportState] = useState(null);
   const [reportRevision, setReportRevision] = useState(0);
   const [reportEditor, setReportEditor] = useState(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const fireId = incident?.fire_id;
+  const workflow = useIncidentWorkflow(fireId, reportRevision, updated => {
+    setReportRevision(value => value + 1);
+    onUpdated?.(updated);
+  });
   const incStatus = incident?.status;
-  const canFileReport = incStatus === "contained" || incStatus === "closed";
+  const canFileReport = !!incident && !['cancelled', 'canceled', 'recalled'].includes(incStatus);
   const reportReady = reportState?.fireId === fireId && reportState?.status === incStatus && reportState?.revision === reportRevision;
   const report = reportReady ? reportState.report : null;
   const reportError = reportReady ? reportState.error : null;
@@ -286,6 +221,14 @@ export default function IncidentDetailsPage({
   const [now, setNow] = useState(() => Date.now());
   // Index of the scene photo shown in the in-app viewer; null = viewer closed.
   const [photoIndex, setPhotoIndex] = useState(null);
+  const workflowSectionRef = useRef(null);
+
+  useEffect(() => {
+    if (fireId == null || section !== 'response-reporting') return;
+    const target = workflowSectionRef.current;
+    target?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
+    target?.focus({ preventScroll: true });
+  }, [fireId, section, sectionFocusNonce]);
 
   // Keeps "time on incident" and "en route for" honest while the page is open.
   useEffect(() => {
@@ -316,7 +259,9 @@ export default function IncidentDetailsPage({
       if (event.detail?.fireId === fireId) setReportRevision(value => value + 1);
     };
     window.addEventListener('incident-report-updated', refresh);
-    return () => window.removeEventListener('incident-report-updated', refresh);
+    const refreshWorkflow = () => setReportRevision(value => value + 1);
+    window.addEventListener('operational-times-updated', refreshWorkflow);
+    return () => { window.removeEventListener('incident-report-updated', refresh); window.removeEventListener('operational-times-updated', refreshWorkflow); };
   }, [fireId]);
 
   // Units sent to this incident, for the Responding Units column and the
@@ -334,7 +279,7 @@ export default function IncidentDetailsPage({
     return () => {
       cancelled = true;
     };
-  }, [fireId, incStatus]);
+  }, [fireId, incStatus, reportRevision]);
   const dispatches = dispatchState.fireId === fireId ? dispatchState.rows : null;
 
   const photos = report?.photos ?? [];
@@ -342,7 +287,12 @@ export default function IncidentDetailsPage({
   if (!incident) return null;
 
   const closed = incident.status === "closed";
+  const alarm = supportsFireAlarm(incident.dispatch_type) && incident.alarm
+    && !['n/a', 'not applicable', '-', '—'].includes(incident.alarm.trim().toLowerCase())
+    ? incident.alarm : null;
   const hasCoords = incident.latitude != null && incident.longitude != null;
+  const hasMapPin = hasCoords && !incident.operation_completed_at
+    && ['pending', 'responding', 'under_control'].includes(incidentStage(incident));
   const coords = hasCoords
     ? `${incident.latitude.toFixed(5)}, ${incident.longitude.toFixed(5)}`
     : "—";
@@ -386,7 +336,7 @@ export default function IncidentDetailsPage({
         ) : (
           <div className="idp-units">
             {dispatches.map((d) => (
-              <UnitCard key={d.dispatch_id} d={d} now={now} />
+              <UnitCard key={d.dispatch_id} d={d} now={now} workflow={workflow} />
             ))}
           </div>
         )}
@@ -412,7 +362,7 @@ export default function IncidentDetailsPage({
             </button>
           )}
         </div>
-        {!closed && (
+        {hasMapPin && (
           <button
             type="button"
             className="act-btn block"
@@ -452,6 +402,16 @@ export default function IncidentDetailsPage({
             <button
               type="button"
               className="act-icon-btn"
+              onClick={() => setExportOpen(true)}
+              disabled={fireId == null}
+              title="Export incident report"
+              aria-label="Export incident report"
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">download</span>
+            </button>
+            <button
+              type="button"
+              className="act-icon-btn"
               onClick={() => onEdit?.(incident)}
               title="Edit incident"
               aria-label="Edit incident"
@@ -471,7 +431,7 @@ export default function IncidentDetailsPage({
         </div>
 
         <div className="idp-stats">
-          <StatTile label="Alarm Level" value={incident.alarm || "—"} sub="CURRENT" />
+          <StatTile label="Alarm Level" value={alarm || "-"} sub="CURRENT" tone={alarm ? undefined : "muted"} />
           <StatTile
             label="Units"
             value={dispatches ? dispatches.length : incident.units ?? 0}
@@ -484,67 +444,87 @@ export default function IncidentDetailsPage({
           />
           <StatTile
             label="Casualties"
-            value={incident.casualties || "None"}
-            sub={hasCasualties ? "REPORTED" : "NONE REPORTED"}
+            value={incident.casualties || "Unconfirmed"}
+            sub={incident.casualties_reviewed_at ? "DISPATCHER REVIEWED" : "PENDING REVIEW"}
             tone={hasCasualties ? "amber" : undefined}
           />
         </div>
-      </div>
-
-      {/* ── Progress ─────────────────────────────────────────────────── */}
-      <DetailsSection title="Progress">
         <Progress
-          status={incident.status}
+          incident={incident}
           reportedAt={incident.reported_at}
           dispatchedAt={firstDispatchAt}
           closedAt={closedAt}
         />
-      </DetailsSection>
+      </div>
 
       {/* ── Info ─────────────────────────────────────────────────────── */}
       <DetailsSection title="Incident Information">
         <DetailsGrid min={170}>
           <DetailsField label="Dispatch type" value={incident.dispatch_type || "Unspecified"} />
           <DetailsField label="Structure type" value={incident.structure || "—"} />
-          <DetailsField label="Reported via" value={incident.reporter || "—"} />
-          <DetailsField label="Reported at" value={formatReported(incident.reported_at)} />
+          <DetailsField label="Reported via" value={(incident.reporter_name ?? incident.reporter) || "—"} />
+          <DetailsField label="Reporter contact number" value={incident.reporter_contact || "—"} />
+          <DetailsField label="Reported at" value={<ReportTime value={incident.reported_at} stacked />} />
           <DetailsField label="Severity" value={incident.sev || "—"} />
           <DetailsField label="Address" value={incident.addr || "—"} />
           <DetailsField label="Casualties" value={incident.casualties || "—"} highlight={hasCasualties} />
         </DetailsGrid>
       </DetailsSection>
 
-      {fireId != null && <DetailsSection title="Responder Route History">
-        <ResponderRouteHistory key={fireId} fireId={fireId} theme={theme} />
-      </DetailsSection>}
-
-      {/* ── Report ───────────────────────────────────────────────────── */}
-      {canFileReport && (
-        <DetailsSection title="After-Action Report" actions={!report ? <span className="aar-section-actions">
-          {reportError && <button type="button" className="eim-link-btn" onClick={() => setReportRevision(value => value + 1)}>Retry</button>}
-          <button
-            type="button"
-            className="act-btn"
-            aria-label="Add after-action report"
-            disabled={reportLoading || !!reportError}
-            onClick={() => setReportEditor({ incident, report })}
-          >
-            <EditIcon /> Add report
-          </button>
-        </span> : null}>
-          <AfterActionReport
-            report={report}
-            loading={reportLoading}
-            error={reportError}
-            onPhotoSelect={setPhotoIndex}
-            onEdit={() => setReportEditor({ incident, report })}
-          />
-        </DetailsSection>
+      {(fireId != null || canFileReport) && (
+        <div id="response-reporting" className="idp-linked-section" ref={workflowSectionRef} tabIndex={-1} role="region" aria-label="Response & Reporting">
+          <DetailsSection title="Response & Reporting">
+            {fireId != null && <IncidentWorkflowPanel
+              key={fireId}
+              fireId={fireId}
+              workflow={workflow}
+              onPrepare={sourceReport => setReportEditor({ incident, report: null, sourceReport })}
+            />}
+            {canFileReport && <section className="idp-report-section" aria-label="Incident report">
+              <header className="idp-report-heading">
+                <h3>Incident Report</h3>
+                {report && !reportLoading && !reportError && <button type="button" className="act-icon-btn aar-edit" onClick={() => setReportEditor({ incident, report })} aria-label="Edit incident report" title="Edit incident report"><EditIcon /></button>}
+                {!report && <span className="aar-section-actions">
+                  {reportError && <button type="button" className="eim-link-btn" onClick={() => setReportRevision(value => value + 1)}>Retry</button>}
+                  {closed && <button
+                    type="button"
+                    className="act-btn"
+                    aria-label="Add incident report"
+                    disabled={reportLoading || !!reportError}
+                    onClick={() => setReportEditor({ incident, report })}
+                  >
+                    <EditIcon /> Add report
+                  </button>}
+                </span>}
+              </header>
+              <AfterActionReport
+                report={report}
+                incident={incident}
+                loading={reportLoading}
+                error={reportError}
+                onPhotoSelect={setPhotoIndex}
+              />
+            </section>}
+          </DetailsSection>
+        </div>
       )}
+
+      {fireId != null && onViewAnalysis && (
+        <div className="act-group">
+          <button type="button" className="act-btn" onClick={() => onViewAnalysis(incident)}>
+            <span className="material-symbols-outlined" aria-hidden="true">analytics</span>
+            View response analysis
+          </button>
+        </div>
+      )}
+
+      {exportOpen && <IncidentExportModal key={fireId} incident={incident} onClose={() => setExportOpen(false)} />}
 
       {reportEditor && <AfterActionReportModal
         incident={reportEditor.incident}
         report={reportEditor.report}
+        sourceReport={reportEditor.sourceReport}
+        fieldReports={workflow.data?.field_reports || []}
         onClose={() => setReportEditor(null)}
         onSaved={handleReportSaved}
       />}

@@ -8,6 +8,7 @@ import ResponderRouteHistory from './ResponderRouteHistory'
 import SettingsLoading from './SettingsLoading'
 import { MilestoneForm } from './ResponseAnalysisContent'
 import { dateTime, duration } from '../utils/operationalTimes'
+import { incidentControl } from '../utils/incidentOperations'
 
 const readable = value => value ? String(value).replaceAll('_', ' ').replace(/^./, first => first.toUpperCase()) : null
 const EVIDENCE_TYPES = {
@@ -15,7 +16,6 @@ const EVIDENCE_TYPES = {
   op_departure: ['Truck departed', 'turnout'],
   op_arrival: ['Truck arrived', 'travel'],
   op_suppression_start: ['Suppression started', 'suppression'],
-  op_fire_control: ['Fire contained', 'suppression'],
   op_fire_out: ['Fire out', 'suppression'],
   op_operation_complete: ['Operation completed', 'acknowledgement'],
   op_clearance: ['Dispatch cleared', 'acknowledgement'],
@@ -29,12 +29,14 @@ export function ResponseMilestones({ milestones }) {
   </li>)}</ol>
 }
 
-export function ResponseEvidenceEvents({ events }) {
+export function ResponseEvidenceEvents({ events, incident }) {
   if (!events.length) return null
   return <section className="rar-event-list" aria-label="Recorded evidence">
     <div className="rar-evidence-heading"><div><h3>Recorded evidence</h3><p>Who recorded each milestone and when.</p></div><span className="rar-evidence-count">{events.length} {events.length === 1 ? 'record' : 'records'}</span></div>
     <ol className="rar-evidence-feed">{events.map((event, index) => {
-      const [label, icon] = EVIDENCE_TYPES[event.type] || [readable(event.type.replace('op_', '')), 'handling']
+      const [label, icon] = event.type === 'op_fire_control'
+        ? [incidentControl(incident).label, 'acknowledgement']
+        : EVIDENCE_TYPES[event.type] || [readable(event.type.replace('op_', '')), 'handling']
       return <li key={index} className="rar-evidence-event">
         <span className="rar-evidence-icon"><AnalysisIcon name={icon} /></span>
         <div className="rar-evidence-content">

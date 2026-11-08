@@ -17,6 +17,7 @@ import { ICON_CLOSE } from './incidentFormOptions'
  *                 blocks both Esc and backdrop clicks
  *   titleId / describedBy – optional stable IDs for accessible dialog context
  *   variant / icon – use the sign-out confirmation shell with variant="confirmation"
+ *   variant="badged" – icon header with close button and a separate subtitle row
  */
 export default function AppModal({
   eyebrow, title, subtitle, onClose, children, width = 520, className = '', dismissible = true, manageFocus = false,
@@ -24,6 +25,7 @@ export default function AppModal({
   variant = 'default', icon,
 }) {
   const confirmation = variant === 'confirmation'
+  const badged = variant === 'badged'
   const generatedTitleId = useId()
   const titleId = suppliedTitleId || generatedTitleId
   const panelRef = useRef(null)
@@ -77,15 +79,17 @@ export default function AppModal({
             <div id={titleId} className="cfm-title">{title}</div>
             {subtitle && <div className="apm-subtitle">{subtitle}</div>}
           </div>
-        </div> : <div className="eim-header">
-          <div className="eim-header-main">
+        </div> : <div className={badged ? 'cfm-head dpm-header' : 'eim-header'}>
+          {badged && icon && <span className="cfm-badge" aria-hidden="true">{icon}</span>}
+          <div className={badged ? 'cfm-head-text' : 'eim-header-main'}>
             {eyebrow && <div className="apm-eyebrow">{eyebrow}</div>}
-            <div id={titleId} className="eim-title">{title}</div>
-            {subtitle && <div className="apm-subtitle">{subtitle}</div>}
+            <div id={titleId} className={badged ? 'cfm-title' : 'eim-title'}>{title}</div>
+            {!badged && subtitle && <div className="apm-subtitle">{subtitle}</div>}
           </div>
           <button type="button" className="eim-close" onClick={onClose} aria-label="Close" disabled={!dismissible}>
             <Icon d={ICON_CLOSE} />
           </button>
+          {badged && subtitle && <div className="apm-subtitle eim-subtitle">{subtitle}</div>}
         </div>}
         {children}
       </div>

@@ -211,6 +211,11 @@
   cursor: pointer;
 }
 .tea-filter-select:focus { border-color: var(--accent-fire-focus); }
+.tea-filter-select.is-active,
+.tea-search-wrap:has(input:not(:placeholder-shown)) .tea-search-icon {
+  color: var(--text-primary);
+}
+
 .tea-filter-select option { background: var(--bg-card); }
 
 .tea-result-count {
@@ -315,6 +320,10 @@
   color: var(--text-secondary);
   background: var(--chip-muted-bg);
 }
+
+.tea-page .kpi-card-sub { text-transform: capitalize; }
+
+.tea-separator { color: var(--text-muted); }
 
 .tea-av {
   width: 32px;
@@ -541,6 +550,13 @@
   color: var(--text-secondary);
 }
 
+.tea-table .tea-cell-station,
+.tea-table .tea-cell-truck,
+.tea-table .tea-stack .tea-av,
+.tea-table .tea-stack-more {
+  color: color-mix(in srgb, var(--text-primary) 75%, transparent);
+}
+
 /* ── Row actions ── */
 .tea-row-actions { display: flex; gap: 6px; }
 
@@ -757,7 +773,7 @@
 .tea-hero {
   position: relative;
   overflow: hidden;
-  margin-bottom: 18px;
+  margin-bottom: 28px;
   padding: 16px;
   border-radius: 12px;
   background: var(--bg-base);
@@ -841,10 +857,10 @@
   font-family: var(--font-condensed);
   font-size: 9.8px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
 }
 .tea-stat-value {
-  margin-top: 5px;
+  margin-top: 10px;
   font-family: var(--font-condensed);
   font-size: 18px;
   font-weight: 600;
@@ -865,7 +881,7 @@
 }
 
 /* Sections */
-.tea-sec { margin-bottom: 18px; }
+.tea-sec { margin-bottom: 28px; }
 .tea-sec-title {
   display: flex;
   align-items: center;
@@ -1022,6 +1038,15 @@
   font-size: 9.8px;
   color: var(--text-secondary);
   text-transform: capitalize;
+}
+.tea-line-meta-leader { color: var(--accent-amber); }
+
+.tea-readiness-blocker {
+  margin: 6px 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: normal;
 }
 
 /* Columns sum to 810px (Actions is the last 120). Below that the Actions

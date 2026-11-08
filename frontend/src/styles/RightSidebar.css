@@ -549,9 +549,9 @@
   background: rgba(var(--accent-cyan-rgb), 0.15);
   color: var(--accent-blue);
 }
-.dispatch-status-onscene {
-  background: rgba(var(--accent-emerald-rgb), 0.15);
-  color: var(--accent-green);
+.dispatch-status-onscene, .dispatch-status-on_scene {
+  background: var(--accent-amber-dim);
+  color: var(--accent-amber);
 }
 .dispatch-status-standby {
   background: rgba(var(--accent-slate-rgb), 0.15);

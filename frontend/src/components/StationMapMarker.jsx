@@ -8,12 +8,16 @@ export default function StationMapMarker({ station, icon, onViewStation }) {
     </Tooltip>
     <Popup className="station-popup" minWidth={230}>
       <div className="station-popup-inner">
-        <strong className="station-popup-name">{station.station_name}</strong>
-        <div className="station-popup-meta">{station.station_type === 'sub' ? 'Sub-station' : 'Main station'} · {station.station_status || 'Operational'}</div>
-        {station.station_barangay && <div>{station.station_barangay}</div>}
+        <div className="station-popup-header">
+          <span className="station-popup-icon" aria-hidden="true" />
+          <strong className="station-popup-name">{station.station_name}</strong>
+        </div>
+        <div className="station-popup-meta">{station.station_type === 'sub' ? 'Sub-station' : 'Main station'}</div>
         {station.station_address && <div>{station.station_address}</div>}
         {station.station_contact && <div>Contact: {station.station_contact}</div>}
-        <button type="button" className="station-popup-view" onClick={() => onViewStation(station.station_id)}>View station</button>
+        <div className="station-popup-footer">
+          <button type="button" className="station-popup-view" onClick={() => onViewStation(station.station_id)}>View station</button>
+        </div>
       </div>
     </Popup>
   </Marker>

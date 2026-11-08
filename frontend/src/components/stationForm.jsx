@@ -10,7 +10,7 @@ import { Field, SectionHead, Segmented, FieldError } from './incidentForm'
  * contactError – validation message for the contact number
  * editing     – omit ending periods from help text in the edit modal
  */
-export function StationDetailsSections({ form, set, isChanged = () => false, mainStations, contactError, autoFocus, editing = false }) {
+export function StationDetailsSections({ form, set, isChanged = () => false, mainStations, contactError, autoFocus, editing = false, detecting = false, barangayHint }) {
   const isSub = form.station_type === 'sub'
   const helpText = text => editing ? text.replace(/\.$/, '') : text
 
@@ -63,11 +63,18 @@ export function StationDetailsSections({ form, set, isChanged = () => false, mai
             />
           </Field>
           <Field label="Barangay" required changed={isChanged('station_barangay')}>
+            <div className="barangay-input-wrap">
             <input
-              placeholder="e.g. Gredu"
+              placeholder="Filled automatically from the map pin"
+              aria-label="Barangay"
+              aria-describedby="station-barangay-hint"
+              aria-busy={detecting}
               value={form.station_barangay}
               onChange={e => set('station_barangay', e.target.value)}
             />
+            {detecting && <span className="apm-spinner barangay-input-spinner" aria-hidden="true" />}
+            </div>
+            <span id="station-barangay-hint" className="frm-hint" aria-live="polite">{barangayHint}</span>
           </Field>
         </div>
       </section>

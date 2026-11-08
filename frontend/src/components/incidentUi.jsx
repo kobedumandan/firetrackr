@@ -1,6 +1,7 @@
 // Shared incident presentation helpers — used by both the incidents list and
 // the incident details page so the two never drift apart.
 import "../styles/IncidentsPage.css";
+import { incidentStatusBadgeLabel, incidentStage } from '../utils/incidentOperations';
 
 export function FireGeneralIcon({ className }) {
   return (
@@ -56,29 +57,33 @@ export function SeverityBadge({ sev }) {
   );
 }
 
-export function StatusPill({ status }) {
+export function StatusPill({ status, incident }) {
   const map = {
     pending: ["sp-pending", "Pending"],
     dispatched: ["sp-dispatched", "Dispatched"],
-    contained: ["sp-contained", "Contained"],
+    contained: ["sp-contained", incidentStatusBadgeLabel(status, incident)],
     closed: ["sp-closed", "Closed"],
   };
-  const [cls, label] = map[status] || ["sp-closed", status];
-  return <span className={`status-pill ${cls}`}>{label}</span>;
+  const stage = incidentStage(incident || { status });
+  const tone = { responding: 'dispatched', under_control: 'contained', operation_complete: 'closed' }[stage] || stage;
+  const [cls] = map[tone] || ["sp-closed"];
+  return <span className={`status-pill ${cls}`}>{incidentStatusBadgeLabel(status, incident)}</span>;
 }
 
 export function formatReported(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
+  const day = value => value.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  const isToday = day(d) === day(now);
   const time = d.toLocaleTimeString("en-PH", {
+    timeZone: 'Asia/Manila',
     hour: "2-digit",
     minute: "2-digit",
   });
   if (isToday) return `Today ${time}`;
   return (
-    d.toLocaleDateString("en-PH", { month: "short", day: "numeric" }) +
+    d.toLocaleDateString("en-PH", { timeZone: 'Asia/Manila', month: "short", day: "numeric" }) +
     " " +
     time
   );

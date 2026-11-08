@@ -3,11 +3,43 @@
    tinted icon puck, stat tiles, titled sections, pill badges. */
 
 /* ── Tone helpers ────────────────────────────────────────────────────────── */
+.dl-content:has(> .idp-hero) {
+  gap: 32px;
+}
+
+.idp-linked-section {
+  scroll-margin-block-start: 18px;
+}
+.idp-linked-section:focus-visible {
+  outline: 1px solid var(--border);
+  outline-offset: 6px;
+}
+
+.idp-report-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-dim);
+}
+.idp-report-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.idp-report-heading h3 {
+  margin: 0;
+  font-family: var(--font-condensed);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
 .idp-tile-fire  { background: var(--accent-fire-dim);  color: var(--accent-fire); }
 .idp-tile-amber { background: var(--accent-amber-dim); color: var(--accent-amber); }
 .idp-tile-blue  { background: var(--accent-blue-dim);  color: var(--accent-blue); }
 
 .idp-text-amber { color: var(--accent-amber); }
+.idp-stat-value.idp-text-muted {
+  color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+}
 
 .idp-pill {
   display: inline-flex;
@@ -112,7 +144,7 @@
 }
 .idp-addr {
   font-size: 11.5px;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 75%, transparent);
   margin-top: 3px;
 }
 .idp-chips {
@@ -152,8 +184,8 @@
   font-weight: 600;
   letter-spacing: -0.1px;
   text-transform: uppercase;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
+  color: color-mix(in srgb, var(--text-primary) 75%, transparent);
+  margin-bottom: 12px;
 }
 .idp-stat-value {
   font-family: var(--font-condensed);
@@ -172,108 +204,43 @@
 }
 
 /* ── Progress stepper ────────────────────────────────────────────────────── */
-.idp-steps {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+.idp-steps.eim-steps {
+  grid-template-columns: repeat(5, minmax(76px, 1fr));
+  margin-top: 32px;
+  padding-block: 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
+.idp-steps:focus-visible { outline: 1px solid var(--border-bright); outline-offset: 4px; }
 
-.idp-step { min-width: 0; }
-
-.idp-step-track {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10px;
+.idp-step.eim-step {
+  min-width: 0;
+  cursor: default;
+  text-align: center;
 }
-
-.idp-step-dot {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border: 1.5px solid var(--border);
-  background: var(--bg-panel);
-  color: var(--on-accent);
+.idp-step .idp-step-label {
+  min-height: 30px;
+  padding-inline: 3px;
+  line-height: 1.4;
 }
-.idp-step-dot .material-symbols-outlined {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.idp-step-line {
-  flex: 1;
-  height: 2px;
-  margin: 0 6px;
-  border-radius: 1px;
-  background: var(--border-dim);
-}
-
-.idp-step.is-done .idp-step-dot {
-  background: var(--accent-green);
-  border-color: var(--accent-green);
-}
-.idp-step.is-done .idp-step-line {
-  background: var(--accent-green);
-}
-/* Done steps recede so the ongoing step is the only one in focus. */
-.idp-step.is-done .idp-step-dot,
-.idp-step.is-done .idp-step-line,
-.idp-step.is-done .idp-step-label,
-.idp-step.is-done .idp-step-time {
+.idp-step:hover .eim-step-node,
+.idp-step:active .eim-step-node { transform: none; }
+.idp-step.done:hover .eim-step-node,
+.idp-step.done:hover .eim-step-label {
   opacity: 0.4;
-}
-.idp-step.is-current .idp-step-dot {
-  border-color: var(--accent-amber);
-  box-shadow: 0 0 0 4px rgba(var(--accent-amber-rgb), 0.15);
-}
-.idp-step.is-current .idp-step-dot::after {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent-amber);
-}
-/* A closed incident has nothing left to do, so its last step reads as done. */
-.idp-step.is-current:last-child .idp-step-dot {
-  background: var(--accent-green);
-  border-color: var(--accent-green);
-  box-shadow: none;
-  opacity: 0.4;
-}
-.idp-step.is-current:last-child .idp-step-label,
-.idp-step.is-current:last-child .idp-step-time {
-  opacity: 0.4;
-}
-.idp-step.is-current:last-child .idp-step-dot::after {
-  background: var(--on-accent);
-}
-
-.idp-step-label {
-  font-family: var(--font-condensed);
-  font-size: 10.8px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.idp-step.is-todo .idp-step-label {
-  color: var(--text-secondary);
 }
 .idp-step-time {
   font-family: var(--font-mono);
   font-size: 9.5px;
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-.idp-step.is-todo .idp-step-time {
-  color: var(--text-tertiary);
+  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
+  margin-top: -3px;
 }
 
 /* ── Aside ───────────────────────────────────────────────────────────────── */
 .idp-aside {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 32px;
 }
 
 .idp-aside-state {
@@ -311,11 +278,47 @@
   gap: 8px;
 }
 
-.idp-unit {
+.idp-unit, .wf-task {
   background: var(--bg-base);
   border: 1px solid var(--border-dim);
   border-radius: 10px;
   padding: 12px;
+}
+
+.idp-unit-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 10px;
+}
+.idp-unit-note {
+  margin: 0;
+  color: rgb(255 255 255 / 55%);
+  font-size: 10px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.idp-unit-blocker {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-dim);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.idp-unit-blocker svg { width: 11px; height: 11px; flex-shrink: 0; margin-top: 1px; }
+[data-theme="light"] .idp-unit-note { color: color-mix(in srgb, var(--text-primary) 55%, transparent); }
+.idp-unit-release-time { margin-top: 10px; }
+.idp-unit-crew + .idp-unit-release-time {
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border-dim) 60%, transparent);
+}
+.idp-unit-release-separator,
+.idp-unit-release-clock { color: var(--text-secondary); }
+.idp-unit-release-clock {
+  font-size: 9.5px;
+  white-space: nowrap;
 }
 
 .idp-unit-top {
@@ -490,166 +493,3 @@
 }
 
 /* ── In-app photo viewer ─────────────────────────────────────────────────── */
-/* Always dark (see --lightbox-* in index.css); light text is --lightbox-fg-rgb. */
-.idp-viewer {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal);
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  background: var(--lightbox-bg);
-  backdrop-filter: blur(6px);
-  color: rgb(var(--lightbox-fg-rgb));
-  animation: idp-viewer-in 0.18s ease-out;
-}
-@keyframes idp-viewer-in {
-  from { opacity: 0; }
-}
-
-/* Top bar: counter + caption, tools */
-.idp-viewer-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 18px;
-}
-.idp-viewer-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.idp-viewer-count {
-  font-family: var(--font-condensed);
-  font-size: 13px;
-  font-weight: 600;
-}
-.idp-viewer-count span {
-  font-weight: 400;
-  color: rgba(var(--lightbox-fg-rgb), 0.6);
-}
-.idp-viewer-caption {
-  font-size: 10.8px;
-  color: rgba(var(--lightbox-fg-rgb), 0.6);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.idp-viewer-tools {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.idp-viewer-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  border: 1px solid rgba(var(--lightbox-fg-rgb), 0.14);
-  background: rgba(var(--lightbox-fg-rgb), 0.06);
-  color: rgb(var(--lightbox-fg-rgb));
-  text-decoration: none;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.1s;
-}
-.idp-viewer-btn .material-symbols-outlined {
-  font-size: 20px;
-}
-.idp-viewer-btn:hover {
-  background: rgba(var(--lightbox-fg-rgb), 0.14);
-  border-color: rgba(var(--lightbox-fg-rgb), 0.24);
-}
-.idp-viewer-btn:active {
-  transform: scale(0.96);
-}
-.idp-viewer-btn:focus-visible,
-.idp-viewer-thumb:focus-visible {
-  outline: 2px solid var(--accent-fire-focus);
-  outline-offset: 2px;
-}
-
-/* Photo stage */
-.idp-viewer-stage {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
-  padding: 0 76px;
-}
-.idp-viewer-img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 8px;
-  box-shadow: var(--shadow-lg);
-  animation: idp-viewer-img-in 0.2s ease-out;
-}
-@keyframes idp-viewer-img-in {
-  from { opacity: 0; transform: scale(0.985); }
-}
-.idp-viewer-nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-}
-.idp-viewer-nav:active {
-  transform: translateY(-50%) scale(0.96);
-}
-.idp-viewer-nav .material-symbols-outlined {
-  font-size: 26px;
-}
-.idp-viewer-nav.prev { left: 18px; }
-.idp-viewer-nav.next { right: 18px; }
-
-/* Thumbnail strip */
-.idp-viewer-strip {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  padding: 14px 18px 18px;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-.idp-viewer-thumb {
-  flex-shrink: 0;
-  width: 56px;
-  height: 42px;
-  padding: 0;
-  border-radius: 7px;
-  border: 2px solid transparent;
-  background: none;
-  overflow: hidden;
-  cursor: pointer;
-  opacity: 0.5;
-  transition: opacity 0.15s, border-color 0.15s;
-}
-.idp-viewer-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.idp-viewer-thumb:hover {
-  opacity: 0.85;
-}
-.idp-viewer-thumb.active {
-  opacity: 1;
-  border-color: var(--accent-fire);
-}
-
-@media (max-width: 640px) {
-  .idp-viewer-stage { padding: 0 12px; }
-  .idp-viewer-nav { display: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .idp-viewer,
-  .idp-viewer-img { animation: none; }
-}

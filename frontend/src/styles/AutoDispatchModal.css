@@ -1,0 +1,16 @@
+.auto-dispatch-modal .adm-eta-val {
+  font-size: 16px;
+}
+
+.auto-dispatch-modal .dpm-separator {
+  color: inherit;
+  opacity: 0.35;
+}
+
+.auto-dispatch-modal .eim-section-head h3 {
+  text-transform: capitalize;
+}
+
+.auto-dispatch-modal .eim-changes {
+  font-size: 9px;
+}

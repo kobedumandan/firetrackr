@@ -1,4 +1,5 @@
 const paths = {
+  edit: 'm16 3 5 5M4 20l4-1L21 6a2 2 0 0 0-5-3L3 16l-1 6Z',
   refresh: 'M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 3M18 18a8 8 0 0 1-13-3',
   model: 'M8 8h8v8H8zM9 3v5m6-5v5M9 16v5m6-5v5M3 9h5m-5 6h5m8-6h5m-5 6h5',
   review: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',

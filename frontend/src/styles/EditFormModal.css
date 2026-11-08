@@ -24,6 +24,17 @@
 }
 
 /* Incident history stays neutral; only the selected step keeps its color. */
+.edit-form-modal .eim-step {
+  min-width: 0;
+  text-align: center;
+}
+
+.edit-form-modal .eim-step-label {
+  max-width: 100%;
+  padding-inline: 3px;
+  line-height: 1.4;
+}
+
 .edit-form-modal .eim-step:not(.current) .eim-step-node {
   border-color: var(--border);
   background: transparent;
@@ -38,4 +49,66 @@
 .edit-form-modal .eim-steps.complete .eim-step.current .eim-step-node,
 .edit-form-modal .eim-steps.complete .eim-step.current .eim-step-label {
   opacity: 1;
+}
+
+.incident-edit-modal .eim-section-head {
+  margin-bottom: 20px;
+}
+
+.incident-edit-modal .eim-section-head p {
+  font-style: italic;
+}
+
+.incident-edit-modal .cfm-head {
+  flex-wrap: wrap;
+  gap: 12px 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.incident-edit-modal .cfm-head > .eim-subtitle {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+
+.incident-edit-modal .cfm-head-text {
+  flex: 1;
+}
+
+.incident-edit-modal .cfm-title {
+  overflow-wrap: anywhere;
+}
+
+.incident-edit-modal .eim-section > .apm-field + .apm-field,
+.incident-edit-modal .eim-section > .apm-field + .eim-row {
+  margin-top: 20px;
+}
+
+.incident-edit-modal .eim-hint {
+  font-size: 9.5px;
+  margin-top: 20px;
+}
+
+.incident-edit-modal .eim-callout,
+.aar-report-review .eim-callout {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: #fff;
+  font-size: 9.5px;
+}
+
+.incident-edit-modal .eim-callout-icon,
+.aar-report-review .eim-callout-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.aar-report-review .eim-callout {
+  margin-top: 20px;
+}
+
+.incident-edit-modal .eim-record-kind {
+  margin-top: 12px;
+  padding-top: 20px;
 }

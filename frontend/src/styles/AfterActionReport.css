@@ -1,4 +1,19 @@
 /* Report content uses the Incident Details cards and shared dl-* fields. */
+.aar-report-modal .eim-body {
+  padding-top: 22px;
+}
+.aar-report-modal .eim-section-head p {
+  font-style: italic;
+}
+.aar-report-modal .eim-changes.ready {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.aar-report-modal .eim-changes.ready::before {
+  width: 4px;
+  height: 4px;
+  opacity: 0.55;
+}
 .aar-editor-fields {
   border: 0;
   padding: 0;
@@ -189,36 +204,48 @@
   gap: 18px;
   min-width: 0;
 }
+.aar-report .idp-unit { background: var(--bg-hover); }
+.aar-report .dl-label { color: color-mix(in srgb, var(--text-primary) 75%, transparent); }
+.aar-report .dl-field { gap: 10px; }
+.aar-report .idp-unit-info > .dl-label { margin-bottom: 10px; }
+.aar-report .dl-field:has(> .dl-prose) { gap: 14px; }
+.aar-report .dl-field:has(> .dl-prose) > .dl-label { color: color-mix(in srgb, var(--text-primary) 55%, transparent); }
 .aar-initials {
+  background: color-mix(in srgb, var(--bg-hover) 85%, var(--text-primary));
   font-family: var(--font-span);
   font-size: 10.8px;
   font-weight: 600;
 }
 .aar-rank {
   margin-top: 2px;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 75%, transparent);
   font-size: 10px;
   overflow-wrap: anywhere;
 }
-.aar-report .aar-edit {
+.idp-report-heading .aar-edit {
   width: 24px;
   height: 24px;
   border-radius: 6px;
 }
-.aar-report .aar-edit svg { width: 12px; height: 12px; }
+.idp-report-heading .aar-edit svg { width: 12px; height: 12px; }
 .aar-report .aar-metrics {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 0;
 }
 .aar-metrics .kpi-card-head { gap: 8px; }
+.aar-metrics .kpi-card-label { text-transform: capitalize; }
 .aar-metrics .kpi-card-value {
-  font-size: 12px;
+  margin-top: 8px;
+  font-size: 14px;
   line-height: 1.6;
   letter-spacing: -0.1px;
   overflow-wrap: anywhere;
 }
 .aar-metrics .kpi-card-icon .material-symbols-outlined { font-size: 15px; }
 .aar-report .aar-filed-at {
+  display: flex;
+  margin-top: 14px;
+  border-top: 0.5px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
   justify-content: space-between;
   align-items: center;
   flex-wrap: nowrap;
@@ -227,18 +254,23 @@
 }
 .aar-filed-timestamp {
   display: inline-flex;
+  margin-left: auto;
+  color: color-mix(in srgb, var(--text-primary) 75%, transparent);
   align-items: center;
   min-width: 0;
   gap: 6px;
 }
 .aar-filed-timestamp > .material-symbols-outlined { font-size: 13px; flex-shrink: 0; }
 .aar-datetime {
+  margin-left: auto;
+  color: color-mix(in srgb, var(--text-primary) 75%, transparent);
   display: inline-flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 6px;
 }
-.aar-time-separator { opacity: 0.45; }
+.aar-date { color: var(--text-primary); }
+.aar-time-separator { width: 0.5px; height: 1em; align-self: center; background: color-mix(in srgb, var(--text-primary) 30%, transparent); font-size: 0; }
 .aar-datetime.is-stacked {
   display: flex;
   flex-direction: column;
@@ -246,7 +278,7 @@
   gap: 3px;
 }
 .aar-datetime.is-stacked .aar-time {
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   font-size: 10px;
   font-weight: 400;
 }
@@ -254,10 +286,6 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-.aar-operations-heading {
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border-dim);
 }
 .aar-operations .aar-missing { opacity: 0.35; }
 .aar-report .dl-prose { font-size: 10.8px; }
@@ -312,3 +340,60 @@
   .aar-photo img { transition: none; }
   .aar-photo:hover img { transform: none; }
 }
+.aar-field-photo-picker { min-width: 0; margin-bottom: 14px; }
+.aar-field-photo-carousel {
+  display: flex;
+  gap: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.aar-field-photo {
+  flex: 0 0 94px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-dim);
+  border-radius: 7px;
+  background: var(--bg-base);
+  cursor: pointer;
+  scroll-snap-align: start;
+}
+.aar-field-photo.is-selected { border-color: var(--accent-fire-focus); }
+.aar-field-photo img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.aar-field-photo > label { display: flex; gap: 5px; align-items: center; padding: 6px; font-size: 9px; color: var(--text-secondary); cursor: pointer; }
+.aar-field-photo-view { display: block; width: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.aar-field-photo-view:focus { outline: none; box-shadow: none; }
+.aar-field-photo-view:focus-visible { outline: 1px solid var(--accent-fire-focus); outline-offset: -2px; }
+.aar-field-photo-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aar-field-photo input[type="checkbox"] {
+  appearance: none;
+  display: grid;
+  place-content: center;
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-base);
+  box-shadow: none;
+  outline: none;
+  cursor: pointer;
+}
+.aar-field-photo input[type="checkbox"]:checked { background: var(--accent-fire); border-color: var(--accent-fire); }
+.aar-field-photo input[type="checkbox"]:checked::after {
+  content: '';
+  width: 5px;
+  height: 3px;
+  margin-top: -2px;
+  border: solid white;
+  border-width: 0 0 1.5px 1.5px;
+  transform: rotate(-45deg);
+}
+.aar-field-photo input[type="checkbox"]:focus-visible { outline: 1px solid var(--accent-fire-focus); outline-offset: 2px; }
+.aar-field-photo input[type="checkbox"]:disabled { opacity: 0.5; cursor: default; }

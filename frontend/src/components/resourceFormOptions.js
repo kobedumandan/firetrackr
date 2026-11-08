@@ -4,6 +4,8 @@
 export const TRUCK_STATUSES = [
   { value: 'available',   label: 'Available',   tone: 'green', hint: 'Ready to be assigned to a dispatch.' },
   { value: 'dispatched',  label: 'Dispatched',  tone: 'amber', hint: 'Out on a dispatch right now.' },
+  { value: 'on_scene',    label: 'On Scene',    tone: 'amber', hint: 'Assigned to an operation on scene.' },
+  { value: 'returning',   label: 'Returning',   tone: 'amber', hint: 'Awaiting confirmed physical return and readiness.' },
   { value: 'maintenance', label: 'Maintenance', tone: 'amber', hint: 'In the shop. Not dispatchable until it\'s back.' },
   { value: 'unavailable', label: 'Unavailable', tone: 'fire',  hint: 'Out of service. Not dispatchable.' },
 ]
@@ -11,6 +13,8 @@ export const TRUCK_STATUSES = [
 export const TEAM_STATUSES = [
   { value: 'standby',    label: 'Standby',    tone: 'green', hint: 'Ready to be dispatched.' },
   { value: 'dispatched', label: 'Dispatched', tone: 'amber', hint: 'Out on a dispatch right now.' },
+  { value: 'on_scene',   label: 'On Scene',   tone: 'amber', hint: 'Assigned to an operation on scene.' },
+  { value: 'returning',  label: 'Returning',  tone: 'amber', hint: 'Awaiting truck return and readiness.' },
   { value: 'inactive',   label: 'Inactive',   tone: 'fire',  hint: 'Not taking dispatches.' },
 ]
 

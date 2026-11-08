@@ -1,0 +1,43 @@
+.add-truck-modal .eim-seg-btn:not(.active) {
+  color: var(--text-secondary);
+  background: transparent;
+  box-shadow: none;
+}
+
+.add-truck-modal .eim-seg-btn:not(.active):hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+:is(.personnel-form-modal, .team-form-modal, .resource-form-modal) .apm-field label {
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+:is(.personnel-form-modal, .team-form-modal, .resource-form-modal) .eim-section-head {
+  margin-bottom: 24px;
+}
+
+:is(.personnel-form-modal, .team-form-modal, .resource-form-modal) .eim-section-head p,
+:is(.personnel-form-modal, .team-form-modal, .resource-form-modal) .frm-hint {
+  font-style: italic;
+}
+
+:is(.personnel-form-modal, .team-form-modal, .resource-form-modal) .eim-seg[aria-label="Shift"] {
+  width: 100%;
+  height: 32px;
+  box-sizing: border-box;
+  gap: 2px;
+  padding: 2px;
+}
+
+:is(.personnel-form-modal, .team-form-modal, .resource-form-modal) .eim-seg[aria-label="Shift"] .eim-seg-btn {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+:is(.personnel-form-modal, .team-form-modal, .resource-form-modal) .eim-changes {
+  font-size: 9px;
+  text-transform: capitalize;
+}

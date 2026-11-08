@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import '../styles/AppModal.css'
 import {
-  STATUSES, CASUALTIES, STRUCTURES, statusMetaOf,
+  STATUSES, OPERATION_COMPLETE_STATUS, CASUALTIES, STRUCTURES, statusMetaOf,
   ICON_CHECK, ICON_WARN, ICON_LOCK, ICON_CLOSE, ICON_ARROW,
 } from './incidentFormOptions'
 import { ICON_EYE, ICON_EYE_OFF } from './resourceFormOptions'
@@ -84,6 +84,7 @@ export function Segmented({ options, value, onChange, label }) {
             type="button"
             role="radio"
             aria-checked={active}
+            disabled={opt.disabled}
             className={`eim-seg-btn tone-${opt.tone || 'fire'} ${active ? 'active' : ''}`}
             onClick={() => onChange(opt.value)}
           >
@@ -95,14 +96,17 @@ export function Segmented({ options, value, onChange, label }) {
   )
 }
 
-/* Pending → Dispatched → Contained → Closed. Done steps recede, the ongoing
-   step is amber, and a closed incident reads as fully done. */
-export function StatusSteps({ value, onChange, hint = statusMetaOf(value).hint }) {
-  const idx = STATUSES.findIndex(s => s.value === value)
+/* Editors can display operational completion between control and closure;
+   recording it remains a separate workflow action. Intake keeps stored statuses. */
+export function StatusSteps({ value, onChange, incident, includeOperationComplete = false, disabledValues = [], hint = statusMetaOf(value, incident).hint }) {
+  const statuses = includeOperationComplete
+    ? [...STATUSES.slice(0, -1), OPERATION_COMPLETE_STATUS, STATUSES.at(-1)]
+    : STATUSES
+  const idx = statuses.findIndex(s => s.value === value)
   return (
     <>
-      <div className={`eim-steps ${value === 'closed' ? 'complete' : ''}`} role="radiogroup" aria-label="Status">
-        {STATUSES.map((s, i) => {
+      <div className={`eim-steps ${value === 'closed' ? 'complete' : ''}`} style={{ gridTemplateColumns: `repeat(${statuses.length}, minmax(0, 1fr))` }} role="radiogroup" aria-label="Status">
+        {statuses.map((s, i) => {
           const state = i < idx ? 'done' : i === idx ? 'current' : 'todo'
           return (
             <button
@@ -110,13 +114,14 @@ export function StatusSteps({ value, onChange, hint = statusMetaOf(value).hint }
               type="button"
               role="radio"
               aria-checked={i === idx}
+              disabled={s.disabled || disabledValues.includes(s.value)}
               className={`eim-step ${state}`}
               onClick={() => onChange(s.value)}
             >
               <span className="eim-step-node">
                 {state === 'done' ? <Icon d={ICON_CHECK} className="eim-step-icon" /> : i + 1}
               </span>
-              <span className="eim-step-label">{s.label}</span>
+              <span className="eim-step-label">{statusMetaOf(s.value, incident).label}</span>
             </button>
           )
         })}
@@ -148,7 +153,7 @@ export function CasualtyPicker({ value, onChange }) {
 export function Callout({ children }) {
   return (
     <div className="eim-callout">
-      <Icon d={ICON_WARN} />
+      <div className="eim-callout-icon"><Icon d={ICON_WARN} /></div>
       <span>{children}</span>
     </div>
   )
@@ -185,28 +190,32 @@ function DiffValue({ value, kind }) {
  *              beforeText replaces the old value (e.g. a secret that isn't shown)
  *   note     – optional callout content (a consequence worth pausing on)
  */
-export function ReviewChanges({ code, rows, note, saving, error, onBack, onConfirm }) {
+export function ReviewChanges({ code, rows, note, saving, error, onBack, onConfirm, className = '', icon }) {
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape' && !saving) onBack() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onBack, saving])
 
+  const subtitle = <div className="eim-subtitle">
+    {code && <span className="eim-chip eim-chip-code">{code}</span>}
+    <span className="eim-chip">{rows.length} {rows.length === 1 ? 'field' : 'fields'} updated</span>
+  </div>
+
   return createPortal(
     <div className="apm-overlay eim-review-overlay" onMouseDown={e => e.target === e.currentTarget && !saving && onBack()}>
-      <div className="apm-panel eim-review" role="alertdialog" aria-modal="true" aria-labelledby="eim-review-title">
-        <div className="eim-header">
-          <div className="eim-header-main">
+      <div className={`apm-panel eim-review ${className}`} role="alertdialog" aria-modal="true" aria-labelledby="eim-review-title">
+        <div className={icon ? 'cfm-head dpm-header' : 'eim-header'}>
+          {icon && <span className="cfm-badge" aria-hidden="true">{icon}</span>}
+          <div className={icon ? 'cfm-head-text' : 'eim-header-main'}>
             <div className="apm-eyebrow">REVIEW CHANGES</div>
-            <div id="eim-review-title" className="eim-title">Save these changes?</div>
-            <div className="eim-subtitle">
-              {code && <span className="eim-chip eim-chip-code">{code}</span>}
-              <span className="eim-chip">{rows.length} {rows.length === 1 ? 'field' : 'fields'} updated</span>
-            </div>
+            <div id="eim-review-title" className={icon ? 'cfm-title' : 'eim-title'}>Save these changes?</div>
+            {!icon && subtitle}
           </div>
           <button className="eim-close" onClick={onBack} aria-label="Back to editing" disabled={saving}>
             <Icon d={ICON_CLOSE} />
           </button>
+          {icon && subtitle}
         </div>
 
         <div className="eim-review-body">

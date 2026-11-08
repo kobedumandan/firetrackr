@@ -907,25 +907,29 @@ function SectionNotifications({ prefs, onPrefChange, isAdmin }) {
         </div>
         <div className="block-row">
           <div className="row-left">
-            <div className="row-label">Fire Contained</div>
+            <div className="row-label">Situation Under Control</div>
             <div className="row-sub">
-              Alert when a team leader marks a fire contained
+              Alert when a team leader marks a fire contained or a non-fire situation under control
             </div>
           </div>
           <div className="row-right">
-            <Toggle {...bind("contained", "Fire Contained")} />
+            <Toggle {...bind("contained", "Situation Under Control")} />
           </div>
         </div>
         <div className="block-row">
           <div className="row-left">
             <div className="row-label">Incident Reports</div>
             <div className="row-sub">
-              Alert when an after-action report is filed from the field
+              Alert when a field report is submitted or an incident report is saved
             </div>
           </div>
           <div className="row-right">
             <Toggle {...bind("reportFiled", "Incident Reports")} />
           </div>
+        </div>
+        <div className="block-row">
+          <div className="row-left"><div className="row-label">Response Workflow</div><div className="row-sub">Team release, clearance, truck readiness and operation completion</div></div>
+          <div className="row-right"><Toggle {...bind("workflow", "Response Workflow")} /></div>
         </div>
         <div className="block-row">
           <div className="row-left">

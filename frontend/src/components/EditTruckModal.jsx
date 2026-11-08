@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import AppModal from './AppModal'
+import '../styles/DispatchModal.css'
+import '../styles/PersonnelFormModal.css'
 import '../styles/EditFormModal.css'
 import { fetchStations, updateTruck } from '../api'
 import { TRUCK_STATUSES, statusMeta } from './resourceFormOptions'
-import { Field, SectionHead, Segmented, FormStatus, ReviewChanges } from './incidentForm'
+import { Icon, Field, SectionHead, Segmented, FormStatus, ReviewChanges } from './incidentForm'
 
 export default function EditTruckModal({ truck, onClose, onSubmit }) {
   const [initial] = useState(() => ({
@@ -16,6 +18,7 @@ export default function EditTruckModal({ truck, onClose, onSubmit }) {
   const [saving, setSaving]     = useState(false)
   const [reviewing, setReviewing] = useState(false)
   const [stations, setStations] = useState([])
+  const [readinessNote, setReadinessNote] = useState('')
 
   useEffect(() => {
     fetchStations().then(setStations).catch(() => {})
@@ -31,6 +34,7 @@ export default function EditTruckModal({ truck, onClose, onSubmit }) {
   const changes     = Object.fromEntries(Object.entries(effective).filter(([k, v]) => v !== initial[k]))
   const changeCount = Object.keys(changes).length
   const isChanged   = field => field in changes
+  const restoring = initial.truck_status !== 'available' && form.truck_status === 'available'
 
   const stationName = id => stations.find(s => String(s.station_id) === String(id))?.station_name ?? (id ? `Station #${id}` : '')
   const statusLabel = v => statusMeta(TRUCK_STATUSES, v).label
@@ -38,6 +42,7 @@ export default function EditTruckModal({ truck, onClose, onSubmit }) {
   function handleSubmit(e) {
     e.preventDefault()
     if (!plate) { setError('Plate number is required.'); return }
+    if (restoring && !readinessNote.trim()) { setError('Record the resolution/readiness reason.'); return }
     if (changeCount === 0) return
     setReviewing(true)
   }
@@ -49,6 +54,7 @@ export default function EditTruckModal({ truck, onClose, onSubmit }) {
       const payload = {}
       if (isChanged('truck_platenum')) payload.truck_platenum = plate
       if (isChanged('truck_status'))   payload.truck_status   = form.truck_status
+      if (restoring) payload.readiness_note = readinessNote.trim()
       if (isChanged('station_id'))     payload.station_id     = form.station_id ? Number(form.station_id) : null
       const updated = await updateTruck(truck.truck_id, payload)
       onSubmit(updated)
@@ -65,16 +71,19 @@ export default function EditTruckModal({ truck, onClose, onSubmit }) {
   ]
     .filter(([key]) => isChanged(key))
     .map(([key, label, fmt]) => ({ key, label, before: fmt(initial[key]), after: fmt(changes[key]) }))
+  if (restoring) rows.push({ key: 'readiness_note', label: 'Readiness confirmation', before: '', after: readinessNote.trim() })
 
   return (
     <>
       <AppModal
+        variant="badged"
+        icon={<Icon d="M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 18l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm640-584-56-56 56 56ZM619-619l-28-29 57 57-29-28Z" className="cfm-badge-icon" />}
         eyebrow="EDIT TRUCK"
         title={plate || 'Untitled truck'}
         subtitle={stationName(initial.station_id) || 'No home station'}
         onClose={onClose}
-        width={520}
-        className="eim-panel edit-form-modal"
+        width={680}
+        className="eim-panel edit-form-modal resource-form-modal"
         dismissible={!saving && !reviewing}
       >
         <form onSubmit={handleSubmit}>
@@ -105,8 +114,8 @@ export default function EditTruckModal({ truck, onClose, onSubmit }) {
 
             <section className="eim-section">
               <SectionHead title="Status" desc="Whether it can be sent out" changed={isChanged('truck_status')} />
-              <Segmented label="Status" options={TRUCK_STATUSES} value={form.truck_status} onChange={v => set('truck_status', v)} />
-              <div className="frm-hint">{statusMeta(TRUCK_STATUSES, form.truck_status).hint.replace(/\.$/, '')}</div>
+              <Segmented label="Status" options={TRUCK_STATUSES.map(option => ({ ...option, disabled: ['dispatched', 'on_scene', 'returning'].includes(option.value) || ['dispatched', 'on_scene', 'returning'].includes(initial.truck_status) }))} value={form.truck_status} onChange={v => set('truck_status', v)} />
+              {restoring && <Field label="Resolution / readiness reason" required><input value={readinessNote} onChange={event => setReadinessNote(event.target.value)} maxLength={255} placeholder="Who confirmed readiness and what was resolved?" /></Field>}
             </section>
 
             {error && !reviewing && <div className="apm-error">{error}</div>}

@@ -207,6 +207,11 @@
   outline: none;
   cursor: pointer;
 }
+.sta-filter-select.is-active,
+.sta-search-wrap:has(input:not(:placeholder-shown)) .sta-search-icon {
+  color: var(--text-primary);
+}
+
 .sta-filter-select option { background: var(--bg-card); }
 
 .sta-result-count {
@@ -246,7 +251,7 @@
   text-decoration: underline;
 }
 
-/* Status pills: green = ready, amber = committed, fire = on scene / out of
+/* Status pills: green = ready, amber = committed / on scene, fire = out of
    service, muted = everything else. */
 .sta-pill {
   display: inline-flex;
@@ -370,8 +375,7 @@
   outline: 2px solid var(--accent-fire-focus);
   outline-offset: -2px;
 }
-.sta-row.inactive .sta-row-icon,
-.sta-row.inactive .sta-row-counts {
+.sta-row.inactive .sta-row-icon {
   opacity: 0.5;
 }
 
@@ -423,7 +427,7 @@
   display: flex;
   gap: 0;
   font-size: 9.8px;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -442,7 +446,7 @@
   font-family: var(--font-mono);
   font-size: 9.8px;
   font-variant-numeric: tabular-nums;
-  color: var(--text-secondary);
+  color: #fff;
 }
 .sta-row-counts > span {
   display: inline-flex;
@@ -451,7 +455,7 @@
 }
 .sta-row-counts .material-symbols-outlined {
   font-size: 13px;
-  color: var(--text-muted);
+  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
 }
 
 /* Sub-stations hang off their main station on a guide line */
@@ -706,10 +710,10 @@
   font-family: var(--font-condensed);
   font-size: 9.8px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
 }
 .sta-stat-value {
-  margin-top: 5px;
+  margin-top: 10px;
   font-family: var(--font-condensed);
   font-size: 20px;
   font-weight: 600;

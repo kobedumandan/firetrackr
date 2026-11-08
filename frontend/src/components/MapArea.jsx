@@ -2,7 +2,11 @@ import { useState, useEffect, useMemo, useRef, memo, Fragment } from "react";
 import { createPortal } from "react-dom";
 import MapControlIcon from "./MapControlIcon";
 import StationMapMarker from "./StationMapMarker";
+import { stationIcon } from "../utils/stationIcon";
+import RoutePopup from "./RoutePopup";
 import PersonnelMapMarker from "./PersonnelMapMarker";
+import PersonnelMapFocus from "./PersonnelMapFocus";
+import { personnelMapPins } from "../utils/personnelMapData";
 import {
   MapContainer,
   AttributionControl,
@@ -30,7 +34,7 @@ import RoadEdgeSelector from "./RoadEdgeSelector";
 import ConstraintEdgeSaveDialog from "./ConstraintEdgeSaveDialog";
 import { toggleRoadEdge } from "../utils/roadEdgeSelection";
 import { constraintFeatures } from "../utils/commandMapData";
-import { dispatchRouteProgress } from "../utils/routeProgress";
+import { dispatchRouteProgress, hasActivePersonnelApproach, hasActiveRouteLocation, routeDistanceKm } from "../utils/routeProgress";
 import { openConstraintPopup } from "../utils/constraintPopup";
 import ConstraintLayersPanel from "./ConstraintLayersPanel";
 import { baselineConstraintForEdit, buildConstraintLayers, constraintLayerId, constraintTitleCase } from "../utils/constraintLayers";
@@ -75,8 +79,6 @@ function FireGeneralIcon() {
 
 const ZOOM = MAP_ZOOM;
 const PERSONNEL_MIN_ZOOM = 13;
-// Hide personnel whose last known location is older than this (8 hours).
-const PERSONNEL_STALE_HIDE_MINUTES = 8 * 60;
 const BARANGAY_LABEL_MIN_ZOOM = 13;
 
 const LAYER_LABELS = [
@@ -197,28 +199,6 @@ function MapFocuser({ mapFocus }) {
   return null;
 }
 
-function PersonnelFocuser({ focusedPersonnel, livePersonnelLocations }) {
-  const map = useMap();
-  useEffect(() => {
-    if (!focusedPersonnel?.per_id) return;
-    const p = livePersonnelLocations.find(
-      (x) => x.per_id === focusedPersonnel.per_id
-    );
-    if (p?.latitude != null && p?.longitude != null) {
-      // Leaflet's own animation is out of CSS's reach, so the Animations
-      // preference has to be read here too — otherwise turning motion off
-      // still leaves the map gliding across the city.
-      const animate = document.documentElement.dataset.motion !== "off";
-      map.flyTo([p.latitude, p.longitude], Math.max(map.getZoom(), 16), {
-        animate,
-        duration: animate ? 0.9 : 0,
-      });
-    }
-    // Re-fires whenever the user clicks Map again (nonce changes).
-  }, [focusedPersonnel?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
-  return null;
-}
-
 function reporterIcon() {
   return L.divIcon({
     className: "",
@@ -286,17 +266,6 @@ function fireIcon(severity, selected = false, isNew = false) {
         }
         <div class="fire-marker-inner" style="background:${color};box-shadow:0 0 16px ${shadow}"></div>
       </div>`,
-  });
-}
-
-function stationIcon() {
-  return L.divIcon({
-    className: "",
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    html: `<div class="station-marker">
-    <svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="var(--accent-green)"><path d="M300-240v-360h360v360-360H300v360Zm-60 0h60v-360h360v360h60v-366L480-780 240-606v366Zm120-240h240v-60H360v60Zm120-160q17 0 28.5-11.5T520-680q0-17-11.5-28.5T480-720q-17 0-28.5 11.5T440-680q0 17 11.5 28.5T480-640ZM160-160v-400H39l441-320 440 320H800v400H600v-260H360v260H160Z"/>
-    </svg></div>`,
   });
 }
 
@@ -389,6 +358,30 @@ function ObstructionGlyph({ type, size = 14 }) {
       // Static module constant above, never user input.
       dangerouslySetInnerHTML={{ __html: info.glyph }}
     />
+  );
+}
+
+function ObstructionPopup({ obstruction: obs, onDelete }) {
+  const info = obsInfo(obs.type);
+  return (
+    <Popup className="obstruction-popup">
+      <div className="obstruction-popup-inner" style={{ "--obs": `var(${info.token})` }}>
+        <div className="obstruction-popup-header">
+          <span className="obstruction-popup-icon"><ObstructionGlyph type={obs.type} size={13} /></span>
+          <strong>{info.label}</strong>
+        </div>
+        <div className={`obstruction-popup-effect${info.blocks ? " obstruction-popup-effect--blocking" : ""}`}>
+          {info.effect}
+        </div>
+        <div className="obstruction-popup-coords">
+          {obs.latitude.toFixed(5)}, {obs.longitude.toFixed(5)}
+        </div>
+        {obs.description && <div className="obstruction-popup-desc">{obs.description}</div>}
+        <button type="button" className="obstruction-remove-btn" onClick={() => onDelete(obs.id)}>
+          Remove obstruction
+        </button>
+      </div>
+    </Popup>
   );
 }
 
@@ -758,7 +751,7 @@ function ObstructionPanel({
               </button>
             ))}
         </div>
-        {placingType && <div className="obstruction-placement" style={{ "--obs": `var(${obsInfo(placingType).token})` }}>
+        {placingType && <div className="obstruction-placement">
           <div className="obstruction-placing" role="status"><span>Placing {obsInfo(placingType).label.toLowerCase()}</span><small>Click a road on the map.</small></div>
           <button type="button" className="obstruction-cancel-btn" onClick={onCancelPlace}>Cancel</button>
         </div>}
@@ -825,6 +818,7 @@ export default function MapArea({
   heatmapRevision = 0,
   pickingMode = false,
   onLocationPicked,
+  onCancelPicking,
   pickedLocation,
   onLogIncidentHere,
   activeIncidents = [],
@@ -839,6 +833,7 @@ export default function MapArea({
   ripplingIncidentId = null,
   onIncidentClick,
   onViewStation,
+  onViewPersonnel,
   leftCollapsed = false,
   viewMode = "normal",
   constraintEditing = false,
@@ -1032,10 +1027,16 @@ export default function MapArea({
   // ── Road obstructions ──────────────────────────────────────────────────────
   const [obstructions, setObstructions] = useState([]);
   const [placingType, setPlacingType] = useState(null);
-  const obstructionPlacementActive = !!placingType && !constraintsView;
+  const obstructionPlacementActive = !!placingType && viewMode === "obstructions" && !constraintsView;
   // Where the pending obstruction would land once snapped, or null when the
   // pointer is too far from any road for it to be placeable.
   const [ghost, setGhost] = useState(null);
+  const [previousViewMode, setPreviousViewMode] = useState(viewMode);
+  if (previousViewMode !== viewMode) {
+    setPreviousViewMode(viewMode);
+    setPlacingType(null);
+    setGhost(null);
+  }
   const snapAbort = useRef(null);
   const lastSnapAt = useRef(0);
 
@@ -1137,6 +1138,13 @@ export default function MapArea({
   );
 
   const [mapZoom, setMapZoom] = useState(ZOOM);
+  // Expire saved approaches even if the location feed stops updating.
+  const [routeClock, setRouteClock] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setRouteClock(Date.now()), 15000);
+    return () => clearInterval(timer);
+  }, []);
+  const routeLocations = livePersonnelLocations.filter(person => hasActivePersonnelApproach(person, routeClock));
   const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState(() => new Set());
   const prevLiveRef = useRef(new Map());
   useEffect(() => {
@@ -1227,25 +1235,38 @@ export default function MapArea({
   // updates stay inside the renderer and never trigger a whole-layer scan.
   const overlayRevision = useMemo(() => ({}), [
     activeIncidents, newIncidents, reporterLocations, stations, personnel, personnelTeams,
-    livePersonnelLocations, dispatchRoutes, dispatches, focusedIncidentId,
+    livePersonnelLocations, routeClock, dispatchRoutes, dispatches, focusedIncidentId, focusedPersonnel,
     ripplingIncidentId, pickedLocation, ghost, obstructions, barangays, theme,
     selectedEdges, isSelecting, customConstraints, mapZoom, recentlyUpdatedIds, activeLayers, visibleGnnData,
   ]);
 
   return (
-    <div className={`map-area${constraintEditing ? " map-area--constraint-editing" : ""}${isGoogle3D || !rasterFallback ? " map-area--projected" : ""}${isGoogle3D ? " map-area--3d" : ""}`}>
+    <div className={`map-area${constraintEditing ? " map-area--constraint-editing" : ""}${isGoogle3D || !rasterFallback ? " map-area--projected" : ""}${isGoogle3D ? " map-area--3d" : ""}`}
+      onContextMenuCapture={event => {
+        const pickingIncident = pickingMode && !pickedLocation;
+        if (!pickingIncident && !obstructionPlacementActive) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (pickingIncident) onCancelPicking?.();
+        else { setPlacingType(null); setGhost(null); }
+      }}>
       <div ref={setGoogleHost} className="command-renderer-host" hidden={!isGoogle3D} />
       <div ref={setRasterHost} className="command-renderer-host" hidden={isGoogle3D || rasterFallback} />
       {/* Outside Leaflet so choosing a style never places a marker/drawing point. */}
       <CommandBasemapSelector value={tileMode} onChange={changeBasemap} editing={constraintEditing} />
       {/* Picking-mode banner */}
       {pickingMode && (
-        <div className="map-pick-banner">
-          {pickedLocation
+        <div className="map-pick-banner location-pick-banner">
+          <span>{pickedLocation
             ? `${pickedLocation[0].toFixed(4)}, ${pickedLocation[1].toFixed(
                 4
               )}  ·  Click elsewhere to reposition`
-            : "Click on the map to mark the Incident location  -  ESC to cancel"}
+            : "Point and click on the incident's location"}</span>
+          <button type="button" className="location-pick-close" onClick={onCancelPicking} aria-label="Cancel incident location selection">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+              <path d="m4 4 8 8M12 4l-8 8" />
+            </svg>
+          </button>
         </div>
       )}
 
@@ -1258,17 +1279,17 @@ export default function MapArea({
       {/* Obstruction placement banner */}
       {obstructionPlacementActive && !pickingMode && (
         <div
-          className="map-pick-banner obstruction-banner"
-          style={{ "--obs": `var(${obsInfo(placingType).token})` }}
+          className="map-pick-banner location-pick-banner obstruction-banner"
         >
           <ObstructionGlyph type={placingType} size={13} />
-          {ghost
-            ? `Click to place ${obsInfo(placingType).label.toLowerCase()}`
-            : "Move closer to a road \u2014 obstructions must sit on the network"}
-          {"  ·  "}
-          <span className="banner-action" onClick={() => setPlacingType(null)}>
-            Cancel
-          </span>
+          <span>{ghost
+            ? `Point and click on the road to place ${obsInfo(placingType).label.toLowerCase()}`
+            : "Point to a road, then click to place the obstruction"}</span>
+          <button type="button" className="location-pick-close" onClick={() => { setPlacingType(null); setGhost(null); }} aria-label="Cancel road obstruction placement">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+              <path d="m4 4 8 8M12 4l-8 8" />
+            </svg>
+          </button>
         </div>
       )}
 
@@ -1304,7 +1325,7 @@ export default function MapArea({
         <ConstraintMapInteractions onPick={pickConstraint} />
         <MapResizeWatcher />
 
-        <PersonnelFocuser
+        <PersonnelMapFocus
           focusedPersonnel={focusedPersonnel}
           livePersonnelLocations={livePersonnelLocations}
         />
@@ -1353,7 +1374,7 @@ export default function MapArea({
 
             const BRANCH_COLOR = "#ffb020";
 
-            return livePersonnelLocations
+            return routeLocations
               .filter(
                 (p) =>
                   p.is_deviated &&
@@ -1387,6 +1408,8 @@ export default function MapArea({
                             : "Own path — independent approach to the incident"}
                         </div>
                       </Tooltip>
+                      <RoutePopup type="Personnel Route" name={p.name}
+                        distanceKm={routeDistanceKm(positions)} segment />
                     </Polyline>
                     {merges && mergePt && (
                       <CircleMarker
@@ -1474,6 +1497,9 @@ export default function MapArea({
                   )}
                 </Tooltip>
               );
+              const routePopup = <RoutePopup
+                type={isAlt ? `Alternative Truck Route (Rank ${dr.rank})` : "Main Truck Route"} name={dr.teamName}
+                distanceKm={dr.distanceKm} etaMinutes={dr.etaMinutes} />;
 
               // Alternatives are not being driven — always show the full path.
               if (isAlt) {
@@ -1484,6 +1510,7 @@ export default function MapArea({
                     pathOptions={{ color: "#888", weight: 2, opacity: 0.5 }}
                   >
                     {tooltip}
+                    {routePopup}
                   </Polyline>
                 );
               }
@@ -1494,7 +1521,7 @@ export default function MapArea({
               const { remaining, personnelRemaining, personnel: followingPersonnel } = dispatchRouteProgress(
                 dr.positions,
                 dr.dispatch_id,
-                livePersonnelLocations,
+                livePersonnelLocations.filter(person => hasActiveRouteLocation(person, routeClock)),
                 activeLayers.has("Personnel")
               );
 
@@ -1517,10 +1544,14 @@ export default function MapArea({
                         </div>
                         <div className="tooltip-sub">Remaining shared route to the incident</div>
                       </Tooltip>
+                      <RoutePopup type="Personnel Route"
+                        name={followingPersonnel.map(person => person.name || `Personnel #${person.per_id}`).join(", ")}
+                        distanceKm={routeDistanceKm(personnelRemaining)} segment />
                     </Polyline>
                   )}
                   <Polyline positions={remaining} pathOptions={mainStyle}>
                     {tooltip}
+                    {routePopup}
                   </Polyline>
                 </Fragment>
               );
@@ -1567,26 +1598,8 @@ export default function MapArea({
         {/* Personnel markers — prefer live locations from polling; fall back to personnel list */}
         {activeLayers.has("Personnel") &&
           mapZoom >= PERSONNEL_MIN_ZOOM &&
-          (() => {
-            // Build a lookup from per_id → live location entry
-            const liveById = Object.fromEntries(
-              livePersonnelLocations.map((p) => [p.per_id, p])
-            );
-
-            return personnel
-              .map((p) => {
-                const live = liveById[p.per_id];
-                // Don't render personnel whose last known location is older
-                // than 8 hours — treat them as no longer on the map.
-                if (
-                  live?.age_minutes != null &&
-                  live.age_minutes >= PERSONNEL_STALE_HIDE_MINUTES
-                ) {
-                  return null;
-                }
-                const lat = live?.latitude ?? p.latitude;
-                const lon = live?.longitude ?? p.longitude;
-                if (!lat || !lon) return null;
+          personnelMapPins(personnel, livePersonnelLocations, focusedPersonnel)
+              .map(({ personnel: p, live, position }) => {
                 const dispatch = dispatches.find(row =>
                   ["dispatched", "en_route", "on_scene"].includes(row.dispatch_status) &&
                   (live && Object.hasOwn(live, 'dispatch_id') ? row.dispatch_id === live.dispatch_id :
@@ -1597,16 +1610,15 @@ export default function MapArea({
                   <PersonnelMapMarker
                     key={p.per_id}
                     personnel={p}
+                    onViewPersonnel={onViewPersonnel}
                     live={live}
                     dispatch={dispatch}
                     team={team}
-                    position={[lat, lon]}
+                    position={position}
                     recentlyUpdated={recentlyUpdatedIds.has(p.per_id)}
                   />
                 );
-              })
-              .filter(Boolean);
-          })()}
+              })}
 
         {/* Newly logged incidents */}
         {!constraintsView && newIncidents.map((inc) => (
@@ -1698,6 +1710,7 @@ export default function MapArea({
                   dashArray: info.blocks ? null : "4 3",
                 }}
               >
+                <ObstructionPopup obstruction={obs} onDelete={handleObstructionDelete} />
                 <Tooltip direction="top" className="command-map-tooltip" opacity={1}>
                   <div className="command-tooltip-heading"><ObstructionGlyph type={obs.type} size={13} />{info.label}</div>
                   <div className="command-tooltip-divider">{info.effect}</div>
@@ -1717,42 +1730,7 @@ export default function MapArea({
                 icon={obstructionIcon(obs.type)}
                 mapAligned={true}
               >
-                <Popup className="obstruction-popup">
-                  <div
-                    className="obstruction-popup-inner"
-                    style={{ "--obs": `var(${info.token})` }}
-                  >
-                    <div className="obstruction-popup-header">
-                      <span className="obstruction-popup-icon">
-                        <ObstructionGlyph type={obs.type} size={13} />
-                      </span>
-                      <strong>{info.label}</strong>
-                    </div>
-                    {/* What it does to routing, in the dispatcher's terms --
-                        the reason they placed it in the first place. */}
-                    <div
-                      className={`obstruction-popup-effect${
-                        info.blocks ? " obstruction-popup-effect--blocking" : ""
-                      }`}
-                    >
-                      {info.effect}
-                    </div>
-                    <div className="obstruction-popup-coords">
-                      {obs.latitude.toFixed(5)}, {obs.longitude.toFixed(5)}
-                    </div>
-                    {obs.description && (
-                      <div className="obstruction-popup-desc">
-                        {obs.description}
-                      </div>
-                    )}
-                    <button
-                      className="obstruction-remove-btn"
-                      onClick={() => handleObstructionDelete(obs.id)}
-                    >
-                      Remove obstruction
-                    </button>
-                  </div>
-                </Popup>
+                <ObstructionPopup obstruction={obs} onDelete={handleObstructionDelete} />
                 <Tooltip direction="top" className="command-map-tooltip" opacity={1}>
                   <div className="command-tooltip-heading"><ObstructionGlyph type={obs.type} size={13} />{info.label}</div>
                   <div className="command-tooltip-divider">{info.effect}</div>

@@ -4,10 +4,12 @@ import { IntakeSection, IntakeDisclosure, IntakeReceipt } from './IncidentIntake
 import { manilaInput } from '../utils/operationalTimes'
 import { useIncidentBarangay } from '../hooks/useIncidentBarangay'
 import '../styles/AppModal.css'
-import { SEVERITIES, ALARMS, DISPATCH_TYPES, supportsFireAlarm, ICON_PIN, ICON_BOLT, ICON_WARN } from './incidentFormOptions'
+import '../styles/DispatchModal.css'
+import '../styles/LogIncidentModal.css'
+import { SEVERITIES, ALARMS, DISPATCH_TYPES, supportsFireAlarm, defaultResponseKind, ICON_PIN, ICON_BOLT, ICON_PLUS } from './incidentFormOptions'
 import { Icon, Field, Segmented, StructureTypeField } from './incidentForm'
 
-const CHANNELS = ['911 Call', 'BFP Hotline', 'SMS Report', 'Walk-in', 'Dispatcher']
+const CHANNELS = ['911 Call', 'BFP Hotline', 'Walk-in', 'Dispatcher']
 
 /**
  * Log Incident from the map: the pin is already placed, so this is the live,
@@ -32,6 +34,8 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
     receivedAt: manilaInput(),
     recordKind: 'operational',
     ...(initial || {}),
+    responseKind: initial?.responseKind ?? defaultResponseKind(initial?.dispatchType || 'Firefighting Operations'),
+    ...(initial?.locationSource === 'report' ? { reporter: 'SMS Report' } : {}),
   }))
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState(null)
@@ -42,7 +46,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
 
   function set(field, val) {
     if (field === 'locationName') markEdited()
-    setForm(f => ({ ...f, [field]: val })); setError(null)
+    setForm(f => ({ ...f, [field]: val, ...(field === 'dispatchType' ? { responseKind: defaultResponseKind(val) } : {}) })); setError(null)
   }
 
   const fromReporter = form.locationSource === 'report'
@@ -84,12 +88,14 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
 
   return (
     <AppModal
+      variant="badged"
+      icon={<Icon d={ICON_PLUS} className="cfm-badge-icon" />}
       eyebrow="NEW INCIDENT"
       title="Log a new incident"
       subtitle="Confirm the location and assessment, then choose how to dispatch."
       onClose={onCancel}
       width={680}
-      className="eim-panel intake-panel"
+      className="eim-panel intake-panel log-incident-modal"
       dismissible={!saving}
       manageFocus
     >
@@ -97,7 +103,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
           <fieldset className="intake-fields" disabled={saving}>
 
           {/* ── Location ── */}
-          <IntakeSection icon={ICON_PIN} title="Location" desc={fromReporter ? 'Pinned from the reporter\'s phone.' : 'Confirm the pin and barangay'}>
+          <IntakeSection title="Location" desc={fromReporter ? 'Pinned from the reporter\'s phone.' : 'Confirm the pin and barangay'} className="lim-location">
             <div className="eim-coords pinned nim-pin">
               <Icon d={ICON_PIN} />
               <span className="eim-coords-val">{location[0].toFixed(5)}, {location[1].toFixed(5)}</span>
@@ -115,6 +121,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
             </div>
             <div className="eim-row">
               <Field label="Area / Barangay" required>
+                <div className="barangay-input-wrap">
                 <input
                   placeholder="Filled automatically from the map pin"
                   value={form.locationName}
@@ -125,6 +132,8 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
                   required
                   data-autofocus
                 />
+                {detecting && <span className="apm-spinner barangay-input-spinner" aria-hidden="true" />}
+                </div>
                 <span id="nim-barangay-hint" className="frm-hint" aria-live="polite">{barangayHint}</span>
               </Field>
               <Field label="Street / landmark">
@@ -139,7 +148,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
           </IntakeSection>
 
           {/* ── Assessment ── */}
-          <IntakeSection icon={ICON_WARN} title="Assessment" desc="Confirm the initial report">
+          <IntakeSection title="Assessment" desc="Confirm the initial report" className="lim-assessment">
             <Field label="Dispatch type">
               <select aria-label="Dispatch type" value={form.dispatchType} onChange={e => set('dispatchType', e.target.value)}>
                 {DISPATCH_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
@@ -162,7 +171,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
             </div>
           </IntakeSection>
 
-          <IntakeSection icon={ICON_BOLT} title="Dispatch" desc="Choose what happens when you log">
+          <IntakeSection title="Dispatch" desc="Choose what happens when you log">
             <label className={`nim-toggle ${form.autoDispatch ? 'on' : ''}`}>
               <span className="nim-toggle-icon"><Icon d={ICON_BOLT} /></span>
               <span className="nim-toggle-text">
@@ -187,6 +196,10 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
           {/* ── Reporter ── */}
           <IntakeDisclosure title="Reporter details" summary={[form.reporter, form.mobile].filter(Boolean).join(' · ') || 'Optional · add a channel and contact number'} defaultOpen={fromReporter || Boolean(initial?.mobile)}>
             <Field label="Reported via">
+              {fromReporter ? <>
+                <input aria-label="Reported via" value="SMS Report" readOnly />
+                <span className="frm-hint">From the reporter's shared location.</span>
+              </> : (
               <div className="eim-chips" role="radiogroup" aria-label="Reported via">
                 {CHANNELS.map(c => (
                   <button
@@ -201,6 +214,7 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
                   </button>
                 ))}
               </div>
+              )}
             </Field>
             <Field label="Reporter mobile #" className="nim-mobile">
               <input
@@ -211,9 +225,10 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
                 onChange={e => set('mobile', e.target.value)}
                 aria-label="Reporter mobile number"
               />
+              <span className="frm-hint">Optional. Add a number for follow-up if available.</span>
             </Field>
           </IntakeDisclosure>
-          <IntakeReceipt receivedAt={form.receivedAt} kind={form.responseKind} onReceipt={v => set('receivedAt', v)} onKind={v => set('responseKind', v)} recordKind={form.recordKind} onRecordKind={v => set('recordKind', v)} />
+          <IntakeReceipt dispatchType={form.dispatchType} receivedAt={form.receivedAt} kind={form.responseKind} onReceipt={v => set('receivedAt', v)} onKind={v => set('responseKind', v)} recordKind={form.recordKind} onRecordKind={v => set('recordKind', v)} />
           </fieldset>
         </form>
 

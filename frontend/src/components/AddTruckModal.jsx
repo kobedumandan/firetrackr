@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import AppModal from './AppModal'
+import '../styles/DispatchModal.css'
+import '../styles/PersonnelFormModal.css'
+import { ICON_PLUS } from './incidentFormOptions'
 import { fetchStations } from '../api'
 import { TRUCK_STATUSES, statusMeta } from './resourceFormOptions'
-import { Field, SectionHead, Segmented, FormStatus } from './incidentForm'
+import { Icon, Field, SectionHead, Segmented, FormStatus } from './incidentForm'
 
 export default function AddTruckModal({ onClose, onSubmit }) {
   const [form, setForm] = useState({
@@ -45,11 +48,13 @@ export default function AddTruckModal({ onClose, onSubmit }) {
 
   return (
     <AppModal
+      variant="badged"
+      icon={<Icon d={ICON_PLUS} className="cfm-badge-icon" />}
       eyebrow="NEW TRUCK"
       title={plate || 'Add a truck'}
       onClose={onClose}
       width={520}
-      className="eim-panel"
+      className="eim-panel resource-form-modal add-truck-modal"
       dismissible={!saving}
     >
       <form onSubmit={handleSubmit}>
@@ -79,7 +84,7 @@ export default function AddTruckModal({ onClose, onSubmit }) {
 
           <section className="eim-section">
             <SectionHead title="Status" desc="Whether it can be sent out." />
-            <Segmented label="Status" options={TRUCK_STATUSES} value={form.truck_status} onChange={v => set('truck_status', v)} />
+            <Segmented label="Status" options={TRUCK_STATUSES.filter(option => !['dispatched', 'on_scene', 'returning'].includes(option.value))} value={form.truck_status} onChange={v => set('truck_status', v)} />
             <div className="frm-hint">{statusMeta(TRUCK_STATUSES, form.truck_status).hint}</div>
           </section>
 

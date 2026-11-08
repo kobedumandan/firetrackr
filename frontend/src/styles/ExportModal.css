@@ -10,6 +10,14 @@
   height: min(880px, calc(100dvh - 60px));
 }
 
+.xpm-panel > .cfm-head {
+  flex-shrink: 0;
+}
+
+.xpm-incident-scope .eim-section-head p {
+  font-style: italic;
+}
+
 .xpm-layout {
   flex: 1;
   min-height: 0;

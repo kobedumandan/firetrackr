@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import AppModal from './AppModal'
+import '../styles/DispatchModal.css'
+import '../styles/PersonnelFormModal.css'
+import { ICON_PLUS } from './incidentFormOptions'
 import { fetchStations, fetchShifts, fetchTrucks, fetchTeams, createTeam } from '../api'
 import { TEAM_STATUSES, statusMeta, assignableTrucks } from './resourceFormOptions'
-import { Field, SectionHead, Segmented, FormStatus } from './incidentForm'
+import { Icon, Field, SectionHead, Segmented, FormStatus } from './incidentForm'
 
 const toId = v => (v ? Number(v) : null)
 
@@ -65,11 +68,13 @@ export default function AddTeamModal({ onClose, onSubmit }) {
 
   return (
     <AppModal
+      variant="badged"
+      icon={<Icon d={ICON_PLUS} className="cfm-badge-icon" />}
       eyebrow="NEW TEAM"
       title={name || 'Create a team'}
       onClose={onClose}
       width={600}
-      className="eim-panel"
+      className="eim-panel team-form-modal"
       dismissible={!saving}
     >
       <form onSubmit={handleSubmit}>
@@ -127,7 +132,7 @@ export default function AddTeamModal({ onClose, onSubmit }) {
 
           <section className="eim-section">
             <SectionHead title="Status" desc="Whether it can take dispatches." />
-            <Segmented label="Status" options={TEAM_STATUSES} value={form.team_status} onChange={v => set('team_status', v)} />
+            <Segmented label="Status" options={TEAM_STATUSES.filter(option => !['dispatched', 'on_scene', 'returning'].includes(option.value))} value={form.team_status} onChange={v => set('team_status', v)} />
             <div className="frm-hint">{statusMeta(TEAM_STATUSES, form.team_status).hint}</div>
           </section>
 

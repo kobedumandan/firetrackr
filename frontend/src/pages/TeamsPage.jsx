@@ -80,6 +80,26 @@ function Sym({ name }) {
 
 const clean = (v) => (v && v !== "—" ? v : null);
 
+function SeparatedText({ values }) {
+  const parts = values.map(clean).filter(Boolean);
+  return parts.length ? parts.map((part, index) => (
+    <span key={index}>
+      {index > 0 && <span className="tea-separator"> | </span>}
+      {part}
+    </span>
+  )) : "—";
+}
+
+const crewRole = (m) => (m.member_role || "").trim().toLowerCase().replace(/[_\s-]+/g, " ");
+const isCrewLeader = (m) => ["leader", "team leader"].includes(crewRole(m));
+const crewRoleOrder = (m) => isCrewLeader(m) ? 0 : crewRole(m) === "driver" ? 1 : 2;
+const crewTone = (m) => ({
+  standby: "green",
+  dispatched: "amber",
+  onscene: "amber",
+  returning: "amber",
+}[(m.member_status || "").toLowerCase().replace(/[_\s]/g, "")] ?? "muted");
+
 // "offduty" is derived: a standby crew whose shift isn't the one on duty.
 // A crew on a call stays "dispatched" even after the shift turns over.
 function statusOf(t) {
@@ -88,22 +108,24 @@ function statusOf(t) {
   return s;
 }
 
-const STATUS_TABS = ["all", "standby", "dispatched", "offduty", "inactive"];
+const STATUS_TABS = ["all", "standby", "dispatched", "on_scene", "returning", "offduty", "inactive"];
 const TAB_LABELS = {
   all: "All",
-  standby: "Ready",
+  standby: "Standby",
   dispatched: "Dispatched",
+  on_scene: "On Scene",
+  returning: "Returning",
   offduty: "Off duty",
   inactive: "Inactive",
 };
-const STATUS_ORDER = { standby: 0, dispatched: 1, offduty: 2, inactive: 3 };
-const TONE = { standby: "green", dispatched: "amber", offduty: "muted", inactive: "muted" };
-const STATUS_LABEL = { standby: "Ready", dispatched: "Dispatched", offduty: "Off duty", inactive: "Inactive" };
+const STATUS_ORDER = { standby: 0, dispatched: 1, on_scene: 2, returning: 3, offduty: 4, inactive: 5 };
+const TONE = { standby: "green", dispatched: "amber", on_scene: "amber", returning: "amber", offduty: "muted", inactive: "muted" };
+const STATUS_LABEL = { standby: "Standby", dispatched: "Dispatched", on_scene: "On Scene", returning: "Returning", offduty: "Off duty", inactive: "Inactive" };
 
-function Pill({ status }) {
+function Pill({ status, blocker }) {
   return (
-    <span className={`tea-pill tea-pill-${TONE[status] || "muted"}`}>
-      {status === "dispatched" && <span className="tea-pill-dot" />}
+    <span className={`tea-pill tea-pill-${TONE[status] || "muted"}`} title={blocker || undefined}>
+      {["dispatched", "returning"].includes(status) && <span className="tea-pill-dot" />}
       {STATUS_LABEL[status] || status}
     </span>
   );
@@ -131,8 +153,10 @@ function MemberStack({ members, count, max = 4 }) {
    first failing check is the reason the recommender skips this crew. */
 function readiness(t, trucksByStation) {
   const members = t.members || [];
-  const readyTrucks = (trucksByStation.get(t.station_id) || []).filter((x) => x.truck_status === "available").length;
+  const assignedTruck = (trucksByStation.get(t.station_id) || []).find(x => x.truck_id === t.truck_id);
+  const truckReady = !!t.truck_id && (assignedTruck?.truck_status ?? t.truck_status) === 'available' && !t.dispatch_blocker;
   const busy = members.filter((m) => !["", "standby"].includes((m.member_status || "").toLowerCase())).length;
+  const heldDriver = members.find(m => m.return_assignment_locked);
   return [
     {
       key: "station",
@@ -148,15 +172,15 @@ function readiness(t, trucksByStation) {
     },
     {
       key: "truck",
-      ok: readyTrucks > 0,
-      label: readyTrucks ? `${readyTrucks} truck${readyTrucks === 1 ? "" : "s"} available at the station` : "Truck available at the station",
-      fail: "No available truck at its station",
+      ok: truckReady,
+      label: "Assigned truck available",
+      fail: t.dispatch_blocker || (t.truck_id ? 'Its assigned truck is unavailable' : 'No truck assigned'),
     },
     {
       key: "members",
-      ok: members.length > 0 && busy === 0,
+      ok: members.length > 0 && busy === 0 && !heldDriver,
       label: "Crew on standby",
-      fail: members.length === 0 ? "No members assigned" : `${busy} member${busy === 1 ? " is" : "s are"} not on standby`,
+      fail: heldDriver?.return_assignment_reason || (members.length === 0 ? "No members assigned" : `${busy} member${busy === 1 ? " is" : "s are"} not on standby`),
     },
   ];
 }
@@ -208,12 +232,12 @@ function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
   }
 
   const status = statusOf(t);
-  const members = t.members || [];
+  const members = [...(t.members || [])].sort((a, b) => crewRoleOrder(a) - crewRoleOrder(b));
   const checks = readiness(t, trucksByStation);
   const failing = checks.find((c) => !c.ok);
   const hasCoords = t.station_latitude != null && t.station_longitude != null;
   const onShift = clean(t.shift_name) && isOnCurrentShift(t.shift_name);
-  const leader = members.find((m) => (m.member_role || "").toLowerCase() === "leader");
+  const leader = members.find(isCrewLeader);
 
   return (
     <div className="tea-detail-scroll">
@@ -230,7 +254,7 @@ function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
           </div>
         </div>
         <div className="tea-hero-chips">
-          <Pill status={status} />
+          <Pill status={status} blocker={t.dispatch_blocker} />
           {clean(t.shift_name) && <span className="tea-pill tea-pill-muted">{t.shift_name}</span>}
           {t.station_status === "inactive" && <span className="tea-pill tea-pill-muted">Station inactive</span>}
         </div>
@@ -262,7 +286,7 @@ function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
           <div>
             <div className="tea-ready-title">{failing ? "Won't be recommended" : "Ready to be recommended"}</div>
             <div className="tea-ready-sub">
-              {failing ? `${failing.fail}. You can still dispatch it by hand.` : "Meets every check the recommender runs."}
+              {failing ? `${failing.fail} ${t.dispatch_blocker ? 'Manual and automatic dispatch remain blocked until readiness is confirmed.' : 'Manual dispatch also checks team, truck and personnel availability.'}` : "Meets every check the recommender runs."}
             </div>
           </div>
         </div>
@@ -315,18 +339,19 @@ function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
         <div className="tea-list-rows">
           {members.map((m) => (
             <div key={m.per_id} className="tea-line">
-              <span className="tea-av">{m.initials}</span>
+              <span className={`tea-av tone-${crewTone(m)}`}>{m.initials}</span>
               <span className="tea-line-text">
                 <span className="tea-line-name">
                   {m.name}
-                  {(m.member_role || "").toLowerCase() === "leader" && <span className="tea-pill tea-pill-fire">Leader</span>}
                 </span>
                 <span className="tea-line-sub">
-                  {[clean(m.rank), clean(m.designation)].filter(Boolean).join(" · ") || "—"}
+                  <SeparatedText values={[m.rank, m.designation]} />
                 </span>
               </span>
-              {m.member_role && m.member_role.toLowerCase() !== "leader" && (
-                <span className="tea-line-meta">{m.member_role}</span>
+              {m.member_role && (
+                <span className={`tea-line-meta${isCrewLeader(m) ? " tea-line-meta-leader" : ""}`}>
+                  {isCrewLeader(m) ? "Team Leader" : m.member_role}
+                </span>
               )}
             </div>
           ))}
@@ -541,7 +566,7 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
           <div className="kpi-row tea-stat-row">
             {[
               { key: "total", accent: "fire", icon: "groups", label: "Teams", value: stats.total, sub: `${stats.members} personnel assigned` },
-              { key: "ready", accent: "green", icon: "check_circle", label: "Ready", value: stats.standby, sub: `Shift ${getCurrentShift().letter} on duty` },
+              { key: "ready", accent: "green", icon: "check_circle", label: "Standby", value: stats.standby, sub: `Shift ${getCurrentShift().letter}; truck readiness required` },
               { key: "dispatched", accent: "amber", icon: "local_fire_department", label: "Dispatched", value: stats.dispatched, sub: "Out on a call" },
               { key: "off", accent: "muted", icon: "bedtime", label: "Off duty", value: stats.offduty + stats.inactive, sub: stats.inactive ? `${stats.inactive} marked inactive` : "Next shift" },
             ].map((c) => (
@@ -570,7 +595,7 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
             />
           </div>
           <select
-            className="tea-filter-select"
+            className={`tea-filter-select${stationFilter ? " is-active" : ""}`}
             value={stationFilter}
             onChange={(e) => setStationFilter(e.target.value)}
             aria-label="Filter by station"
@@ -658,7 +683,7 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
                                   </span>
                                 </div>
                               </td>
-                              <td><Pill status={status} /></td>
+                              <td><Pill status={status} blocker={team.dispatch_blocker} /></td>
                               <td><ShiftChip name={team.shift_name} /></td>
                               <td>
                                 <span className="tea-cell-station">
@@ -737,8 +762,9 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
                         >
                           <div className="tea-card-top">
                             <span className={`tea-team-icon lg tone-${TONE[status]}`}><Sym name="groups" /></span>
-                            <Pill status={status} />
+                            <Pill status={status} blocker={team.dispatch_blocker} />
                           </div>
+                          {team.dispatch_blocker && <p className="tea-readiness-blocker">{team.dispatch_blocker}</p>}
                           <div className="tea-card-name">{team.team_name}</div>
                           <div className="tea-card-code">{clean(team.team_code) || "No code"}</div>
                           <dl className="tea-card-rows">
@@ -794,7 +820,7 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
           eyebrow="DELETE TEAM"
           title={`Delete ${deleting.team_name}?`}
           details={[
-            { label: "Team", value: [clean(deleting.team_code), clean(deleting.station_name)].filter(Boolean).join(" · ") || null },
+            { label: "Team", value: <SeparatedText values={[deleting.team_code, deleting.station_name]} /> },
             { label: "Crew", value: `${deleting.member_count} ${deleting.member_count === 1 ? "member" : "members"}` },
             { label: "Truck", value: deleting.truck_platenum },
           ]}

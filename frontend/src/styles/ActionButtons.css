@@ -22,7 +22,7 @@
   border-radius: 8px;
   border: 1px solid var(--border);
   background: transparent;
-  color: var(--text-secondary);
+  color: #fff;
   font-family: var(--font-condensed);
   font-size: 8.8px;
   font-weight: 600;
@@ -35,11 +35,13 @@
 .act-btn .material-symbols-outlined {
   font-size: 15px;
   margin-top: -3px;
+  color: inherit;
 }
+.act-btn svg { color: inherit; }
 .act-btn:hover:not(:disabled) {
   background: var(--bg-hover);
-  color: var(--text-primary);
 }
+[data-theme="light"] .act-btn { color: var(--text-primary); }
 .act-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;

@@ -216,9 +216,11 @@ function BarangayBar({ name, value, max, color }) {
 
 export default function MetricsPage({ onOpenAnalysis }) {
   const [period, setPeriod] = useState("all");
+  const [showRange, setShowRange] = useState(false);
   const [rangeDraft, setRangeDraft] = useState({ from: '', to: '' });
   const [dateRange, setDateRange] = useState(null);
   const [rangeError, setRangeError] = useState('');
+  const rangeActive = showRange || period === 'custom';
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const [exportSnapshot, setExportSnapshot] = useState(null);
   const [revision, setRevision] = useState(0);
@@ -311,7 +313,7 @@ export default function MetricsPage({ onOpenAnalysis }) {
   const chartTotal = linePoints.reduce((sum, count) => sum + count, 0);
   const formatDate = value => new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${value}T00:00:00+08:00`));
   const activePeriod = dateRange
-    ? { key: 'custom', label: 'Date range', description: `${formatDate(dateRange.from)} – ${formatDate(dateRange.to)}` }
+    ? { key: 'custom', label: 'Date range', description: `${dateRange.from ? formatDate(dateRange.from) : 'Any date'} – ${dateRange.to ? formatDate(dateRange.to) : 'Today'}` }
     : PERIODS.find((p) => p.key === period);
   const chartScope = dateRange ? activePeriod.description : period === "all" ? "All recorded months" : "Last 12 months";
   const selectedMonthIndex = (summary?.monthly ?? []).findIndex(month => month.month_key === selectedMonth);
@@ -326,12 +328,15 @@ export default function MetricsPage({ onOpenAnalysis }) {
     if (month) setSelectedMonth(month);
   }
 
-  function applyRange(event) {
-    event.preventDefault();
-    if (!rangeDraft.from || !rangeDraft.to) { setRangeError('Choose both a start and end date.'); return; }
-    if (rangeDraft.from > rangeDraft.to) { setRangeError('The start date must be on or before the end date.'); return; }
-    if (rangeDraft.to > today) { setRangeError('Reporting dates cannot be in the future.'); return; }
-    setRangeError(''); setDateRange({ ...rangeDraft }); setPeriod('custom'); setSelectedMonth('');
+  function updateRange(key, value) {
+    const next = { ...rangeDraft, [key]: value };
+    setRangeDraft(next);
+    if (next.from && next.to && next.from > next.to) { setRangeError('The start date must be on or before the end date.'); return; }
+    if (next.from > today || next.to > today) { setRangeError('Reporting dates cannot be in the future.'); return; }
+    setRangeError('');
+    setDateRange(next.from || next.to ? next : null);
+    setPeriod(next.from || next.to ? 'custom' : 'all');
+    setSelectedMonth('');
   }
 
   function openExport() {
@@ -379,23 +384,23 @@ export default function MetricsPage({ onOpenAnalysis }) {
             {PERIODS.map((p) => (
               <button
                 key={p.key}
-                className={`m-period-btn${period === p.key ? " active" : ""}`}
-                onClick={() => { setPeriod(p.key); setDateRange(null); setRangeDraft({ from: '', to: '' }); setRangeError(''); setSelectedMonth(''); }}
-                aria-pressed={period === p.key}
+                className={`m-period-btn${!rangeActive && period === p.key ? " active" : ""}`}
+                onClick={() => { setPeriod(p.key); setShowRange(false); setDateRange(null); setRangeDraft({ from: '', to: '' }); setRangeError(''); setSelectedMonth(''); }}
+                aria-pressed={!rangeActive && period === p.key}
                 aria-label={p.description}
               >
                 {p.label}
               </button>
             ))}
+            <button type="button" className={`m-period-btn${rangeActive ? ' active' : ''}`} aria-pressed={rangeActive} aria-expanded={showRange} onClick={() => setShowRange(true)}>Range</button>
           </div>
-          <form className={`mo-date-range${dateRange ? ' is-active' : ''}`} onSubmit={applyRange} aria-label="Custom reporting date range">
-            <label>From<input type="date" aria-label="Start date" className={!rangeDraft.from ? 'is-empty' : undefined} value={rangeDraft.from} max={rangeDraft.to || today} onChange={event => { setRangeDraft(value => ({ ...value, from: event.target.value })); setRangeError(''); }} /></label>
-            <label>To<input type="date" aria-label="End date" className={!rangeDraft.to ? 'is-empty' : undefined} value={rangeDraft.to} min={rangeDraft.from || undefined} max={today} onChange={event => { setRangeDraft(value => ({ ...value, to: event.target.value })); setRangeError(''); }} /></label>
-            <button className="mo-button" type="submit">Apply</button>
-          </form>
+          {showRange && <div className={`mo-date-range${dateRange ? ' is-active' : ''}`} role="group" aria-label="Custom reporting date range">
+            <label>From<input type="date" aria-label="Start date" className={!rangeDraft.from ? 'is-empty' : undefined} value={rangeDraft.from} max={rangeDraft.to || today} onChange={event => updateRange('from', event.target.value)} /></label>
+            <label>To<input type="date" aria-label="End date" className={!rangeDraft.to ? 'is-empty' : undefined} value={rangeDraft.to} min={rangeDraft.from || undefined} max={today} onChange={event => updateRange('to', event.target.value)} /></label>
+            {rangeError && <span className="mo-range-error" role="alert">{rangeError}</span>}
+          </div>}
           </div>
         </div>
-        {rangeError && <p className="mo-range-error" role="alert">{rangeError}</p>}
         </section>
         {error && <div className="mo-error" role="alert"><AnalysisIcon name="info" /><div><strong>Could not load metrics</strong><p>{error}</p></div><button className="mo-button" onClick={invalidateOperationalTimes}>Retry</button></div>}
         {!error && <>

@@ -126,6 +126,21 @@ export async function confirmDispatchClearance(dispatchId, body) {
   return res.json()
 }
 
+export async function fetchIncidentWorkflow(fireId) {
+  const response = await apiFetch(`/api/workflow/incidents/${fireId}`)
+  if (!response.ok) throw new Error(await _detail(response, 'Could not load incident workflow'))
+  const data = await response.json()
+  return { ...data, report: dashboardIncidentReport(data.report), field_reports: data.field_reports.map(dashboardIncidentReport) }
+}
+
+export async function performWorkflowAction(path, body = {}) {
+  const response = await apiFetch(path, { method: 'POST', body: JSON.stringify(body) })
+  if (!response.ok) throw new Error(await _detail(response, 'Could not record response action'))
+  const result = await response.json()
+  invalidateOperationalTimes()
+  return result
+}
+
 export async function fetchOperationalReport(report, query = '', signal) {
   const res = await apiFetch(`/api/reports/${report}?${query}`, { signal })
   if (!res.ok) throw new Error(await _detail(res, 'Could not load this report'))
@@ -169,7 +184,8 @@ export async function apiFetch(path, options = {}) {
     window.location.reload()
   }
 
-  if (res.ok && options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase()) && /^\/api\/(incidents|dispatch)(\/|$)/.test(path)) {
+  if (res.ok && options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase()) && /^\/api\/(incidents|dispatch|workflow)(\/|$)/.test(path)) {
+    invalidateResponseResources()
     invalidateOperationalTimes()
   }
 
@@ -178,6 +194,9 @@ export async function apiFetch(path, options = {}) {
 
 // ── Simple in-memory cache ────────────────────────────────────────────────────
 const _cache = {}
+export function invalidateResponseResources() {
+  for (const key of ['teams', 'trucks', 'personnel']) delete _cache[key]
+}
 const CACHE_TTL_MS = 2 * 60 * 1000  // 2 minutes
 
 function _cacheGet(key) {
@@ -371,11 +390,13 @@ export async function fetchActiveIncidents() {
   return res.json()
 }
 
-export async function fetchIncidents({ page = 1, pageSize = 15, period, status, search, sev, alarm, sortCol, sortDir } = {}) {
+export async function fetchIncidents({ page = 1, pageSize = 15, period, dateFrom, dateTo, status, search, sev, alarm, sortCol, sortDir } = {}) {
   const params = new URLSearchParams()
   if (page)     params.set('page',      page)
   if (pageSize) params.set('page_size', pageSize)
   if (period && period !== 'all') params.set('period', period)
+  if (dateFrom) params.set('date_from', dateFrom)
+  if (dateTo)   params.set('date_to', dateTo)
   if (status && status !== 'all') params.set('status', status)
   if (search)   params.set('search',   search)
   if (sev)      params.set('sev',      sev)
@@ -448,6 +469,11 @@ function dashboardIncidentReport(report) {
         return url
       }
     })
+  }
+  if (report?.photo_attachments?.length) {
+    report.photo_attachments = report.photo_attachments.map((photo, index) => ({
+      ...photo, url: report.photos[index],
+    }))
   }
   return report
 }
@@ -595,8 +621,8 @@ export async function fetchMetricsSummary(period = '1m', month = '', dateRange) 
   const params = new URLSearchParams({ period })
   if (month) params.set('month', month)
   if (dateRange) {
-    params.set('date_from', dateRange.from)
-    params.set('date_to', dateRange.to)
+    if (dateRange.from) params.set('date_from', dateRange.from)
+    if (dateRange.to) params.set('date_to', dateRange.to)
   }
   return sessionRead(metricsCache, String(params), async () => {
     const res = await apiFetch(`/api/metrics/summary?${params}`)
@@ -846,9 +872,9 @@ export async function fetchLoginHistory(limit = 5) {
 async function modelRequest(path, options = {}) {
   const res = await apiFetch(`/api/models${path}`, options)
   if (!res.ok) {
-    const error = new Error(res.status === 503
+    const error = new Error(await _detail(res, res.status === 503
       ? 'Model management is unavailable. Refresh the status or contact your administrator.'
-      : await _detail(res, `Model request failed (${res.status})`))
+      : `Model request failed (${res.status})`))
     error.status = res.status
     throw error
   }
@@ -857,10 +883,11 @@ async function modelRequest(path, options = {}) {
 
 export const fetchModelSummary = (signal) => modelRequest('/summary', { signal })
 export const fetchModelVersions = (offset = 0, signal) => modelRequest(`?limit=20&offset=${offset}`, { signal })
+export const renameModel = (version, name) => modelRequest(`/${encodeURIComponent(version)}`, { method: 'PATCH', body: JSON.stringify({ name }) })
 export const fetchModelReport = (version, signal) => modelRequest(`/${encodeURIComponent(version)}/report`, { signal })
 export const fetchModelPreview = (version, signal) => modelRequest(`/${encodeURIComponent(version)}/preview`, { signal })
 export const initializeModels = () => modelRequest('/initialize', { method: 'POST' })
-export const retrainModel = () => modelRequest('/retrain', { method: 'POST' })
+export const retrainModel = (name) => modelRequest('/retrain', { method: 'POST', ...(name ? { body: JSON.stringify({ name }) } : {}) })
 export const cancelModelRetrain = (version) => modelRequest(`/${encodeURIComponent(version)}/cancel`, { method: 'POST' })
 export const rejectModel = (version) => modelRequest(`/${encodeURIComponent(version)}/reject`, { method: 'POST' })
 export async function promoteModel(version, expectedChampion) {

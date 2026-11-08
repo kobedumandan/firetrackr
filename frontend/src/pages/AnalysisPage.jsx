@@ -14,7 +14,7 @@ const TABS = [
   { key: 'reports', label: 'Operational Reports', icon: 'chart' },
 ]
 
-export default function AnalysisPage({ theme, tab = 'response', onTabChange, onOpenIncident, detailView: routedDetail = null, onDetailChange }) {
+export default function AnalysisPage({ theme, tab = 'response', onTabChange, onOpenIncident, detailView: routedDetail = null, onDetailChange, section = null, sectionFocusNonce = 0 }) {
   // Preserve navigation from older callers that still request the timing tab.
   const activeTab = tab === 'operational' ? 'response' : tab
   const tabListRef = useRef(null)
@@ -56,7 +56,7 @@ export default function AnalysisPage({ theme, tab = 'response', onTabChange, onO
       {activeTab === 'response' ? <ResponsePerformanceView onOpenAnalysis={id => openDetails('incident', id)} onOpenDispatch={(id, fireId) => openDetails('dispatch', id, fireId)} /> : activeTab === 'reports' ? <OperationalReports /> : <PlanningPage />}
     </div>
     </div>
-    {detailView?.kind === 'incident' && <ResponseAnalysisPage key={detailView.id} fireId={detailView.id} theme={theme} onBack={() => setDetailView(null)} onOpenIncident={onOpenIncident} />}
+    {detailView?.kind === 'incident' && <ResponseAnalysisPage key={detailView.id} fireId={detailView.id} theme={theme} onBack={() => setDetailView(null)} onOpenIncident={onOpenIncident} section={section} sectionFocusNonce={sectionFocusNonce} />}
     {detailView?.kind === 'dispatch' && (detailView.fireId != null
       ? <ResponseAnalysisPage key={`dispatch-${detailView.id}`} fireId={detailView.fireId} initialDispatchId={detailView.id} theme={theme} backLabel="Dispatch observations" onBack={() => setDetailView(null)} onOpenIncident={onOpenIncident} />
       : <DispatchDetailsPage key={detailView.id} id={detailView.id} theme={theme} onBack={() => setDetailView(null)} onOpenIncident={onOpenIncident} />)}

@@ -13,6 +13,7 @@ import { DetailsSection } from '../layout/DetailsLayout'
 import { confirmDispatchClearance, confirmOperationalMilestone, correctOperationalMilestone, fetchOperationalDetail } from '../api'
 import { MAP_CENTER, tileLayersFor } from '../data/mapConfig'
 import { STAGES, dateTime, duration, manilaInput, parseRouteWkt } from '../utils/operationalTimes'
+import { incidentControl, incidentStatusLabel, isFireOperation } from '../utils/incidentOperations'
 import '../styles/ResponseAnalysisModal.css'
 
 function TimingSeparator({ pageLayout }) {
@@ -85,6 +86,7 @@ export function MilestoneForm({ data, unit, onSaved, pageLayout, selectedDispatc
   const [kind, setKind] = useState('receipt')
   const [draft, setDraft] = useState(null)
   const [classificationDraft, setClassificationDraft] = useState('')
+  const [clearanceReason, setClearanceReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [saved, setSaved] = useState(null)
@@ -96,13 +98,22 @@ export function MilestoneForm({ data, unit, onSaved, pageLayout, selectedDispatc
   const originalAt = activeDraft ? activeDraft.originalAt : currentAt
   const at = activeDraft ? activeDraft.at : recordedInput(currentAt)
   const changed = originalAt ? !sameInputTime(at, recordedInput(originalAt)) : Boolean(at)
-  const responseKind = data.response_kind || classificationDraft
+  const responseKind = data.effective_response_kind || data.response_kind || classificationDraft
+  const fireOperation = isFireOperation({ ...data, response_kind: responseKind })
+  const milestones = Object.fromEntries(Object.entries(MILESTONES).filter(([key]) =>
+    fireOperation || !['suppression_start', 'fire_out'].includes(key)))
   function changeTime(value) {
     setDraft(sameInputTime(value, recordedInput(currentAt)) ? null : { scopeKey, at: value, originalAt })
     setSaved(null); setError(null)
   }
   function changeKind(value) {
     setKind(value); setDraft(null); setSaved(null); setError(null)
+  }
+  function changeClassification(value) {
+    setClassificationDraft(value)
+    if (['suppression_start', 'fire_out'].includes(kind) && !isFireOperation({ ...data, response_kind: value })) {
+      changeKind('receipt')
+    }
   }
   function changeDispatch(value) {
     setDispatchId(value); setDraft(null); setSaved(null); setError(null)
@@ -116,13 +127,13 @@ export function MilestoneForm({ data, unit, onSaved, pageLayout, selectedDispatc
     setBusy(true); setError(null); setSaved(null)
     try {
       const body = { kind, occurred_at: new Date(`${at}+08:00`).toISOString(), dispatch_truck_id: ['departure', 'arrival'].includes(kind) ? unit?.id : null,
-        ...(originalAt ? { previous_occurred_at: originalAt, dispatch_id: kind === 'clearance' ? Number(dispatchId) : null } : { response_kind: responseKind || null }) }
+        ...(originalAt ? { previous_occurred_at: originalAt, dispatch_id: kind === 'clearance' ? Number(dispatchId) : null } : { response_kind: data.response_kind ? null : responseKind || null }) }
       const signature = JSON.stringify({ ...body, action: originalAt ? 'correct' : 'confirm', dispatch_id: kind === 'clearance' ? dispatchId : null })
       const key = submission?.signature === signature ? submission.key : crypto.randomUUID()
       setSubmission({ signature, key })
       if (originalAt) onSaved(await correctOperationalMilestone(data.fire_id, { ...body, idempotency_key: key }))
       else if (kind === 'clearance') {
-        await confirmDispatchClearance(Number(dispatchId), { occurred_at: body.occurred_at, idempotency_key: key })
+        await confirmDispatchClearance(Number(dispatchId), { occurred_at: body.occurred_at, idempotency_key: key, reason: clearanceReason.trim() })
         onSaved(await fetchOperationalDetail(data.fire_id))
       } else onSaved(await confirmOperationalMilestone(data.fire_id, { ...body, idempotency_key: key }))
       setDraft(null)
@@ -131,8 +142,8 @@ export function MilestoneForm({ data, unit, onSaved, pageLayout, selectedDispatc
     catch (err) { setError(err.message) }
     finally { setBusy(false) }
   }
-  const guidance = <p className="ota-note">Recorded times are filled in automatically. Keep the saved time or edit it to save an audited correction. Incident and dispatch statuses stay unchanged.</p>
-  const classificationField = <Field label="Response classification"><select value={responseKind} onChange={e => setClassificationDraft(e.target.value)} disabled={!!data.response_kind}><option value="">Unknown</option>{['fire', 'medical', 'rescue', 'other'].map(v => <option key={v}>{v}</option>)}</select></Field>
+  const guidance = <p className="ota-note">Times use Philippine time. Keep the saved time or record an audited correction. Actual clearance starts truck return; operation completion advances the incident's operational stage.</p>
+  const classificationField = <Field label="Response classification"><select value={responseKind} onChange={e => changeClassification(e.target.value)} disabled={!!data.response_kind}><option value="">Unknown</option>{['fire', 'medical', 'rescue', 'other'].map(v => <option key={v}>{v}</option>)}</select></Field>
   const actions = <>
     <button type="button" onClick={() => changeTime(manilaInput())}>Happened now</button>
     <button type="submit" disabled={busy || !at || (Boolean(originalAt) && !changed)}>{busy ? 'Saving…' : originalAt ? 'Save timestamp' : 'Confirm milestone'}</button>
@@ -143,8 +154,9 @@ export function MilestoneForm({ data, unit, onSaved, pageLayout, selectedDispatc
   </> : 'Confirm a verified operational milestone'}</summary>
     {!pageLayout && guidance}
     <form onSubmit={save} onChange={() => { setSaved(null); setError(null) }} aria-busy={busy}>
-      {pageLayout ? <MilestoneConfirmationFields data={data} unit={unit} milestones={MILESTONES} kind={kind} at={at} recordedAt={originalAt} changed={changed} responseKind={responseKind} dispatchId={dispatchId} busy={busy} error={error} saved={saved} onKindChange={changeKind} onTimeChange={changeTime} onClassificationChange={setClassificationDraft} onDispatchChange={changeDispatch} onNow={() => changeTime(manilaInput())} onKeepRecorded={keepRecordedTime} /> : <>
-      <Field label="Milestone"><select value={kind} onChange={e => changeKind(e.target.value)}>{Object.entries(MILESTONES).map(([key, label]) => <option key={key} value={key} disabled={['departure', 'arrival'].includes(key) && !unit}>{label}</option>)}</select></Field>
+      {kind === 'clearance' && !originalAt && <Field label="Radio source / clearance reason"><input required maxLength={255} value={clearanceReason} onChange={event => setClearanceReason(event.target.value)} placeholder="Who confirmed the team is physically clear?" /></Field>}
+      {pageLayout ? <MilestoneConfirmationFields data={data} unit={unit} milestones={milestones} kind={kind} at={at} recordedAt={originalAt} changed={changed} responseKind={responseKind} dispatchId={dispatchId} busy={busy} error={error} saved={saved} onKindChange={changeKind} onTimeChange={changeTime} onClassificationChange={changeClassification} onDispatchChange={changeDispatch} onNow={() => changeTime(manilaInput())} onKeepRecorded={keepRecordedTime} /> : <>
+      <Field label="Milestone"><select value={kind} onChange={e => changeKind(e.target.value)}>{Object.entries(milestones).map(([key, label]) => <option key={key} value={key} disabled={['departure', 'arrival'].includes(key) && !unit}>{label}</option>)}</select></Field>
       {kind === 'clearance' && <Field label="Responding dispatch"><select required value={dispatchId} onChange={e => changeDispatch(e.target.value)}><option value="">Select a dispatch</option>{(data.dispatches || []).map(d => <option key={d.dispatch_id} value={d.dispatch_id}>{d.team || `Dispatch ${d.dispatch_id}`} · {d.cleared_at ? 'Clearance recorded' : d.status}</option>)}</select></Field>}
       {classificationField}
       <Field label={<>Verified occurrence <TimingSeparator /> Philippine time</>}><input type="datetime-local" step="1" required value={at} onChange={e => changeTime(e.target.value)} /></Field>
@@ -164,14 +176,15 @@ export default function ResponseAnalysisContent({ fireId, detail, error, onRetry
   const selectedRoute = unit?.routes.find(r => r.route_id === unit.selected_route_id)
   const demo = detail?.timing_basis === 'synthetic_demo'
   const timeline = demo ? detail.synthetic_timeline : null
+  const fireOperation = isFireOperation(detail)
   const pairs = detail ? {
     processing: [['Report received', timeline?.report_received_at || detail.reported_at], ['Unit dispatched', timeline?.dispatch_at || unit?.dispatch_at]],
     preparation: [['Unit dispatched', timeline?.dispatch_at || unit?.dispatch_at], ['Truck departed', timeline?.departed_at || unit?.departed_at]],
     travel: [['Truck departed', timeline?.departed_at || unit?.departed_at], ['Truck arrived', timeline?.arrived_at || unit?.arrived_at]],
-    suppression: [['Suppression started', timeline?.suppression_started_at || detail.suppression_started_at], ['Fire contained', detail.controlled_at], ['Fire out', timeline?.fire_out_at || detail.fire_out_at]],
+    suppression: fireOperation ? [['Suppression started', timeline?.suppression_started_at || detail.suppression_started_at], [incidentControl(detail).label, detail.controlled_at], ['Fire out', timeline?.fire_out_at || detail.fire_out_at]] : [],
   } : {}
   const sourceKinds = { processing: ['op_receipt'], preparation: ['op_departure'], travel: ['op_departure', 'op_arrival'], suppression: ['op_suppression_start', 'op_fire_control', 'op_fire_out'] }
-  const stageEvents = detail?.events.filter(e => sourceKinds[stage].includes(e.type) && (!e.unit_id || e.unit_id === unit?.id)) || []
+  const stageEvents = stage === 'suppression' && !fireOperation ? [] : detail?.events.filter(e => sourceKinds[stage].includes(e.type) && (!e.unit_id || e.unit_id === unit?.id)) || []
   function selectDispatch(dispatchId) {
     const next = detail.units.find(u => u.dispatch_id === dispatchId)
     setDispatchId(dispatchId)
@@ -183,7 +196,7 @@ export default function ResponseAnalysisContent({ fireId, detail, error, onRetry
     {demo && <p className="ram-notice">Synthesized demonstration timeline · {detail.source_record_id}. The source workbook records a date, not response timestamps. No real truck, crew or driven route is assigned to this simulation.</p>}
     {detail && <>
       {!pageLayout && <section className="ram-overview" aria-label="Incident overview">
-        <div className="ram-incident"><span className="ram-eyebrow">INCIDENT LOCATION</span><h2>{detail.address || 'Address unavailable'}</h2><p>Report received <time><AnalysisValue value={dateTime(detail.reported_at)} /></time></p><span className="ram-status"><i />{detail.status || 'Status unknown'}</span></div>
+        <div className="ram-incident"><span className="ram-eyebrow">INCIDENT LOCATION</span><h2>{detail.address || 'Address unavailable'}</h2><p>Report received <time><AnalysisValue value={dateTime(detail.reported_at)} /></time></p><span className="ram-status"><i />{incidentStatusLabel(detail.status, detail)}</span></div>
         <div className="ram-overview-metric"><AnalysisIcon name="response" /><span>Call-to-arrival</span><strong><AnalysisValue value={duration(detail.durations.cta)} /></strong><small>First valid unit arrival</small></div>
         <div className="ram-overview-metric"><AnalysisIcon name="handling" /><span>Overall operation</span><strong><AnalysisValue value={duration(detail.durations.operation)} /></strong><small>All units cleared: <AnalysisValue value={dateTime(detail.operation_completed_at)} /></small></div>
       </section>}
@@ -194,13 +207,14 @@ export default function ResponseAnalysisContent({ fireId, detail, error, onRetry
         {detail.units.length > 1 && <div className="ram-unit-buttons" role="group" aria-label="Responding unit">{detail.units.map(u => <button type="button" key={u.id} aria-pressed={u.id === unit?.id} onClick={() => setUnitId(u.id)}>{u.truck} <TimingSeparator pageLayout={pageLayout} /> {u.team}</button>)}</div>}
         <div className={`ota-stages ram-stages${pageLayout ? ' rt-personal-metrics' : ''}`} role="group" aria-label="Operational stage">{STAGES.map((s, index) => <button type="button" key={s.key} className={`${pageLayout ? 'kpi-card ' : ''}${s.key === stage ? 'active' : ''}`} aria-pressed={s.key === stage} onClick={() => setStage(s.key)}>
           {pageLayout ? <span className="kpi-card-head"><span className="kpi-card-label">{s.label}</span><span className="kpi-card-icon kpi-card-icon-muted"><AnalysisIcon name={s.key} /></span></span> : <span className="ram-stage-label"><AnalysisIcon name={s.key} /><span>{s.label}</span><small>0{index + 1}</small></span>}
-          <strong className={pageLayout ? 'kpi-card-value' : undefined}><AnalysisValue value={s.key === 'suppression' && detail.response_kind && detail.response_kind !== 'fire' ? 'N/A' : duration(demo || s.key === 'suppression' ? detail.durations[s.key] : unit?.durations[s.key])} /></strong>
+          <strong className={pageLayout ? 'kpi-card-value' : undefined}><AnalysisValue value={s.key === 'suppression' && !fireOperation ? 'N/A' : duration(demo || s.key === 'suppression' ? detail.durations[s.key] : unit?.durations[s.key])} /></strong>
           <span className={`ram-stage-scope${pageLayout ? ' kpi-card-sub' : ''}`}>{s.key === 'suppression' ? 'Incident-wide' : demo ? 'Simulated' : 'Selected unit'}</span>
         </button>)}</div>
         {pageLayout && unit && <p className="ram-context-label ota-chart-note"><AnalysisIcon name="info" /><span>Unit metrics <TimingSeparator pageLayout /> separate from personal GPS</span></p>}
         <div className="ram-timing-grid">
           <section className="ram-timestamps">
             {pageLayout ? <div className="ram-evidence-heading"><span className="ram-evidence-icon"><AnalysisIcon name={stage} /></span><div><h4>{STAGES.find(s => s.key === stage).label} milestones</h4><p>Philippine time (UTC+8)</p></div></div> : <h4>{STAGES.find(s => s.key === stage).label} milestones <span>Philippine time</span></h4>}
+            {stage === 'suppression' && !fireOperation && <p className="ota-note">Suppression timing applies only to fire responses.</p>}
             <dl className={pageLayout ? 'ram-milestones' : undefined}>{pairs[stage].map(([label, at]) => <div key={label} data-recorded={pageLayout ? Boolean(at) : undefined}><dt><i aria-hidden="true" />{label}</dt><dd>{pageLayout && at ? <time dateTime={at}>{dateTime(at)}</time> : <AnalysisValue value={dateTime(at)} />}</dd></div>)}</dl>
             {unit?.metrics?.[stage]?.reason && <p className="ota-note">Measurement quality: {unit.metrics[stage].reason.replaceAll('_', ' ')}. Original timestamps remain visible above.</p>}
             {['processing', 'preparation'].includes(stage) && unit?.dispatch_at && <p className="ota-note">Dispatch time source: the unit’s existing dispatch record.</p>}

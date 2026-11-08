@@ -2,6 +2,34 @@ const ROUTE_SNAP_METERS = 60;
 const validPoint = point => Array.isArray(point) && point.length >= 2
   && Number.isFinite(point[0]) && Number.isFinite(point[1]);
 
+export function hasActiveRouteLocation(person, now = Date.now()) {
+  if (person.is_stale || person.tracking?.on_duty === false
+    || ['off', 'standby'].includes(person.tracking?.mode)
+    || !validPoint([person.latitude, person.longitude])) return false;
+  const recorded = Date.parse(person.recorded_at);
+  const age = Number.isFinite(recorded) ? now - recorded
+    : Number.isFinite(person.age_minutes) ? person.age_minutes * 60000 : 0;
+  return age <= Math.max(60000, (person.tracking?.interval_ms || 0) * 3);
+}
+
+export function hasActivePersonnelApproach(person, now = Date.now()) {
+  return hasActiveRouteLocation(person, now) && !person.personnel_arrived_at
+    && !['on_scene', 'onscene', 'returning', 'cleared'].includes(person.personnel_status)
+    && !['on_scene', 'returning'].includes(person.tracking?.mode);
+}
+
+// Geometric length of the displayed [latitude, longitude] segment.
+export function routeDistanceKm(positions) {
+  return (positions || []).slice(1).reduce((total, point, index) => {
+    const previous = positions[index];
+    const rad = Math.PI / 180;
+    const a = Math.sin((point[0] - previous[0]) * rad / 2) ** 2
+      + Math.cos(previous[0] * rad) * Math.cos(point[0] * rad)
+      * Math.sin((point[1] - previous[1]) * rad / 2) ** 2;
+    return total + 6371 * 2 * Math.asin(Math.sqrt(Math.min(1, a)));
+  }, 0);
+}
+
 function projectRoutePoint(line, pt) {
   if (!line || line.length < 2 || !validPoint(pt)) return null;
   const D2R = Math.PI / 180;
@@ -57,7 +85,7 @@ export function dispatchRouteProgress(line, dispatchId, liveLocations = [], incl
   let earliest = truck;
   for (const person of liveLocations) {
     if (person.dispatch_id !== dispatchId || person.manned_truck?.truck_id != null
-      || person.is_stale || person.personnel_arrived_at
+      || !hasActivePersonnelApproach(person)
       || !Number.isFinite(person.latitude) || !Number.isFinite(person.longitude)
       || ['on_scene', 'onscene'].includes(person.personnel_status)
       || ['off', 'standby', 'on_scene'].includes(person.tracking?.mode)) continue;
@@ -81,7 +109,7 @@ export function dispatchRouteProgress(line, dispatchId, liveLocations = [], incl
 
 export function truckProgressPoint(dispatchId, liveLocations = []) {
   const drivers = liveLocations.filter(person => person.dispatch_id === dispatchId
-    && person.manned_truck?.truck_id != null && !person.is_stale
+    && person.manned_truck?.truck_id != null && hasActiveRouteLocation(person)
     && Number.isFinite(person.latitude) && Number.isFinite(person.longitude));
   // Manning metadata is authoritative. Other personnel must never move the
   // truck's progress, including when there is no confirmed driver location.

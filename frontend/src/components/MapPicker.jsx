@@ -52,8 +52,9 @@ const hasValue = v => v !== '' && v != null
  * prompt      – overlay text shown until a pin exists
  * ghost       – optional [lat, lng] of the previous position, shown faded when
  *               the pin has been moved (edit forms)
+ * icon        – optional Leaflet icon for the current and previous pins
  */
-export function MapPicker({ lat, lng, onChange, onBoundsError, prompt = 'Click the map to drop a pin', ghost }) {
+export function MapPicker({ lat, lng, onChange, onBoundsError, prompt = 'Click the map to drop a pin', ghost, icon }) {
   const [tileId, setTileId] = useState('satellite')
   const theme = useTheme()
   const tile = TILE_OPTIONS.find(t => t.id === tileId)
@@ -90,8 +91,8 @@ export function MapPicker({ lat, lng, onChange, onBoundsError, prompt = 'Click t
         <GeoJSON key={`mask-${theme}`} data={maskFeature} style={() => maskStyle(theme)} />
         <GeoJSON key="boundary" data={boundaryFeature} style={() => ({ fill: false, stroke: true, color: '#1e90ff', weight: 2, opacity: 0.85 })} />
         <ClickHandler onChange={onChange} onBoundsError={onBoundsError} />
-        {ghost && <Marker position={ghost} opacity={0.4} interactive={false} />}
-        {pinned && <Marker position={[lat, lng]} />}
+        {ghost && <Marker position={ghost} {...(icon ? { icon } : {})} opacity={0.4} interactive={false} />}
+        {pinned && <Marker position={[lat, lng]} {...(icon ? { icon } : {})} />}
       </MapContainer>
       {!pinned && <div className="lim-map-prompt">{prompt}</div>}
       <div className="asm-tile-switcher lim-tile-switcher">

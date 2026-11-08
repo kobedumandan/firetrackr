@@ -85,22 +85,24 @@ function EditIcon() {
   );
 }
 
-const STATUS_TABS = ["all", "dispatched", "onscene", "standby", "offduty"];
+const STATUS_TABS = ["all", "dispatched", "onscene", "returning", "standby", "offduty"];
 const TAB_LABELS = {
   all: "All",
   dispatched: "Dispatched",
   onscene: "On Scene",
+  returning: "Returning",
   standby: "Standby",
   offduty: "Off Duty",
 };
 
 /* One accent per status, shared by the pill, the avatar tile and the hero tag
-   — the same colours the KPI cards above use for each status. Dispatched is
-   amber everywhere in the app; on scene takes red, the most urgent state. */
+   — the same colours the KPI cards above use for each status. Dispatched,
+   on scene and returning use amber throughout the app. */
 const STATUS_TONE = {
   dispatched: "amber",
-  onscene: "fire",
-  standby: "blue",
+  onscene: "amber",
+  returning: "amber",
+  standby: "green",
   offduty: "muted",
 };
 const toneOf = (s) => STATUS_TONE[s] ?? "muted";
@@ -112,10 +114,15 @@ const TRACKING = {
   offline: { label: "Offline", tone: "muted", live: false },
 };
 
-function StatusPill({ status }) {
+function trackingOf(p, onlineSet) {
+  if (onlineSet.has(p.per_id)) return "online";
+  return TRACKING[p.iot] ? p.iot : "offline";
+}
+
+function StatusPill({ status, blocker }) {
   return (
-    <span className={`per-status-pill per-tone-${toneOf(status)}`}>
-      {(status === "dispatched" || status === "onscene") && (
+    <span className={`per-status-pill per-tone-${toneOf(status)}`} title={blocker || undefined}>
+      {["dispatched", "onscene", "returning"].includes(status) && (
         <span className="per-blink-dot" />
       )}
       {TAB_LABELS[status] ?? status}
@@ -184,9 +191,10 @@ function PersonnelDetail({ p, loc, tracking, onShowOnMap, onEdit, onDelete }) {
               </div>
             </div>
           </div>
-          <StatusPill status={p.status} />
+          <StatusPill status={p.status} blocker={p.dispatch_blocker} />
         </div>
 
+        {p.dispatch_blocker && <p className="per-readiness-blocker">{p.dispatch_blocker}</p>}
         <div className="per-detail-actions">
           <button
             type="button"
@@ -327,7 +335,7 @@ function PersonnelDetail({ p, loc, tracking, onShowOnMap, onEdit, onDelete }) {
   );
 }
 
-export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = [] }) {
+export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = [], initialPersonnelId = null }) {
   const [personnel, setPersonnel] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -335,6 +343,8 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
   const [search, setSearch] = useState("");
   const [stationFilter, setStationFilter] = useState("");
   const [rankFilter, setRankFilter] = useState("");
+  const [teamFilter, setTeamFilter] = useState("");
+  const [trackingFilter, setTrackingFilter] = useState("");
   const [sortCol, setSortCol] = useState("name");
   const [sortDir, setSortDir] = useState(1);
   const [selectedId, setSelectedId] = useState(null);
@@ -346,16 +356,21 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
   const { width: detailWidth, handleProps: resizeHandle } = useSplitPane({ storageKey: "personnel.detailWidth", minMain: 687 });
 
   useEffect(() => {
+    let cancelled = false;
     fetchPersonnel()
       .then((data) => {
+        if (cancelled) return;
         setPersonnel(data);
+        setSelectedId(data.find(person => person.per_id === initialPersonnelId)?.id ?? null);
         setLoading(false);
       })
       .catch((err) => {
+        if (cancelled) return;
         setError(err.message);
         setLoading(false);
       });
-  }, []);
+    return () => { cancelled = true; };
+  }, [initialPersonnelId]);
 
   // Latest live location per personnel, keyed by per_id.
   const locByPerId = useMemo(() => {
@@ -375,14 +390,14 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
   }, [livePersonnelLocations]);
 
   // Resolve the tracking badge type for a row: "online" wins, else IoT status.
-  const trackingType = (p) => (onlineSet.has(p.per_id) ? "online" : p.iot);
+  const trackingType = (p) => trackingOf(p, onlineSet);
 
   // Personnel whose assigned shift isn't the currently active A/B shift are
-  // shown as off-duty (gray), regardless of their stored status.
+  // shown as off-duty (gray), unless they still have response work to finish.
   const shiftedPersonnel = useMemo(
     () =>
       personnel.map((p) =>
-        (p.on_duty ?? isOnCurrentShift(p.shift_name)) ? p : { ...p, status: "offduty" }
+        ["dispatched", "onscene", "returning"].includes(p.status) || (p.on_duty ?? isOnCurrentShift(p.shift_name)) ? p : { ...p, status: "offduty" }
       ),
     [personnel]
   );
@@ -391,6 +406,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
     () => ({
       dispatched: shiftedPersonnel.filter((p) => p.status === "dispatched").length,
       onscene: shiftedPersonnel.filter((p) => p.status === "onscene").length,
+      returning: shiftedPersonnel.filter((p) => p.status === "returning").length,
       standby: shiftedPersonnel.filter((p) => p.status === "standby").length,
       offduty: shiftedPersonnel.filter((p) => p.status === "offduty").length,
       iot: shiftedPersonnel.filter(
@@ -411,6 +427,13 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
     [personnel]
   );
 
+  const teamOptions = useMemo(
+    () => [...new Map(personnel.filter((p) => p.team_id != null).map((p) => [String(p.team_id), {
+      value: String(p.team_id), label: p.team_name || "Unnamed team", station: p.station,
+    }])).values()].sort((a, b) => a.label.localeCompare(b.label)),
+    [personnel]
+  );
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     const rows = shiftedPersonnel.filter((p) => {
@@ -422,11 +445,14 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
         (p.team_name || "").toLowerCase().includes(q);
       const ms = !stationFilter || p.station === stationFilter;
       const mr = !rankFilter || p.rank === rankFilter;
+      const mt = !teamFilter || (teamFilter === "unassigned" ? p.team_id == null : String(p.team_id) === teamFilter);
+      const tracking = trackingOf(p, onlineSet);
+      const mtr = !trackingFilter || tracking === trackingFilter;
       const mst = activeStatus === "all" || p.status === activeStatus;
-      return mq && ms && mr && mst;
+      return mq && ms && mr && mt && mtr && mst;
     });
 
-    const STATUS_ORDER = { dispatched: 0, onscene: 1, standby: 2, offduty: 3 };
+    const STATUS_ORDER = { dispatched: 0, onscene: 1, returning: 2, standby: 3, offduty: 4 };
     const key = (p) =>
       sortCol === "status" ? STATUS_ORDER[p.status] ?? 9 : (p[sortCol] ?? "");
     rows.sort((a, b) => {
@@ -438,7 +464,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
     });
 
     return rows;
-  }, [shiftedPersonnel, search, stationFilter, rankFilter, activeStatus, sortCol, sortDir]);
+  }, [shiftedPersonnel, search, stationFilter, rankFilter, teamFilter, trackingFilter, onlineSet, activeStatus, sortCol, sortDir]);
 
   function handleSort(col) {
     if (sortCol === col) setSortDir((d) => d * -1);
@@ -471,7 +497,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
       ["Code", "Name", "Rank", "Status", "Shift", "Station", "Team", "Designation", "Email", "Joined", "Current incident", "Tracking"],
       filtered.map((p) => [p.id, p.name, p.rank, TAB_LABELS[p.status] ?? p.status, p.shift_name, p.station, p.team_name, p.designation, p.email, p.joined, p.incident, (TRACKING[trackingType(p)] ?? TRACKING.offline).label]),
       {
-        filters: [["Status", TAB_LABELS[activeStatus] ?? "All"], ["Station", stationFilter || "All"], ["Rank", rankFilter || "All"], ...(search.trim() ? [["Search", search.trim()]] : [])],
+        filters: [["Status", TAB_LABELS[activeStatus] ?? "All"], ["Station", stationFilter || "All"], ["Rank", rankFilter || "All"], ["Team", teamFilter === "unassigned" ? "Unassigned" : teamOptions.find((t) => t.value === teamFilter)?.label || "All"], ["Tracking", TRACKING[trackingFilter]?.label || "All"], ...(search.trim() ? [["Search", search.trim()]] : [])],
         sort: `${({ id: "Code", name: "Name", rank: "Rank", status: "Status", station: "Station" })[sortCol] ?? sortCol} (${sortDir === 1 ? "ascending" : "descending"})`,
       },
     ));
@@ -538,8 +564,9 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
           <div className="kpi-row per-stat-row">
             {[
               { key: "dispatched", accent: "amber", icon: "local_fire_department", label: "Dispatched", value: stats.dispatched, sub: "En Route Now" },
-              { key: "onscene", accent: "fire", icon: "location_on", label: "On Scene", value: stats.onscene, sub: "At Incident Site" },
-              { key: "standby", accent: "blue", icon: "shield", label: "Standby", value: stats.standby, sub: "Ready to Deploy" },
+              { key: "onscene", accent: "amber", icon: "location_on", label: "On Scene", value: stats.onscene, sub: "At Incident Site" },
+              { key: "returning", accent: "amber", icon: "keyboard_return", label: "Returning", value: stats.returning, sub: "Travelling Back to Station" },
+              { key: "standby", accent: "green", icon: "shield", label: "Standby", value: stats.standby, sub: "Dispatch Requires Ready Resources" },
               { key: "offduty", accent: "muted", icon: "bedtime", label: "Off Duty", value: stats.offduty, sub: "Not On Current Shift" },
               { key: "iot", accent: "green", icon: "sensors", label: "Live Tracking", value: stats.iot, sub: "Reporting Location" },
             ].map((c) => (
@@ -568,7 +595,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
             />
           </div>
           <select
-            className="per-filter-select"
+            className={`per-filter-select${stationFilter ? " is-active" : ""}`}
             value={stationFilter}
             onChange={(e) => setStationFilter(e.target.value)}
           >
@@ -578,7 +605,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
             ))}
           </select>
           <select
-            className="per-filter-select"
+            className={`per-filter-select${rankFilter ? " is-active" : ""}`}
             value={rankFilter}
             onChange={(e) => setRankFilter(e.target.value)}
           >
@@ -586,6 +613,15 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
             {rankOptions.map((r) => (
               <option key={r} value={r}>{r}</option>
             ))}
+          </select>
+          <select className={`per-filter-select${teamFilter ? " is-active" : ""}`} value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} aria-label="Filter by team">
+            <option value="">All Teams</option>
+            <option value="unassigned">Unassigned</option>
+            {teamOptions.map((t) => <option key={t.value} value={t.value}>{t.label}{teamOptions.some((other) => other.value !== t.value && other.label === t.label) ? ` · ${t.station}` : ""}</option>)}
+          </select>
+          <select className={`per-filter-select${trackingFilter ? " is-active" : ""}`} value={trackingFilter} onChange={(e) => setTrackingFilter(e.target.value)} aria-label="Filter by tracking status">
+            <option value="">All Tracking Statuses</option>
+            {["online", "offline"].map((value) => <option key={value} value={value}>{TRACKING[value].label}</option>)}
           </select>
           <span className="per-result-count">
             {loading
@@ -671,7 +707,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
                               </div>
                             </td>
                             <td>
-                              <StatusPill status={p.status} />
+                              <StatusPill status={p.status} blocker={p.dispatch_blocker} />
                             </td>
                             <td>
                               <span className={`per-row-meta${p.station === "—" ? " is-empty" : ""}`}>
@@ -754,8 +790,9 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
                       >
                         <div className="per-card-top">
                           <Avatar p={p} size="card" />
-                          <StatusPill status={p.status} />
+                          <StatusPill status={p.status} blocker={p.dispatch_blocker} />
                         </div>
+                        {p.dispatch_blocker && <p className="per-readiness-blocker">{p.dispatch_blocker}</p>}
                         <div className="per-card-name">{p.name}</div>
                         <div className="per-card-id">
                           {p.rank !== "—" ? `${p.rank} · ` : ""}{p.id}

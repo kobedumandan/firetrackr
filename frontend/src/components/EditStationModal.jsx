@@ -2,12 +2,19 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { updateStation } from '../api'
 import '../styles/AppModal.css'
+import '../styles/ConfirmModal.css'
+import '../styles/DispatchModal.css'
+import '../styles/PersonnelFormModal.css'
 import '../styles/EditFormModal.css'
 import { phoneError, STATION_TYPES, STATION_STATUSES, statusMeta } from './resourceFormOptions'
 import { ICON_CLOSE } from './incidentFormOptions'
 import { Icon, Field, SectionHead, FormStatus, LockedNote, ReviewChanges } from './incidentForm'
 import { MapPicker, PinStatus } from './MapPicker'
 import { StationDetailsSections } from './stationForm'
+import { stationIcon } from '../utils/stationIcon'
+import { useIncidentBarangay } from '../hooks/useIncidentBarangay'
+
+const STATION_ICON = stationIcon()
 
 const clean = v => (v === '—' || v == null ? '' : String(v))
 const fmtCoords = (lat, lng) => (lat !== '' && lng !== '' ? `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}` : '')
@@ -44,6 +51,10 @@ export default function EditStationModal({ station, onClose, onSaved, stations }
   const [mapError, setMapError]   = useState(null)
   const [saving, setSaving]       = useState(false)
   const [reviewing, setReviewing] = useState(false)
+  const moved = form.station_latitude !== initial.station_latitude || form.station_longitude !== initial.station_longitude
+  const { detecting, hint: barangayHint, markEdited } = useIncidentBarangay(
+    moved ? form.station_latitude : '', moved ? form.station_longitude : '', setForm, 'station_barangay',
+  )
 
   useEffect(() => {
     if (reviewing) return
@@ -54,6 +65,7 @@ export default function EditStationModal({ station, onClose, onSaved, stations }
 
   function set(field, value) {
     setError(null)
+    if (field === 'station_barangay') markEdited()
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
@@ -66,7 +78,6 @@ export default function EditStationModal({ station, onClose, onSaved, stations }
     station_contact:  form.station_contact.trim(),
     parent_station_id: form.station_type === 'sub' ? form.parent_station_id : '',
   }
-  const moved = effective.station_latitude !== initial.station_latitude || effective.station_longitude !== initial.station_longitude
   const changes = Object.fromEntries(
     FIELD_META.map(([k]) => k).filter(k => effective[k] !== initial[k]).map(k => [k, effective[k]]),
   )
@@ -75,7 +86,7 @@ export default function EditStationModal({ station, onClose, onSaved, stations }
 
   const contactError = phoneError(form.station_contact)
   const blocked =
-    !effective.station_name || !effective.station_address || !effective.station_barangay || !effective.station_contact ||
+    detecting || !effective.station_name || !effective.station_address || !effective.station_barangay || !effective.station_contact ||
     (form.station_type === 'sub' && !form.parent_station_id) || !!contactError
 
   // ── Display helpers ──
@@ -140,31 +151,39 @@ export default function EditStationModal({ station, onClose, onSaved, stations }
     <>
       {createPortal(
         <div className="apm-overlay" onMouseDown={e => e.target === e.currentTarget && !saving && !reviewing && onClose()}>
-          <div className="apm-panel eim-panel lim-panel-split stn-panel edit-form-modal" role="dialog" aria-modal="true" aria-labelledby="esm-title">
-            <div className="eim-header">
-              <div className="eim-header-main">
+          <div className="apm-panel eim-panel lim-panel-split stn-panel edit-form-modal resource-form-modal" role="dialog" aria-modal="true" aria-labelledby="esm-title">
+            <div className="cfm-head dpm-header">
+              <span className="cfm-badge">
+                <Icon d="M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 18l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm640-584-56-56 56 56ZM619-619l-28-29 57 57-29-28Z" className="cfm-badge-icon" />
+              </span>
+              <div className="cfm-head-text">
                 <div className="apm-eyebrow">EDIT STATION</div>
-                <div id="esm-title" className="eim-title">{effective.station_name || 'Untitled station'}</div>
-                <div className="apm-subtitle">
-                  {[station.code, statusMeta(STATION_TYPES, initial.station_type).label, initial.station_barangay].filter(Boolean).map((part, index) => (
-                    <span key={index}>
-                      {index > 0 && <span className="edit-form-separator" aria-hidden="true"> | </span>}
-                      {part}
-                    </span>
-                  ))}
-                </div>
+                <div id="esm-title" className="cfm-title">{effective.station_name || 'Untitled station'}</div>
               </div>
               <button className="eim-close" onClick={onClose} aria-label="Close" disabled={saving}>
                 <Icon d={ICON_CLOSE} />
               </button>
+              <div className="eim-subtitle">
+                {[station.code, statusMeta(STATION_TYPES, initial.station_type).label, initial.station_barangay].filter(Boolean).map((part, index) => (
+                  <span key={index} className={index === 0 ? 'eim-chip eim-chip-code' : 'eim-chip'}>
+                    {part}
+                  </span>
+                ))}
+              </div>
             </div>
 
             <div className="lim-layout">
               <aside className="lim-rail-map" aria-label="Station location">
                 <MapPicker
+                  icon={STATION_ICON}
                   lat={form.station_latitude}
                   lng={form.station_longitude}
-                  onChange={(lat, lng) => setForm(prev => ({ ...prev, station_latitude: lat, station_longitude: lng }))}
+                  onChange={(lat, lng) => setForm(prev => ({
+                    ...prev, station_latitude: lat, station_longitude: lng,
+                    station_barangay: lat === initial.station_latitude && lng === initial.station_longitude
+                      ? initial.station_barangay
+                      : prev.station_latitude === lat && prev.station_longitude === lng ? prev.station_barangay : '',
+                  }))}
                   onBoundsError={setMapError}
                   prompt="Click the map where the station is"
                   ghost={moved && hadPin ? [initial.station_latitude, initial.station_longitude] : null}
@@ -181,7 +200,7 @@ export default function EditStationModal({ station, onClose, onSaved, stations }
                       <button
                         type="button"
                         className="eim-link-btn stn-reset"
-                        onClick={() => setForm(prev => ({ ...prev, station_latitude: initial.station_latitude, station_longitude: initial.station_longitude }))}
+                        onClick={() => setForm(prev => ({ ...prev, station_latitude: initial.station_latitude, station_longitude: initial.station_longitude, station_barangay: initial.station_barangay }))}
                       >
                         Undo
                       </button>
@@ -197,6 +216,8 @@ export default function EditStationModal({ station, onClose, onSaved, stations }
                   isChanged={isChanged}
                   mainStations={mainStations}
                   contactError={contactError}
+                  detecting={detecting}
+                  barangayHint={moved ? barangayHint : 'Pick a location to fill in the barangay automatically.'}
                   editing
                 />
 

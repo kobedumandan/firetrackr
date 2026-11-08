@@ -103,6 +103,7 @@ export default function RasterCommandMap({ portalHost, controlsHost, active, til
     if (action === 'rotate-left' || action === 'rotate-right') options.bearing = map.getBearing() + (action === 'rotate-left' ? -15 : 15)
     if (action === 'zoom-in' || action === 'zoom-out') options.zoom = clamp(map.getZoom() + (action === 'zoom-in' ? 0.6 : -0.6), 1, 20)
     if (action === 'reset') { options.pitch = 0; options.bearing = 0 }
+    if (action === 'default') { options.pitch = 40; options.bearing = 0 }
     map.easeTo(options)
   }
   if (!portalHost) return null

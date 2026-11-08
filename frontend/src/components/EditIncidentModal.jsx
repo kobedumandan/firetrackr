@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { updateIncident } from '../api'
+import { incidentStage } from '../utils/incidentOperations'
 import '../styles/EditFormModal.css'
+import '../styles/ConfirmModal.css'
 import {
-  STATUSES, SEVERITIES, ALARMS, DISPATCH_TYPES, statusMetaOf, supportsFireAlarm,
+  SEVERITIES, ALARMS, DISPATCH_TYPES, statusMetaOf, supportsFireAlarm,
   ICON_CLOSE, ICON_MINUS, ICON_PLUS, ICON_LOCK,
 } from './incidentFormOptions'
 import {
@@ -13,7 +15,7 @@ import {
 // Review order and display labels for every editable field.
 const FIELD_META = [
   ['record_kind',           'Record kind'],
-  ['fire_status',           'Status', v => STATUSES.find(s => s.value === v)?.label ?? v],
+  ['fire_status',           'Status'],
   ['fire_severity',         'Severity'],
   ['fire_alarm_level',      'Alarm level'],
   ['fire_structure_type',   'Structure type'],
@@ -36,16 +38,16 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
     fire_structure_type:   supportsFireAlarm(incident.dispatch_type) ? incident.structure || 'Residential' : null,
     fire_dispatch_type:    incident.dispatch_type || '',
     fire_units_assigned:   incident.units      ?? 0,
-    fire_reporter_name:    incident.reporter && incident.reporter !== '—' ? incident.reporter : '',
-    fire_reporter_contact: '',
+    fire_reporter_name:    incident.reporter_name ?? (incident.reporter && incident.reporter !== '—' ? incident.reporter : ''),
+    fire_reporter_contact: incident.reporter_contact || '',
   }))
   const [form, setForm] = useState(initial)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const [reviewing, setReviewing] = useState(false)
 
-  const closingNow     = form.fire_status === 'closed' && initial.fire_status !== 'closed'
-  const statusMeta     = statusMetaOf(form.fire_status)
+  const displayStatus  = incidentStage(incident) === 'operation_complete' ? 'operation_complete' : form.fire_status
+  const statusMeta     = statusMetaOf(displayStatus, { ...incident, dispatch_type: form.fire_dispatch_type })
   const showFireAlarm  = supportsFireAlarm(form.fire_dispatch_type)
 
   // Outcome fields are managed in the dedicated after-action report modal.
@@ -55,10 +57,10 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
     fire_structure_type: showFireAlarm ? form.fire_structure_type || 'Residential' : null,
     fire_units_assigned: Number(form.fire_units_assigned) || 0,
   }
-  // PATCH only what changed; a blank contact means "keep the stored one".
+  // PATCH only what changed, including an explicitly cleared contact.
   const changes = Object.fromEntries(
     Object.entries(effective).filter(([k, v]) =>
-      k === 'fire_reporter_contact' ? v.trim() !== '' : v !== initial[k],
+      v !== initial[k],
     ),
   )
   const changeCount = Object.keys(changes).length
@@ -113,34 +115,40 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
   return (
     <>
     <div className="apm-overlay" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
-      <div className="apm-panel eim-panel edit-form-modal" role="dialog" aria-modal="true" aria-labelledby="eim-title">
+      <div className="apm-panel eim-panel edit-form-modal incident-edit-modal" role="dialog" aria-modal="true" aria-labelledby="eim-title">
 
-        <div className="eim-header">
-          <div className="eim-header-main">
+        <div className="cfm-head">
+          <span className="cfm-badge">
+            <Icon d="M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 18l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm640-584-56-56 56 56ZM619-619l-28-29 57 57-29-28Z" className="cfm-badge-icon" />
+          </span>
+          <div className="cfm-head-text">
             <div className="apm-eyebrow">EDIT INCIDENT</div>
-            <div id="eim-title" className="eim-title">{form.fire_location_name.trim() || 'Untitled location'}</div>
-            <div className="eim-subtitle">
-              <span className="eim-chip eim-chip-code">{incident.id}</span>
-              <span className="eim-chip">{statusMeta.label}</span>
-              <span className="eim-chip">{form.fire_severity}</span>
-              {showFireAlarm && <span className="eim-chip">{form.fire_alarm_level || '1st Alarm'}</span>}
-            </div>
+            <div id="eim-title" className="cfm-title">{form.fire_location_name.trim() || 'Untitled location'}</div>
           </div>
           <button className="eim-close" onClick={onClose} aria-label="Close" disabled={saving}>
             <Icon d={ICON_CLOSE} />
           </button>
+          <div className="eim-subtitle">
+            <span className="eim-chip eim-chip-code">{incident.id}</span>
+            <span className="eim-chip">{statusMeta.label}</span>
+            <span className="eim-chip">{form.fire_severity}</span>
+            {showFireAlarm && <span className="eim-chip">{form.fire_alarm_level || '1st Alarm'}</span>}
+          </div>
         </div>
 
         <form id="eim-form" className="eim-body" onSubmit={handleSubmit}>
-          <section className="eim-section"><Field label="Record kind"><select value={form.record_kind} onChange={e => set('record_kind', e.target.value)}>{['operational', 'drill', 'test', 'unknown'].map(k => <option key={k}>{k}</option>)}</select></Field></section>
-
           {/* ── Status progression ── */}
           <section className="eim-section">
             <SectionHead title="Status" desc="Where this incident is in its lifecycle" changed={isChanged('fire_status')} />
-            <StatusSteps value={form.fire_status} onChange={v => set('fire_status', v)} hint={statusMeta.hint.replace(/\.$/, '')} />
-            {closingNow && (
-              <Callout>When you save, active crews and trucks on this incident are released. Eligible fire records also contribute to the fire heatmap.</Callout>
-            )}
+            <StatusSteps
+              value={displayStatus}
+              incident={{ ...incident, dispatch_type: form.fire_dispatch_type }}
+              includeOperationComplete
+              disabledValues={displayStatus === 'operation_complete' || incident.status === 'closed' ? ['pending', 'dispatched', 'contained', 'closed'] : ['closed']}
+              onChange={v => set('fire_status', v)}
+              hint={statusMeta.hint.replace(/\.$/, '')}
+            />
+            <Callout>Record team release, operation completion and Review &amp; Close in the incident's Response &amp; Reporting section.</Callout>
           </section>
 
           {/* ── Assessment ── */}
@@ -225,12 +233,23 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
               </Field>
               <Field label="Contact number" changed={isChanged('fire_reporter_contact')}>
                 <input
-                  placeholder="Leave blank to keep current"
+                  type="tel"
+                  placeholder="e.g. 09171234567"
                   value={form.fire_reporter_contact}
                   onChange={e => set('fire_reporter_contact', e.target.value)}
                 />
               </Field>
             </div>
+          </section>
+
+          <section className="eim-section eim-record-kind">
+            <Field label="Record kind" changed={isChanged('record_kind')}>
+              <select value={form.record_kind} onChange={e => set('record_kind', e.target.value)}>
+                {['operational', 'drill', 'test', 'unknown'].map(kind => (
+                  <option key={kind} value={kind}>{kind.charAt(0).toUpperCase() + kind.slice(1)}</option>
+                ))}
+              </select>
+            </Field>
           </section>
 
           {error && !reviewing && <div className="apm-error">{error}</div>}
@@ -258,12 +277,10 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
           key,
           label,
           long,
-          before: fmt ? fmt(initial[key]) : initial[key],
-          after: fmt ? fmt(changes[key]) : changes[key],
-          // The stored contact isn't loaded into the form, so there's no old value to show.
-          beforeText: key === 'fire_reporter_contact' ? 'Previous number' : null,
+          before: key === 'fire_status' ? statusMetaOf(initial[key], { ...incident, dispatch_type: initial.fire_dispatch_type }).label : fmt ? fmt(initial[key]) : initial[key],
+          after: key === 'fire_status' ? statusMetaOf(changes[key], { ...incident, dispatch_type: form.fire_dispatch_type }).label : fmt ? fmt(changes[key]) : changes[key],
         }))}
-        note={closingNow && 'Closing this incident releases its active crews and trucks. Eligible fire records also contribute to the fire heatmap.'}
+        note="Operational completion and report closure are recorded separately in Response & Reporting."
         saving={saving}
         error={error}
         onBack={() => { setError(null); setReviewing(false) }}

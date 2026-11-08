@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import { fetchModelPreview } from '../api'
 import { tileLayersFor } from '../data/mapConfig'
 import SettingsLoading from './SettingsLoading'
+import ModelSettingsIcon from './ModelSettingsIcon'
 
 function LinkedMap({ onReady, index }) {
   const map = useMap()
@@ -45,13 +46,19 @@ export default function ModelPreview({ version, theme = 'dark' }) {
   }, [version])
   if (error) return <p className="model-error" role="alert">{error}</p>
   if (!data) return <SettingsLoading message="Loading changed roads…" compact />
-  if (!data.features.length) return <p className="model-muted">No predicted classes changed in this comparison.</p>
+  if (!data.features.length) return <div className="model-preview-empty"><span className="model-card-icon"><ModelSettingsIcon name="map" /></span><h3>No Classification Changes</h3><p>Both models predict the same classes for all compared roads.</p></div>
   const bounds = L.geoJSON(data).getBounds()
+  const constrained = data.features.filter(feature => feature.properties.challenger_class).length
+  const clear = data.features.length - constrained
   return <div className="model-preview">
-    <p className="model-muted">{data.features.length} changed road{data.features.length === 1 ? '' : 's'} compared with {data.compared_against}. Pan or zoom either map to move both views.</p>
-    <div className="model-preview-legend"><span>Predicted constrained</span><span>Predicted clear</span></div>
+    <div className="model-preview-summary">
+      <div className="model-preview-stat"><span>Changed Roads</span><strong>{data.features.length.toLocaleString()}</strong><small>Compared with {data.compared_against}</small></div>
+      <div className="model-preview-stat model-preview-constrained"><span>Now Predicted Constrained</span><strong>{constrained.toLocaleString()}</strong><small>Previously predicted clear</small></div>
+      <div className="model-preview-stat model-preview-clear"><span>Now Predicted Clear</span><strong>{clear.toLocaleString()}</strong><small>Previously predicted constrained</small></div>
+    </div>
+    <div className="model-preview-toolbar"><p><ModelSettingsIcon name="map" />Linked views <span className="model-separator">|</span> Pan or zoom either map to compare the same roads.</p><button type="button" className="model-btn" onClick={() => maps.current.forEach(map => map?.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 }))}><ModelSettingsIcon name="refresh" />Reset View</button></div>
     <div className="model-preview-grid">{['champion', 'challenger'].map((side, index) => <section className="model-preview-pane" key={side} aria-label={index === 0 ? 'Before' : 'After'}>
-      <div className="model-preview-pane-heading"><h3>{index === 0 ? 'Before' : 'After'}</h3><span>{index === 0 ? data.compared_against : version}</span></div>
+      <div className="model-preview-pane-heading"><div><span className="model-preview-step">{index === 0 ? 'Before' : 'After'}</span><h3>{index === 0 ? 'Audit Baseline' : 'Selected Model'}</h3></div><span className="model-preview-version">{index === 0 ? data.compared_against : version}</span></div>
       <MapContainer className="model-preview-map" bounds={bounds} boundsOptions={{ padding: [24, 24], maxZoom: 16 }} scrollWheelZoom={false} aria-label={`${index === 0 ? 'Before' : 'After'} road predictions`}>
         {tileLayersFor(theme === 'light' ? 'street' : 'dark').map(layer => <TileLayer key={`${theme}-${layer.url}`} {...layer} />)}
         <LinkedMap onReady={registerMap} index={index} />
@@ -63,6 +70,10 @@ export default function ModelPreview({ version, theme = 'dark' }) {
           }} />
       </MapContainer>
     </section>)}</div>
-    <p className="model-muted">Only changed predicted classes are shown. The comparison uses this candidate’s original audit baseline. Manually verified road types still determine routing costs. Previewing does not activate the model.</p>
+    <div className="model-preview-legend" aria-label="Prediction legend">
+      <div className="model-preview-legend-item model-preview-constrained"><span className="model-preview-swatch" /><div><strong>Predicted Constrained</strong><p>The model predicts a road constraint for this segment.</p></div></div>
+      <div className="model-preview-legend-item model-preview-clear"><span className="model-preview-swatch" /><div><strong>Predicted Clear</strong><p>The model predicts no road constraint for this segment.</p></div></div>
+    </div>
+    <div className="model-preview-note"><strong>How to Read This Comparison</strong><p>Only roads whose predicted class changed are highlighted. The baseline is the selected model's original audit comparison, which may differ from the current active model. Predictions do not confirm live road conditions. Manually verified road types still determine routing costs, and previewing does not activate a model.</p></div>
   </div>
 }

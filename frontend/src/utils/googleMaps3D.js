@@ -71,6 +71,7 @@ export function cameraAfterAction(camera, action) {
     case 'zoom-in': return { range: clamp(range / 1.5, 80, 20000000) }
     case 'zoom-out': return { range: clamp(range * 1.5, 80, 20000000) }
     case 'reset': return { tilt: 0, heading: 0, roll: 0 }
+    case 'default': return { tilt: 55, heading: 0, roll: 0 }
     default: return {}
   }
 }

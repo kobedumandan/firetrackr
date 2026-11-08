@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import AppModal from './AppModal'
+import '../styles/DispatchModal.css'
+import '../styles/LogIncidentModal.css'
 import { IntakeSection, IntakeDisclosure, IntakeReceipt } from './IncidentIntakeSection'
 import { manilaInput } from '../utils/operationalTimes'
+import { incidentControl } from '../utils/incidentOperations'
 import { fetchTeams } from '../api'
 import { useIncidentBarangay } from '../hooks/useIncidentBarangay'
 import {
-  SEVERITIES, ALARMS, DISPATCH_TYPES, supportsFireAlarm,
-  ICON_CLOSE, ICON_TRUCK, ICON_PLUS, ICON_PIN, ICON_WARN, ICON_HISTORY,
+  SEVERITIES, ALARMS, DISPATCH_TYPES, supportsFireAlarm, defaultResponseKind,
+  ICON_CLOSE, ICON_TRUCK, ICON_PLUS,
 } from './incidentFormOptions'
 import {
   Icon, Field, SectionHead, Segmented, StatusSteps, CasualtyPicker, LockedNote, StructureTypeField,
@@ -23,7 +26,7 @@ const EMPTY = {
   fire_alarm_level:      '1st Alarm',
   fire_structure_type:   'Residential',
   fire_dispatch_type:    'Firefighting Operations',
-  fire_casualties:       'None',
+  fire_casualties:       'Unconfirmed',
   fire_units_assigned:   0,
   fire_reporter_name:    '',
   fire_reporter_contact: '',
@@ -50,7 +53,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
   const [occurredAt, setOccurredAt] = useState('')
   const [receivedAt, setReceivedAt] = useState(() => manilaInput())
   const [recordKind, setRecordKind] = useState('operational')
-  const [responseKind, setResponseKind] = useState('')
+  const [responseKind, setResponseKind] = useState(() => defaultResponseKind(EMPTY.fire_dispatch_type))
 
   const [allTeams, setAllTeams]     = useState([])
   const [units, setUnits]           = useState([])   // array of team objects
@@ -83,6 +86,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
 
   function set(field, value) {
     if (field === 'fire_location_name') markEdited()
+    if (field === 'fire_dispatch_type') setResponseKind(defaultResponseKind(value))
     setError(null)
     setForm(prev => ({ ...prev, [field]: value }))
   }
@@ -97,7 +101,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
       // Backfilled records are usually finished incidents.
       setForm(prev => ({ ...prev, fire_status: 'closed' }))
     } else {
-      setForm(prev => ({ ...prev, fire_status: 'pending', fire_casualties: 'None', fire_remarks: '' }))
+      setForm(prev => ({ ...prev, fire_status: 'pending', fire_casualties: 'Unconfirmed', fire_remarks: '' }))
       setUnits([])
       setOccurredAt('')
     }
@@ -155,7 +159,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
         fire_latitude:       parseFloat(form.fire_latitude),
         fire_longitude:      parseFloat(form.fire_longitude),
         fire_units_assigned: showUnits ? units.length : 0,
-        fire_casualties:     showCasualties ? form.fire_casualties : 'None',
+        fire_casualties:     showCasualties ? form.fire_casualties : null,
         fire_remarks:        showRemarks ? form.fire_remarks : '',
         ...(isPast ? { fire_incident_datetime: new Date(`${occurredAt}+08:00`).toISOString() } : {}),
       })
@@ -168,12 +172,14 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
 
   return (
     <AppModal
+      variant="badged"
+      icon={<Icon d={ICON_PLUS} className="cfm-badge-icon" />}
       eyebrow={isPast ? 'PAST INCIDENT' : 'NEW INCIDENT'}
       title={isPast ? 'Record a past incident' : 'Log a new incident'}
       subtitle={isPast ? 'Record the location, assessment and known outcome.' : 'Pin the location, confirm the assessment and log the report.'}
       onClose={onClose}
       width={1160}
-      className="eim-panel lim-panel-split intake-panel"
+      className="eim-panel lim-panel-split intake-panel log-incident-modal"
       dismissible={!saving}
       manageFocus
     >
@@ -185,7 +191,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
         <div className="lim-layout">
           {/* ── Left rail: map picker ── */}
           <aside className="lim-rail-map intake-location" aria-label="Incident location" inert={saving}>
-            <IntakeSection icon={ICON_PIN} title="Location" desc="Pin the incident to detect its barangay">
+            <IntakeSection title="Location" desc="Pin the incident to detect its barangay">
             <MapPicker
               lat={form.fire_latitude}
               lng={form.fire_longitude}
@@ -206,6 +212,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
             />
             <div className="eim-row">
               <Field label="Area / Barangay" required>
+                <div className="barangay-input-wrap">
                 <input
                   placeholder="Filled automatically from the map pin"
                   aria-label="Area / Barangay"
@@ -217,6 +224,8 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
                   onChange={e => set('fire_location_name', e.target.value)}
                   data-autofocus
                 />
+                {detecting && <span className="apm-spinner barangay-input-spinner" aria-hidden="true" />}
+                </div>
                 <span id="lim-barangay-hint" className="frm-hint" aria-live="polite">{barangayHint}</span>
               </Field>
               <Field label="Street / landmark">
@@ -236,7 +245,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
         <form id="lim-form" className="eim-body lim-rail-form" onSubmit={handleSubmit} aria-busy={saving}>
           <fieldset className="intake-fields" disabled={saving}>
           {isPast && (
-            <IntakeSection icon={ICON_HISTORY} title="Incident history" desc="Use Philippine time">
+            <IntakeSection title="Incident history" desc="Use Philippine time">
               <Field label="When did it happen? · Philippine time" required>
                 <input
                   type="datetime-local"
@@ -248,12 +257,12 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
                 />
                 {futureTime && <span className="frm-field-err">Incident time can't be in the future.</span>}
               </Field>
-              <StatusSteps value={form.fire_status} onChange={handleStatusChange} />
+              <StatusSteps value={form.fire_status} incident={form} onChange={handleStatusChange} />
             </IntakeSection>
           )}
 
           {/* ── Assessment ── */}
-          <IntakeSection icon={ICON_WARN} title="Assessment" desc="Confirm the initial report">
+          <IntakeSection title="Assessment" desc="Confirm the initial report" className="lim-assessment">
             <Field label="Dispatch type">
               <select aria-label="Dispatch type" value={form.fire_dispatch_type} onChange={e => set('fire_dispatch_type', e.target.value)}>
                 {DISPATCH_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
@@ -316,7 +325,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
 
           {/* ── Outcome ── */}
           <section className="eim-section">
-            <SectionHead title="Outcome" desc="Recorded once the fire is contained." />
+            <SectionHead title="Outcome" desc="Recorded once the situation is under control." />
             {showCasualties ? (
               <>
                 <Field label="Casualties">
@@ -335,7 +344,7 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
               </>
             ) : (
               <LockedNote>
-                Set the status to <strong>Contained</strong> or <strong>Closed</strong> to record casualties and remarks.
+                Set the status to <strong>{incidentControl(form).label}</strong> or <strong>Closed</strong> to record casualties and remarks.
               </LockedNote>
             )}
           </section>
@@ -361,10 +370,11 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
                   onChange={e => set('fire_reporter_contact', e.target.value)}
                   aria-label="Contact number"
                 />
+                <span className="frm-hint">Optional. Add a number for follow-up if available.</span>
               </Field>
             </div>
           </IntakeDisclosure>
-          <IntakeReceipt key={mode} defaultOpen={isPast} receivedAt={receivedAt} kind={responseKind} onReceipt={setReceivedAt} onKind={setResponseKind} recordKind={recordKind} onRecordKind={setRecordKind} />
+          <IntakeReceipt key={mode} dispatchType={form.fire_dispatch_type} defaultOpen={isPast} receivedAt={receivedAt} kind={responseKind} onReceipt={setReceivedAt} onKind={setResponseKind} recordKind={recordKind} onRecordKind={setRecordKind} />
           </fieldset>
         </form>
         </div>

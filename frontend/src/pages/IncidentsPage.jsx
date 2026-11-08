@@ -7,7 +7,7 @@ import ConfirmModal from "../components/ConfirmModal";
 import ExportRegisterModal from "../components/ExportRegisterModal";
 import IncidentDetailsPage from "./IncidentDetailsPage";
 import { SeverityBadge, StatusPill, formatReported } from "../components/incidentUi";
-import { fetchIncident, fetchIncidents, createIncident, deleteIncident } from "../api";
+import { fetchIncident, fetchIncidents, fetchIncidentWorkflow, createIncident, deleteIncident } from "../api";
 
 function ExportIcon() {
   return (
@@ -46,7 +46,8 @@ function UnfoldIcon() {
     </svg>
   );
 }
-const STATUS_TABS = ["all", "pending", "dispatched", "contained", "closed"];
+const STATUS_TABS = ["all", "pending", "responding", "under_control", "operation_complete", "closed"];
+const STATUS_LABELS = { all: 'All', pending: 'Pending', responding: 'Responding', under_control: 'Under Control', operation_complete: 'Operation Complete', closed: 'Closed' };
 const PAGE_SIZE = 15;
 const PERIODS = [
   { key: "all", label: "All Time" },
@@ -55,7 +56,24 @@ const PERIODS = [
   { key: "year", label: "This Year" },
 ];
 
-export default function IncidentsPage({ onShowOnMap, initialIncident = null, theme = "dark", incidentId, onOpenIncident, onCloseIncident }) {
+function ReportedTimestamp({ value }) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) {
+    return <span className="inc-rep-time">-</span>;
+  }
+  return (
+    <div className="inc-reported">
+      <span className="inc-rep-date">{date.toLocaleDateString("en-PH", {
+        timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric",
+      })}</span>
+      <span className="inc-rep-time">{date.toLocaleTimeString("en-PH", {
+        timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit",
+      })}</span>
+    </div>
+  );
+}
+
+export default function IncidentsPage({ onShowOnMap, initialIncident = null, incidentId, incidentSection = null, incidentSectionFocusNonce = 0, onOpenIncident, onCloseIncident, onViewAnalysis }) {
   const [incidents, setIncidents] = useState([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState({
@@ -75,9 +93,41 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
   const [showLogModal, setShowLogModal] = useState(false);
   const [editingIncident, setEditingIncident] = useState(null);
   const [deletingIncident, setDeletingIncident] = useState(null);
+  const [deleteCheck, setDeleteCheck] = useState(null);
+  const deletionReady = !!deletingIncident && deleteCheck?.incident === deletingIncident;
+  const deletionBlocker = deletionReady ? deleteCheck.blocker : 'Checking dispatch status...';
+
+  useEffect(() => {
+    if (!deletingIncident) return;
+    let alive = true;
+    let request = 0;
+    const check = async () => {
+      const current = ++request;
+      setDeleteCheck(null);
+      try {
+        const { dispatches } = await fetchIncidentWorkflow(deletingIncident.fire_id);
+        const blocker = dispatches.some(d => ['dispatched', 'en_route', 'on_scene'].includes(d.dispatch_status))
+          ? 'Cannot delete an incident with an ongoing dispatch. Clear all responding teams first.'
+          : dispatches.some(d => d.returns?.some(unit => !unit.ready_at))
+            ? 'Cannot delete an incident while a truck return or readiness confirmation is pending.'
+            : null;
+        if (alive && current === request) setDeleteCheck({ incident: deletingIncident, blocker });
+      } catch {
+        if (alive && current === request) setDeleteCheck({ incident: deletingIncident,
+          blocker: 'Unable to check dispatch status. Close this dialog and try again.' });
+      }
+    };
+    check();
+    window.addEventListener('operational-times-updated', check);
+    return () => { alive = false; window.removeEventListener('operational-times-updated', check); };
+  }, [deletingIncident]);
   // Filters frozen when Export is clicked, so the report's scope can't shift
   // under the preview while the modal is open.
   const [exportQuery, setExportQuery] = useState(null);
+  const [showRange, setShowRange] = useState(false);
+  const [rangeDraft, setRangeDraft] = useState({ from: "", to: "" });
+  const [rangeError, setRangeError] = useState("");
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
   // raw search input — debounced before hitting the server
   const [search, setSearch] = useState("");
@@ -87,6 +137,8 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
   const [query, setQuery] = useState({
     page: 1,
     period: "all",
+    dateFrom: "",
+    dateTo: "",
     status: "all",
     search: "",
     sev: "",
@@ -94,6 +146,7 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
     sortCol: "reported_at",
     sortDir: -1,
   });
+  const rangeActive = showRange || query.period === "custom";
 
   // debounce the search field: update query.search + reset to page 1 after 300 ms
   useEffect(() => {
@@ -116,6 +169,15 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
     }));
   }
 
+  function updateRange(key, value) {
+    const next = { ...rangeDraft, [key]: value };
+    setRangeDraft(next);
+    if (next.from && next.to && next.from > next.to) { setRangeError("The start date must be on or before the end date."); return; }
+    if (next.from > today || next.to > today) { setRangeError("Reporting dates cannot be in the future."); return; }
+    setRangeError("");
+    setQuery((prev) => ({ ...prev, period: next.from || next.to ? "custom" : "all", dateFrom: next.from, dateTo: next.to, page: 1 }));
+  }
+
   // fetch whenever query changes; cancels in-flight requests on re-fire
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +188,8 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
       page: query.page,
       pageSize: PAGE_SIZE,
       period: query.period,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
       status: query.status,
       search: query.search,
       sev: query.sev,
@@ -245,7 +309,23 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
     return () => window.removeEventListener('incident-report-updated', refreshReport);
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      setQuery(previous => ({ ...previous, _seq: (previous._seq ?? 0) + 1 }));
+      if (detailsId != null) fetchIncident(detailsId).then(updated => {
+        if (!alive) return;
+        setIncidents(previous => previous.map(row => row.fire_id === updated.fire_id ? updated : row));
+        setDetailsIncident(previous => previous?.fire_id === updated.fire_id ? updated : previous);
+        setLinkedIncident({ fireId: updated.fire_id, incident: updated });
+      }).catch(() => {});
+    };
+    window.addEventListener('operational-times-updated', refresh);
+    return () => { alive = false; window.removeEventListener('operational-times-updated', refresh); };
+  }, [detailsId]);
+
   async function confirmDelete() {
+    if (!deletionReady || deletionBlocker) return;
     const target = deletingIncident;
     await deleteIncident(target.fire_id);
     setIncidents((prev) => prev.filter((i) => i.fire_id !== target.fire_id));
@@ -288,20 +368,22 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
         {deletingIncident && (
           <ConfirmModal
             eyebrow="DELETE INCIDENT"
-            title="Delete this incident?"
+            title={deletionReady && deletionBlocker ? 'Cannot delete incident' : 'Delete this incident?'}
             details={[
               { label: "Incident", value: deletingIncident.id },
               { label: "Location", value: deletingIncident.loc },
               { label: "Status", value: deletingIncident.status ? deletingIncident.status[0].toUpperCase() + deletingIncident.status.slice(1) : null },
               { label: "Reported", value: formatReported(deletingIncident.reported_at) },
             ]}
-            message={
+            message={deletionBlocker || (
               <>
-                Its dispatch records and routes are removed with it.{" "}
+                Its dispatch records, routes, reports and photos are removed with it.
+                {" "}
                 <strong>This can't be undone.</strong>
               </>
-            }
+            )}
             confirmLabel="Delete incident"
+            confirmDisabled={!deletionReady || !!deletionBlocker}
             onConfirm={confirmDelete}
             onClose={() => setDeletingIncident(null)}
           />
@@ -319,11 +401,13 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
         <IncidentDetailsPage
           key={detailsView.fire_id}
           incident={detailsView}
-          theme={theme}
+          section={incidentSection}
+          sectionFocusNonce={incidentSectionFocusNonce}
           onBack={() => closeDetails()}
           onEdit={setEditingIncident}
           onDelete={setDeletingIncident}
           onViewOnMap={onShowOnMap}
+          onViewAnalysis={onViewAnalysis}
           onUpdated={handleReportSaved}
         />
         {renderModals()}
@@ -382,7 +466,7 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
                 }`}
                 onClick={() => setFilter("status", s)}
               >
-                {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+                {STATUS_LABELS[s]}
               </button>
             ))}
           </div>
@@ -400,20 +484,28 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
               sub: "Awaiting Dispatch",
             },
             {
-              key: "dispatched",
+              key: "responding",
               accent: "amber",
               icon: "fire_truck",
-              label: "Dispatched",
-              value: stats.dispatched,
-              sub: "Units En Route",
+              label: "Responding",
+              value: stats.responding ?? 0,
+              sub: "Response In Progress",
             },
             {
-              key: "contained",
+              key: "under_control",
               accent: "green",
               icon: "check_circle",
-              label: "Contained",
-              value: stats.contained,
-              sub: "Fire Suppressed",
+              label: "Under Control",
+              value: stats.under_control ?? 0,
+              sub: "Crews Still Assigned",
+            },
+            {
+              key: "operation_complete",
+              accent: "green",
+              icon: "task_alt",
+              label: "Operation Complete",
+              value: stats.operation_complete ?? 0,
+              sub: "Awaiting Report Review",
             },
             {
               key: "closed",
@@ -449,7 +541,7 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
           />
         </div>
         <select
-          className="inc-filter-select"
+          className={`inc-filter-select${query.sev ? " is-active" : ""}`}
           value={query.sev}
           onChange={(e) => setFilter("sev", e.target.value)}
         >
@@ -459,7 +551,7 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
           <option value="Minor">Minor</option>
         </select>
         <select
-          className="inc-filter-select"
+          className={`inc-filter-select${query.alarm ? " is-active" : ""}`}
           value={query.alarm}
           onChange={(e) => setFilter("alarm", e.target.value)}
         >
@@ -470,18 +562,32 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
         </select>
 
         {/* PERIOD FILTER */}
+        <div className="inc-period-controls">
         <div className="inc-period-filter">
           {PERIODS.map((p) => (
             <button
               key={p.key}
               className={`inc-period-btn${
-                query.period === p.key ? " active" : ""
+                !rangeActive && query.period === p.key ? " active" : ""
               }`}
-              onClick={() => setFilter("period", p.key)}
+              aria-pressed={!rangeActive && query.period === p.key}
+              onClick={() => {
+                setQuery((prev) => ({ ...prev, period: p.key, dateFrom: "", dateTo: "", page: 1 }));
+                setShowRange(false); setRangeError(""); setRangeDraft({ from: "", to: "" });
+              }}
             >
               {p.label}
             </button>
           ))}
+          <button type="button" className={`inc-period-btn${rangeActive ? " active" : ""}`} aria-pressed={rangeActive} aria-expanded={showRange} onClick={() => setShowRange(true)}>Range</button>
+        </div>
+
+        {showRange && <div className={`inc-date-range${query.period === "custom" ? " is-active" : ""}`} role="group" aria-label="Incident date range">
+          <label>From<input type="date" aria-label="Incident start date" className={!rangeDraft.from ? "is-empty" : undefined} value={rangeDraft.from} max={rangeDraft.to || today} onChange={(e) => updateRange("from", e.target.value)} /></label>
+          <label>To<input type="date" aria-label="Incident end date" className={!rangeDraft.to ? "is-empty" : undefined} value={rangeDraft.to} min={rangeDraft.from || undefined} max={today} onChange={(e) => updateRange("to", e.target.value)} /></label>
+          {rangeError && <span className="inc-range-error" role="alert">{rangeError}</span>}
+        </div>}
+        {query.period === "custom" && !showRange && <span className="inc-result-count">{query.dateFrom || "Any date"} – {query.dateTo || "Today"}</span>}
         </div>
 
         <div className="inc-toolbar-right">
@@ -623,15 +729,18 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, the
                           <SeverityBadge sev={inc.sev} />
                         </td>
                         <td>
-                          <StatusPill status={inc.status} />
+                          <StatusPill status={inc.status} incident={inc} />
                         </td>
                         <td>
-                          <span className="inc-alarm-text">{inc.alarm}</span>
-                        </td>
-                        <td>
-                          <span className="inc-rep-time">
-                            {formatReported(inc.reported_at)}
+                          <span
+                            className={`inc-alarm-text${!inc.alarm || inc.alarm === "Not applicable" ? " inc-alarm-empty" : ""}`}
+                            title={inc.alarm === "Not applicable" ? "Not applicable" : undefined}
+                          >
+                            {!inc.alarm || inc.alarm === "Not applicable" ? "-" : inc.alarm}
                           </span>
+                        </td>
+                        <td>
+                          <ReportedTimestamp value={inc.reported_at} />
                         </td>
                         {/* <td>
                           <span className="inc-units-count">{inc.units}</span>

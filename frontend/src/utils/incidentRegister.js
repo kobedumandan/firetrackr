@@ -3,6 +3,7 @@
 // `doc` built here, so the three files can't drift apart in content.
 import { fetchIncidents } from '../api'
 import { REGION_LABEL } from '../data/mapConfig'
+import { incidentStatusLabel } from './incidentOperations'
 
 // Server caps page_size at 100; the export walks pages until it has them all.
 const FETCH_PAGE = 100
@@ -41,14 +42,14 @@ export function formatDateTime(value) {
   const d = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleString('en-PH', {
-    year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   })
 }
 
 function cellValue(inc, key) {
   switch (key) {
     case 'reported_at': return formatDateTime(inc.reported_at)
-    case 'status':      return cap(inc.status)
+    case 'status':      return incidentStatusLabel(inc.status, inc)
     case 'units':       return String(inc.units ?? 0)
     case 'coords':
       return inc.latitude != null && inc.longitude != null
@@ -78,8 +79,8 @@ export async function fetchAllIncidents(query, { signal } = {}) {
 /** Human-readable description of the filters, for the document header. */
 export function describeQuery(query) {
   const parts = [
-    ['Period', PERIOD_LABELS[query.period] ?? 'All time'],
-    ['Status', query.status && query.status !== 'all' ? cap(query.status) : 'All'],
+    ['Period', query.period === 'custom' ? `${query.dateFrom || 'Any date'} to ${query.dateTo || 'Today'} (Asia/Manila)` : PERIOD_LABELS[query.period] ?? 'All time'],
+    ['Status', ({ contained: 'Under Control', under_control: 'Under Control', responding: 'Responding', operation_complete: 'Operation Complete' })[query.status] || (query.status && query.status !== 'all' ? cap(query.status) : 'All')],
   ]
   if (query.sev) parts.push(['Severity', query.sev])
   if (query.alarm) parts.push(['Alarm', query.alarm])
@@ -128,8 +129,9 @@ export function buildRegister(data, query, options) {
     summary: options.showSummary ? [
       { label: 'Listed', value: data.items.length },
       { label: 'Pending', value: s.pending ?? 0 },
-      { label: 'Dispatched', value: s.dispatched ?? 0 },
-      { label: 'Contained', value: s.contained ?? 0 },
+      { label: 'Responding', value: s.responding ?? s.dispatched ?? 0 },
+      { label: 'Under Control', value: s.under_control ?? s.contained ?? 0 },
+      { label: 'Operation Complete', value: s.operation_complete ?? 0 },
       { label: 'Closed', value: s.closed ?? 0 },
     ] : null,
     showSignatures: options.showSignatures,

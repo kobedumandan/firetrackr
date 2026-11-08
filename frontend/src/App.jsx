@@ -15,7 +15,7 @@ import TeamsPage from './pages/TeamsPage'
 import TrucksPage from './pages/TrucksPage'
 import MetricsPage from './pages/MetricsPage'
 import AnalysisPage from './pages/AnalysisPage'
-import { invalidateOperationalTimes, notifyIncidentReportUpdated } from './api'
+import { invalidateOperationalTimes, invalidateResponseResources, notifyIncidentReportUpdated } from './api'
 import SettingsPage from './pages/SettingsPage'
 import LoginPage from './pages/LoginPage'
 import ToastStack from './components/ToastStack'
@@ -28,15 +28,21 @@ import useAppNavigation from './hooks/useAppNavigation'
 import { PAGE_PATHS } from './utils/appNavigation'
 import useLivePersonnelLocations from './hooks/useLivePersonnelLocations'
 import { replaceDispatchRoutes } from './utils/dispatchRouteUpdates'
-import { isTrackerOffline } from './utils/trackerStatus'
+import { isTrackerOffline, hasTrackerLocation, offlineAlertTracker } from './utils/trackerStatus'
 import { NotificationCursor } from './utils/notificationCursor'
 import { shouldRefreshOperationalData } from './utils/operationalUpdates'
+import { incidentControl, incidentStage, isActiveDispatch } from './utils/incidentOperations'
+import { incidentAlertDescription, onSceneAlertContent, workflowAlertContent, offlineAlertContent } from './utils/notificationContent'
 import './App.css'
 
 const ACTIVE_STATUSES = new Set(['pending', 'active', 'dispatched', 'contained'])
-// Dispatch statuses whose routes are still relevant on the map. A closed
-// incident's dispatch is "completed", so its routes are excluded on (re)load.
-const ACTIVE_DISPATCH_STATUSES = new Set(['dispatched', 'en_route', 'on_scene'])
+
+function _isActiveMapIncident(incident) {
+  // Reporting can remain open after the scene operation has ended.
+  return !incident.operation_completed_at
+    && ['pending', 'responding', 'under_control'].includes(incidentStage(incident))
+}
+
 
 // Alarm levels are stored as free text, so "did this escalate?" is an ordering
 // question, not a string comparison. Mirrors ALARM_UNIT_TARGETS in
@@ -69,7 +75,7 @@ function _routesFromDispatchRows(rows) {
   return rows.flatMap(r => {
     // Skip completed/cancelled dispatches (e.g. closed incidents) so their
     // routes don't reappear on the map after a page reload.
-    if (!ACTIVE_DISPATCH_STATUSES.has(r.dispatch_status)) return []
+    if (!isActiveDispatch(r)) return []
 
     if (r.routes && r.routes.length > 0) {
       return r.routes.flatMap(rt => {
@@ -179,6 +185,8 @@ export default function App() {
   const [loggedIncidents, setLoggedIncidents]     = useState([])
   const [ripplingId, setRipplingId]               = useState(null)
   const [incidentFocusNonce, setIncidentFocusNonce] = useState(0)
+  const [incidentDetailsFocusNonce, setIncidentDetailsFocusNonce] = useState(0)
+  const [analysisSectionFocusNonce, setAnalysisSectionFocusNonce] = useState(0)
   const [focusedPersonnel, setFocusedPersonnel]   = useState(null) // { per_id, nonce }
   const [mapFocus, setMapFocus]                   = useState(null) // { lat, lng, nonce }
   const [showLocationRequest, setShowLocationRequest] = useState(false)
@@ -190,6 +198,13 @@ export default function App() {
   const [stations, setStations]                 = useState([])
   const [dispatchRoutes, setDispatchRoutes]           = useState([])
   const [dispatches, setDispatches]                   = useState([])
+  const dispatchTeamNamesRef = useRef(new Map())
+  useEffect(() => {
+    // Keep known names after scene clearance for later truck-return updates.
+    dispatches.forEach(row => {
+      if (row.team_name) dispatchTeamNamesRef.current.set(row.dispatch_id, row.team_name)
+    })
+  }, [dispatches])
   const [livePersonnelLocations, setLivePersonnelLocations] = useLivePersonnelLocations(
     route.view === 'dashboard' && !showSettings && (activeNav === 'Command' || activeNav === 'Personnel')
   )
@@ -201,7 +216,7 @@ export default function App() {
   // `push` gates itself on notifPrefs, so every call site below can stay dumb.
   const { items: notifItems, toasts, unreadCount, push: pushNotif,
           dismiss: dismissNotif, hideToast, markAllRead, clear: clearNotifs }
-    = useNotifications(notifPrefs)
+    = useNotifications(notifPrefs, route.user?.user_id)
 
   // Last-seen { alarm, status, loc } per fire_id.
   //
@@ -223,7 +238,7 @@ export default function App() {
   }
 
   // Read is marked on CLOSE, not on open: marking on open would wipe the unread
-  // strips in the same frame the dispatcher started reading them. Doing it here
+  // dots in the same frame the dispatcher started reading them. Doing it here
   // rather than inside a setShowAlerts updater keeps the side effect out of a
   // reducer, which StrictMode double-invokes.
   function closeAlerts() {
@@ -241,17 +256,57 @@ export default function App() {
   // map" takes.
   // Which alerts can still be jumped to — shared by the panel and the toasts.
   const activeFireIds = new Set(activeIncidents.map(i => i.fire_id))
+  const knownTrackerLocations = [...personnel, ...livePersonnelLocations]
+  const trackerTargets = new Map(notifItems.filter(item => item.kind === 'deviceOffline')
+    .map(item => [item.id, offlineAlertTracker(item, knownTrackerLocations)]))
 
   function openAlertIncident(fireId) {
     const inc = activeIncidents.find(i => i.fire_id === fireId)
     if (!inc) return
     closeAlerts()
+    cancelPicking()
+    setShowLocationRequest(false)
+    setAutoDispatchResult(null)
     setConstraintEditing(false)
+    setViewMode('normal')
+    setMapLayerPref('incidents', true)
+    setFocusedPersonnel(null)
+    setReviewIncident(null)
     navigate(PAGE_PATHS.Command)
     handleSelectIncident(inc.id)
     if (inc.latitude != null && inc.longitude != null) {
-      setMapFocus({ lat: inc.latitude, lng: inc.longitude, nonce: Date.now() })
+      setMapFocus(prev => ({ lat: inc.latitude, lng: inc.longitude, zoom: 17, nonce: (prev?.nonce ?? 0) + 1 }))
     }
+  }
+
+  function openAlertDetails(fireId, workflowKind) {
+    closeAlerts()
+    cancelPicking()
+    setShowLocationRequest(false)
+    setAutoDispatchResult(null)
+    setConstraintEditing(false)
+    setReviewIncident(activeIncidents.find(incident => incident.fire_id === fireId) || null)
+    if (workflowKind === 'suppression_start') {
+      setAnalysisSectionFocusNonce(value => value + 1)
+      navigate(`/analysis/response/incidents/${fireId}?section=incident-milestones`)
+      return
+    }
+    setIncidentDetailsFocusNonce(value => value + 1)
+    navigate(`/incidents/${fireId}?section=response-reporting`)
+  }
+
+  function openTrackerLocation(tracker) {
+    if (tracker?.per_id == null || !hasTrackerLocation(tracker)) return
+    closeAlerts()
+    cancelPicking()
+    setShowLocationRequest(false)
+    setAutoDispatchResult(null)
+    setConstraintEditing(false)
+    setViewMode('normal')
+    setMapLayerPref('personnel', true)
+    setMapFocus(null)
+    setFocusedPersonnel(previous => ({ per_id: tracker.per_id, lastLocation: tracker, nonce: (previous?.nonce ?? 0) + 1 }))
+    navigate(PAGE_PATHS.Command)
   }
 
   // Keep ref in sync so the WS onmessage handler never reads a stale value
@@ -346,7 +401,7 @@ export default function App() {
       fetchActiveIncidents()
         .then(data => {
           if (cancelled) return
-          const active = data.filter(i => ACTIVE_STATUSES.has(i.status))
+          const active = data.filter(_isActiveMapIncident)
           // Seed the diff baseline silently; existing incidents are history.
           const snap = new Map()
           data.forEach(i => snap.set(i.fire_id, { alarm: i.alarm, status: i.status, loc: i.loc }))
@@ -416,7 +471,7 @@ export default function App() {
       if (incidents.status === 'fulfilled') {
         const rows = incidents.value
         incidentSnapRef.current = new Map(rows.map(inc => [inc.fire_id, { alarm: inc.alarm, status: inc.status, loc: inc.loc }]))
-        setActiveIncidents(rows.filter(inc => ACTIVE_STATUSES.has(inc.status)))
+        setActiveIncidents(rows.filter(_isActiveMapIncident))
       }
       if (dispatchRows.status === 'fulfilled') {
         setDispatches(dispatchRows.value)
@@ -468,7 +523,7 @@ export default function App() {
             return
           }
           if (msg.notification_cursor && !notificationCursor.accept(msg.notification_cursor)) return
-          if (/^(incident_|dispatch_|personnel_arrived|report_|route_updated)/.test(msg.type || '')) dataRevision += 1
+          if (/^(workflow_|incident_|dispatch_|personnel_arrived|report_|route_updated)/.test(msg.type || '')) dataRevision += 1
           if (msg.type === 'report_submitted' || msg.type === 'report_updated') {
             notifyIncidentReportUpdated(msg.data.fire_id, msg.data.incident)
           }
@@ -485,6 +540,29 @@ export default function App() {
             }
           }
           if (shouldRefreshOperationalData(msg.type)) invalidateOperationalTimes()
+          if (msg.type === 'workflow_updated' || /^dispatch_(assigned|created|acknowledged|departed|arrived|completed)$/.test(msg.type)) {
+            invalidateResponseResources()
+            setRosterNonce(value => value + 1)
+          }
+          if (['dispatch_acknowledged', 'dispatch_departed', 'dispatch_arrived', 'personnel_arrived'].includes(msg.type)) {
+            // Keep the Command summary and team cards on the same dispatch state
+            // as the server. A person's own arrival alone is not a truck arrival.
+            const milestone = msg.data
+            const nextStatus = msg.type === 'dispatch_arrived' ? 'on_scene' : milestone.dispatch_status
+            setDispatches(prev => prev.map(row => {
+              if (row.dispatch_id !== milestone.dispatch_id || !isActiveDispatch(row)) return row
+              // Replayed/delayed acknowledgement or departure must not undo arrival.
+              const dispatch_status = row.dispatch_status === 'on_scene' || nextStatus === 'on_scene' ? 'on_scene'
+                : row.dispatch_status === 'en_route' || nextStatus === 'en_route' ? 'en_route' : row.dispatch_status
+              return {
+                ...row, dispatch_status,
+                acknowledged_at: row.acknowledged_at || milestone.acknowledged_at,
+                departed_at: row.departed_at || milestone.departed_at,
+                arrived_at: row.arrived_at || milestone.dispatch_arrived_at
+                  || (msg.type === 'dispatch_arrived' ? milestone.arrived_at : undefined),
+              }
+            }))
+          }
           if (['incident_created', 'incident_updated', 'incident_deleted'].includes(msg.type)) {
             setHeatmapRevision(value => value + 1)
           }
@@ -495,11 +573,12 @@ export default function App() {
             })
             pushNotif('newIncident', {
               title: inc.loc,
-              body: `${inc.sev} · ${inc.alarm}`,
+              body: incidentAlertDescription(inc),
+              incident: inc,
               fireId: inc.fire_id,
               severity: 'critical',
             })
-            if (ACTIVE_STATUSES.has(inc.status)) {
+            if (_isActiveMapIncident(inc)) {
               setActiveIncidents(prev => [inc, ...prev])
             }
           } else if (msg.type === 'incident_updated') {
@@ -522,7 +601,8 @@ export default function App() {
               if (inc.status === 'contained' && prevSnap.status !== 'contained') {
                 pushNotif('contained', {
                   title: inc.loc,
-                  body: 'Fire marked contained. Crew remains on scene for overhaul.',
+                  body: incidentControl(inc).notice,
+                  incident: { dispatch_type: inc.dispatch_type, response_kind: inc.response_kind },
                   fireId: inc.fire_id,
                 })
               }
@@ -536,12 +616,11 @@ export default function App() {
             }
             setActiveIncidents(prev => {
               const rest = prev.filter(i => i.fire_id !== inc.fire_id)
-              return ACTIVE_STATUSES.has(inc.status) ? [inc, ...rest] : rest
+              return _isActiveMapIncident(inc) ? [inc, ...rest] : rest
             })
-            // Once an incident leaves the active set (e.g. closed), drop its
-            // dispatch routes too — otherwise the route lines linger on the map
+            // Drop response routes when scene work ends so lines do not linger
             // after the incident pin is gone.
-            if (!ACTIVE_STATUSES.has(inc.status)) {
+            if (!_isActiveMapIncident(inc)) {
               setDispatchRoutes(prev => prev.filter(r => r.fire_id !== inc.fire_id))
             }
           } else if (msg.type === 'auto_dispatch_failed') {
@@ -563,48 +642,60 @@ export default function App() {
             // A manning driver's shared arrival generates the unit alert below.
             // Independent arrivals still need an alert, including after the truck.
             if (!(msg.data.truck_arrived && msg.data.dispatch_transitioned)) {
-              const { fire_id, personnel_name, member_role, team_name } = msg.data
-              const role = (member_role || '').trim().toLowerCase().replaceAll('_', ' ')
-              const who = personnel_name || `Personnel #${per_id}`
+              const { fire_id } = msg.data
               const loc = incidentSnapRef.current.get(fire_id)?.loc
               pushNotif('onScene', {
-                title: `${role === 'team leader' ? 'Team leader ' : ''}${who} on scene`,
-                body: [team_name, loc ? `Arrived at ${loc}` : 'Personnel arrival confirmed.'].filter(Boolean).join(' · '),
+                ...onSceneAlertContent(msg.data, loc),
                 fireId: fire_id,
               })
             }
           } else if (msg.type === 'dispatch_arrived') {
-            const { fire_id, team_name } = msg.data
+            const { fire_id } = msg.data
             const loc = incidentSnapRef.current.get(fire_id)?.loc
             pushNotif('onScene', {
-              title: `${team_name} on scene`,
-              body: loc ? `Arrived at ${loc}` : 'Unit marked arrival.',
+              ...onSceneAlertContent(msg.data, loc),
               fireId: fire_id,
             })
-            setDispatches(prev => prev.map(d =>
-              d.dispatch_id === msg.data.dispatch_id
-                ? { ...d, dispatch_status: 'on_scene' }
-                : d
-            ))
+          } else if (msg.type === 'workflow_updated') {
+            const { kind, incident: inc, dispatch_id } = msg.data
+            if (inc) incidentSnapRef.current.set(inc.fire_id, { alarm: inc.alarm, status: inc.status, loc: inc.loc })
+            if (inc) setActiveIncidents(prev => {
+              const rest = prev.filter(row => row.fire_id !== inc.fire_id)
+              return _isActiveMapIncident(inc) ? [inc, ...rest] : rest
+            })
+            if (inc && !_isActiveMapIncident(inc)) {
+              setDispatchRoutes(prev => prev.filter(row => row.fire_id !== inc.fire_id))
+            }
+            if (kind === 'team_cleared') {
+              // Retain response history, matching the records returned on reload.
+              setDispatches(prev => prev.map(row => row.dispatch_id === dispatch_id
+                ? { ...row, dispatch_status: 'completed', clearance_confirmed: true }
+                : row))
+              setDispatchRoutes(prev => prev.filter(row => row.dispatch_id !== dispatch_id))
+            }
+            // Submission alerts use report_submitted below. Only later report
+            // correction/review events need their own workflow alert.
+            const message = workflowAlertContent({
+              ...msg.data,
+              team_name: msg.data.team_name || dispatchTeamNamesRef.current.get(dispatch_id),
+              incident: inc || { loc: incidentSnapRef.current.get(msg.data.fire_id)?.loc },
+            })
+            if (message) pushNotif('workflow', { ...message, fireId: msg.data.fire_id })
           } else if (msg.type === 'report_submitted') {
-            // Sent just before the incident_updated that closes the fire, so the
-            // snapshot still has the place name.
-            const { fire_id, team_name, filed_by, photo_count } = msg.data
+            // Reports refresh incident facts independently of scene assignment.
+            const { fire_id, team_name, filed_by, photo_count, report_kind } = msg.data
             const loc = incidentSnapRef.current.get(fire_id)?.loc
             const who = [filed_by, team_name && `(${team_name})`].filter(Boolean).join(' ')
             const photos = photo_count ? ` · ${photo_count} photo${photo_count === 1 ? '' : 's'}` : ''
             pushNotif('reportFiled', {
               title: loc ? `Report filed for ${loc}` : 'Incident report filed',
-              body: `${who ? `Filed by ${who}` : 'After-action report submitted'}${photos}. Incident closed.`,
+              body: `${who ? `Filed by ${who}` : 'Report submitted'}${photos}. ${report_kind === 'consolidated' ? 'Incident report saved for review.' : 'Field report ready for dispatcher review.'}`,
               fireId: fire_id,
             })
           } else if (msg.type === 'dispatch_completed') {
-            // The crew and truck are back on standby server-side. Drop the
-            // finished dispatches from local state and nudge the roster pages
-            // to refetch — otherwise both keep showing the unit as committed
-            // until a reload, which reads as the close having failed.
+            // Retain ended assignments in history and remove their response routes.
             const ids = new Set(msg.data.dispatch_ids || [])
-            setDispatches(prev => prev.filter(d => !ids.has(d.dispatch_id)))
+            setDispatches(prev => prev.map(d => ids.has(d.dispatch_id) ? { ...d, dispatch_status: 'completed' } : d))
             setDispatchRoutes(prev => prev.filter(r => !ids.has(r.dispatch_id)))
             setRosterNonce(n => n + 1)
           } else if (msg.type === 'reporter_location') {
@@ -633,30 +724,7 @@ export default function App() {
             if (Array.isArray(msg.data.routes)) setDispatchRoutes(prev => replaceDispatchRoutes(prev, msg.data))
             else fetchDispatches(null, { activeIncidentsOnly: true }).then(rows => setDispatchRoutes(_routesFromDispatchRows(rows))).catch(console.error)
           } else if (msg.type === 'dispatch_rerouted') {
-            const { dispatch_id, fire_id, routes = [] } = msg.data
-            setDispatchRoutes(prev => {
-              const kept = prev.filter(r => r.dispatch_id !== dispatch_id)
-              const teamName = prev.find(p => p.dispatch_id === dispatch_id)?.teamName ?? ''
-              const replacements = routes.flatMap(r => {
-                const positions = _parseWkt(r.route_wkt)
-                if (!positions) return []
-                return [{
-                  id: `${dispatch_id}_${r.route_id}`,
-                  route_id: r.route_id,
-                  dispatch_id,
-                  fire_id,
-                  positions,
-                  teamName,
-                  isGnn: true,
-                  isSelected: r.is_selected,
-                  rank: r.rank,
-                  routeType: r.route_type,
-                  etaMinutes: r.eta_minutes,
-                  distanceKm: r.distance_meters != null ? r.distance_meters / 1000 : null,
-                }]
-              })
-              return [...kept, ...replacements]
-            })
+            setDispatchRoutes(prev => replaceDispatchRoutes(prev, msg.data))
           }
         } catch {}
       }
@@ -719,8 +787,8 @@ export default function App() {
     rows.forEach(r => {
       if (isTrackerOffline(r) && !seen.has(r.per_id)) {
         pushNotif('deviceOffline', {
-          title: `${r.name || `Personnel ${r.per_id}`} tracker offline`,
-          body: `No location for ${Math.round(r.age_minutes)} min`,
+          ...offlineAlertContent(r),
+          tracker: { ...r },
         })
       }
     })
@@ -798,6 +866,9 @@ export default function App() {
     return fullReroute(dispatchId).then(result => {
       // Replace all routes for this dispatch with the newly computed ones
       setDispatchRoutes(prev => {
+        if (result.alternatives_pending
+            && prev.some(r => r.dispatch_id === dispatchId && r.isSelected && r.route_id === result.new_route_id)
+            && prev.filter(r => r.dispatch_id === dispatchId).length > 1) return prev
         const kept = prev.filter(r => r.dispatch_id !== dispatchId)
         const existing = prev.find(p => p.dispatch_id === dispatchId)
         const resolvedFireId = fireId
@@ -896,7 +967,7 @@ export default function App() {
     })
     cancelPicking()
     fetchActiveIncidents()
-      .then(data => setActiveIncidents(data.filter(i => ACTIVE_STATUSES.has(i.status))))
+      .then(data => setActiveIncidents(data.filter(_isActiveMapIncident)))
       .catch(() => {})
 
     const ad = result?.auto_dispatch
@@ -945,6 +1016,7 @@ export default function App() {
     // Both are diff baselines, not data: a new session has to reseed them or it
     // would alert on everything that changed while nobody was signed in.
     incidentSnapRef.current = new Map()
+    dispatchTeamNamesRef.current.clear()
     staleSeenRef.current    = null
     clearNotifs()
     setShowAlerts(false)
@@ -1005,6 +1077,8 @@ export default function App() {
           tab={analysisTab}
           onTabChange={tab => navigate(`/analysis/${tab}`)}
           detailView={page.detail || null}
+          section={page.analysisSection || null}
+          sectionFocusNonce={analysisSectionFocusNonce}
           onDetailChange={detail => {
             if (!detail) back(`/analysis/${analysisTab}`)
             else navigate(`/analysis/response/${detail.kind === 'incident' ? 'incidents' : 'dispatches'}/${detail.id}${detail.fireId ? `?incident=${detail.fireId}` : ''}`)
@@ -1013,11 +1087,13 @@ export default function App() {
         />
       ) : activeNav === 'Incidents' ? (
         <IncidentsPage
-          theme={theme}
           initialIncident={reviewIncident}
           incidentId={page.incidentId || null}
+          incidentSection={page.incidentSection || null}
+          incidentSectionFocusNonce={incidentDetailsFocusNonce}
           onOpenIncident={incident => navigate(`/incidents/${incident.fire_id}`)}
           onCloseIncident={deleted => deleted ? navigate(PAGE_PATHS.Incidents, { replace: true }) : back(PAGE_PATHS.Incidents)}
+          onViewAnalysis={incident => navigate(`/analysis/response/incidents/${incident.fire_id}`)}
           onShowOnMap={(inc) => {
             navigateToPage('Command')
             handleSelectIncident(inc.id)
@@ -1026,6 +1102,7 @@ export default function App() {
         />
       ) : activeNav === 'Personnel' ? (
         <PersonnelPage
+          initialPersonnelId={page.personnelId || null}
           livePersonnelLocations={livePersonnelLocations}
           onShowOnMap={(perId) => {
             navigateToPage('Command')
@@ -1065,6 +1142,7 @@ export default function App() {
             layerToolsHost={mapLayerToolsHost}
             pickingMode={pickingMode}
             onLocationPicked={handleLocationPicked}
+            onCancelPicking={cancelPicking}
             pickedLocation={pickedLocation}
             onLogIncidentHere={logIncidentAtReporter}
             activeIncidents={activeIncidents}
@@ -1072,10 +1150,11 @@ export default function App() {
             reporterLocations={reporterLocations}
             stations={stations}
             onViewStation={stationId => navigate(`/stations?station=${stationId}`)}
+            onViewPersonnel={personnelId => navigate(`/personnel?personnel=${personnelId}`)}
             personnel={personnel}
             livePersonnelLocations={livePersonnelLocations}
             dispatchRoutes={dispatchRoutes}
-            dispatches={dispatches}
+            dispatches={dispatches.filter(isActiveDispatch)}
             focusedIncidentId={selectedInc?.fire_id ?? null}
             ripplingIncidentId={ripplingId}
             onIncidentClick={handleSelectIncident}
@@ -1110,6 +1189,11 @@ export default function App() {
             onToggleCollapse={() => setRightCollapsed(c => !c)}
             focusNonce={incidentFocusNonce}
             onDispatched={handleDispatched}
+            onOpenIncident={(incident, section) => {
+              setReviewIncident(incident)
+              if (section) setIncidentDetailsFocusNonce(value => value + 1)
+              navigate(`/incidents/${incident.fire_id}${section ? `?section=${encodeURIComponent(section)}` : ''}`)
+            }}
           />
         </div>
       )}
@@ -1123,6 +1207,9 @@ export default function App() {
           onClear={clearNotifs}
           activeFireIds={activeFireIds}
           onOpenIncident={openAlertIncident}
+          onOpenDetails={openAlertDetails}
+          onViewLastLocation={openTrackerLocation}
+          trackerTargets={trackerTargets}
         />
       )}
 
@@ -1134,6 +1221,9 @@ export default function App() {
         onOpenPanel={() => setShowAlerts(true)}
         activeFireIds={activeFireIds}
         onOpenIncident={openAlertIncident}
+        onOpenDetails={openAlertDetails}
+        onViewLastLocation={openTrackerLocation}
+        trackerTargets={trackerTargets}
       />
 
       {pickedLocation && (

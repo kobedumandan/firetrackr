@@ -1,10 +1,7 @@
 /* Toasts + the alert history panel.
 
-   Every colour here resolves through a token; per-kind accents come in as
-   --n-accent, which the components set to one of the --accent-*-rgb triplets.
-   The triplet form (rather than a solid token) is deliberate — it is the only
-   one every accent in the scale has, and tints written against it re-tone with
-   the theme instead of keeping a dark-mode hue over a light surface. */
+   Colours resolve through theme tokens. Icons use --n-accent; new alerts have
+   a subtle fire-coloured edge while their backgrounds stay neutral. */
 
 /* ── Toast stack ─────────────────────────────────────────────────────────── */
 
@@ -24,9 +21,7 @@
   pointer-events: none;
 }
 
-/* Same card as the alerts panel: neutral surface, hairline border all round.
-   The kind's colour lives only in the icon tile and the kind pill — no accent
-   edge — so a stack of mixed alerts doesn't read as a row of coloured bars. */
+/* Neutral surfaces keep the icon as the incident's visual cue. */
 .toast {
   position: relative;
   pointer-events: auto;
@@ -34,23 +29,25 @@
   gap: 12px;
   padding: 12px 12px 12px 12px;
   border-radius: 14px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(var(--accent-fire-rgb), 0.22);
   background: var(--bg-panel);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), 0 0 5px rgba(var(--accent-fire-rgb), 0.08);
   overflow: hidden;
   /* data-motion="off" in index.css already flattens this to a single frame,
      so the preference needs no special handling here. */
   animation: toastIn 0.22s ease-out;
 }
 
-/* .critical is still meaningful in JS — it selects role="alert" and suppresses
-   the auto-dismiss timer. Visually it carries a "Critical" pill and a faint
-   wash of the kind's accent, nothing louder. */
-.toast.critical {
-  border-color: rgba(var(--n-accent), 0.35);
-  background:
-    linear-gradient(rgba(var(--n-accent), 0.06), rgba(var(--n-accent), 0.06)),
-    var(--bg-panel);
+.toast[data-kind="onScene"],
+.toast[data-kind="workflow"],
+.toast[data-kind="deviceOffline"] {
+  border-color: var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+.toast[data-kind="contained"] {
+  border-color: rgba(var(--accent-emerald-rgb), 0.16);
+  box-shadow: var(--shadow-lg), 0 0 4px rgba(var(--accent-emerald-rgb), 0.04);
 }
 
 @keyframes toastIn {
@@ -72,7 +69,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: rgba(var(--n-accent), 0.14);
+  background: var(--bg-hover);
   color: rgb(var(--n-accent));
 }
 .toast-icon-svg {
@@ -94,7 +91,17 @@
   min-width: 0;
 }
 
-.toast-kind,
+.toast-kind {
+  font-family: var(--font-ui);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .toast-crit {
   font-family: var(--font-span);
   font-size: 8px;
@@ -104,16 +111,8 @@
   padding: 1px 7px;
   border-radius: 20px;
   white-space: nowrap;
-}
-.toast-kind {
-  background: rgba(var(--n-accent), 0.14);
-  color: rgb(var(--n-accent));
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.toast-crit {
-  background: var(--accent-fire-dim);
-  color: var(--accent-fire);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
 .toast-time {
@@ -142,6 +141,10 @@
   overflow-wrap: anywhere;
 }
 
+.notif-separator {
+  color: var(--text-tertiary);
+}
+
 .toast-actions {
   display: flex;
   gap: 6px;
@@ -166,16 +169,6 @@
   background: var(--bg-hover);
   color: var(--text-primary);
 }
-.toast-btn-primary {
-  border-color: transparent;
-  background: var(--accent-fire-dim);
-  color: var(--accent-fire);
-}
-.toast-btn-primary:hover {
-  background: rgba(var(--accent-fire-rgb), 0.25);
-  color: var(--accent-fire);
-}
-
 .toast-close {
   position: absolute;
   top: 9px;
@@ -206,9 +199,9 @@
   right: 0;
   bottom: 0;
   height: 2px;
-  background: rgba(var(--n-accent), 0.55);
+  background: var(--text-tertiary);
   transform-origin: left center;
-  animation: toastTimer var(--toast-ms, 7s) linear forwards;
+  animation: toastTimer var(--toast-ms, 20s) linear forwards;
 }
 
 @keyframes toastTimer {
@@ -296,8 +289,8 @@
   text-transform: uppercase;
   padding: 2px 8px;
   border-radius: 20px;
-  background: var(--accent-fire-dim);
-  color: var(--accent-fire);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
 .notif-panel-close,
@@ -421,7 +414,7 @@
   background: var(--bg-panel);
   border: 1px solid var(--border-dim);
   border-radius: 10px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .notif-item:hover {
   border-color: var(--border);
@@ -433,15 +426,18 @@
   background: var(--bg-hover);
 }
 .notif-item:focus-visible {
-  outline: 2px solid var(--accent-fire-focus);
+  outline: 2px solid var(--text-secondary);
   outline-offset: 1px;
 }
 
-/* Unread: a dot on the icon tile plus a faint tint of the kind's accent. The
-   dot is what survives a glance; the tint just groups the fresh ones. */
-.notif-item.unread {
-  background: rgba(var(--n-accent), 0.05);
-  border-color: rgba(var(--n-accent), 0.22);
+/* A dim, hairline glow marks unread alerts without tinting the card. */
+.notif-item.unread:not([data-kind="onScene"], [data-kind="workflow"], [data-kind="contained"], [data-kind="deviceOffline"]) {
+  border-color: rgba(var(--accent-fire-rgb), 0.22);
+  box-shadow: 0 0 4px rgba(var(--accent-fire-rgb), 0.08);
+}
+.notif-item.unread[data-kind="contained"] {
+  border-color: rgba(var(--accent-emerald-rgb), 0.16);
+  box-shadow: 0 0 4px rgba(var(--accent-emerald-rgb), 0.04);
 }
 .notif-item.unread .notif-item-icon::after {
   content: "";
@@ -451,7 +447,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgb(var(--n-accent));
+  background: var(--text-secondary);
   box-shadow: 0 0 0 2px var(--bg-panel);
 }
 
@@ -464,8 +460,15 @@
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: rgba(var(--n-accent), 0.14);
+  background: var(--bg-hover);
   color: rgb(var(--n-accent));
+}
+
+.toast[data-kind="workflow"]:not([data-workflow-kind="truck_ready"], [data-workflow-kind="suppression_start"]) .toast-icon,
+.notif-item[data-kind="workflow"]:not([data-workflow-kind="truck_ready"], [data-workflow-kind="suppression_start"]) .notif-item-icon,
+.toast[data-kind="deviceOffline"] .toast-icon,
+.notif-item[data-kind="deviceOffline"] .notif-item-icon {
+  color: color-mix(in srgb, var(--text-primary) 60%, var(--text-tertiary));
 }
 .notif-item-svg {
   width: 17px;
@@ -485,7 +488,17 @@
   min-width: 0;
 }
 
-.notif-item-kind,
+.notif-item-kind {
+  font-family: var(--font-ui);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .notif-item-crit {
   font-family: var(--font-span);
   font-size: 8px;
@@ -495,16 +508,8 @@
   padding: 1px 7px;
   border-radius: 20px;
   white-space: nowrap;
-}
-.notif-item-kind {
-  background: rgba(var(--n-accent), 0.14);
-  color: rgb(var(--n-accent));
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.notif-item-crit {
-  background: var(--accent-fire-dim);
-  color: var(--accent-fire);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
 .notif-item-time {
@@ -552,7 +557,7 @@
   transition: transform 0.15s;
 }
 .notif-item.openable:hover .notif-item-link {
-  color: var(--accent-fire);
+  color: var(--text-primary);
 }
 .notif-item.openable:hover .notif-item-link .material-symbols-outlined {
   transform: translateX(2px);
@@ -600,9 +605,8 @@
   transition: all 0.15s;
 }
 .notif-clear:hover {
-  color: var(--accent-fire);
-  border-color: rgba(var(--accent-fire-rgb), 0.35);
-  background: var(--accent-fire-dim);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 @media (prefers-reduced-motion: reduce) {

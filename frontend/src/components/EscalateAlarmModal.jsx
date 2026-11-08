@@ -7,6 +7,9 @@ import {
   updateIncident,
 } from "../api";
 import "../styles/AppModal.css";
+import "../styles/ConfirmModal.css";
+import "../styles/DispatchModal.css";
+import "../styles/EscalateAlarmModal.css";
 import { ICON_CLOSE, ICON_CHECK, ICON_WARN } from "./incidentFormOptions";
 import { Icon, SectionHead, Callout, LockedNote } from "./incidentForm";
 
@@ -187,22 +190,25 @@ export default function EscalateAlarmModal({ incident, onClose, onDispatched }) 
 
   return createPortal(
     <div className="apm-overlay adm-overlay" onMouseDown={(e) => e.target === e.currentTarget && !submitting && onClose()}>
-      <div className="apm-panel eim-panel adm-panel" role="dialog" aria-modal="true" aria-labelledby="eam-title">
-        <div className="eim-header">
-          <div className="eim-header-main">
+      <div className="apm-panel eim-panel adm-panel eam-panel" role="dialog" aria-modal="true" aria-labelledby="eam-title">
+        <div className="cfm-head dpm-header">
+          <span className="cfm-badge">
+            <Icon d={ICON_WARN} className="cfm-badge-icon" />
+          </span>
+          <div className="cfm-head-text">
             <div className="apm-eyebrow">ESCALATE ALARM</div>
-            <div id="eam-title" className="eim-title">
+            <div id="eam-title" className="cfm-title">
               {atMax ? "Already at the highest alarm" : `Escalate to ${nextLevel}`}
-            </div>
-            <div className="adm-context">
-              <span className="adm-context-code">{incident?.id}</span>
-              {incident?.loc && <span>{incident.loc}</span>}
-              {incident?.sev && <span>{incident.sev}</span>}
             </div>
           </div>
           <button className="eim-close" onClick={onClose} aria-label="Close" disabled={submitting}>
             <Icon d={ICON_CLOSE} />
           </button>
+          <div className="eim-subtitle">
+            <span className="eim-chip eim-chip-code">{incident?.id}</span>
+            {incident?.loc && <span className="eim-chip">{incident.loc}</span>}
+            {incident?.sev && <span className="eim-chip">{incident.sev}</span>}
+          </div>
         </div>
 
         <div className="eim-body">

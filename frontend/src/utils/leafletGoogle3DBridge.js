@@ -37,10 +37,20 @@ function labelFor(layer) {
 export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, { initiallyActive = true } = {}) {
   const overlays = new Map()
   let clickPoint
+  let pointer
+  let routeAnchor
+  let anchorFrame = null
   const popups = attachProjectedPopup(leaflet, popup => {
     const element = overlays.get(popup._source)?.element
     const container = leaflet.getContainer?.()?.getBoundingClientRect() || { left: 0, top: 0 }
-    if (element) {
+    if (routeAnchor?.popup === popup) {
+      const rect = (routeAnchor.element.firstElementChild || routeAnchor.element).getBoundingClientRect()
+      if (!rect.width || !rect.height) return null
+      return { x: rect.left + rect.width / 2 - container.left, y: rect.top + rect.height / 2 - container.top }
+    }
+    // Google path elements have no screen-space layout box. Route popups use
+    // a separate geographic marker; ordinary pins use their existing marker.
+    if (element && popup._source?.getLatLng) {
       const rect = (element.firstElementChild || element).getBoundingClientRect()
       return { x: rect.left + rect.width / 2 - container.left, y: rect.top - container.top }
     }
@@ -53,6 +63,43 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
   let cameraTimer = null
   let frame = null
   const height = () => leaflet.getSize().y
+
+  function followRouteAnchor() {
+    anchorFrame = null
+    if (!routeAnchor || !active || disposed || unloaded) return
+    popups.update()
+    // Google's marker layout follows the rendered camera, including animation
+    // frames after camera-change events have fired.
+    anchorFrame = requestAnimationFrame(followRouteAnchor)
+  }
+
+  function removeRouteAnchor(event) {
+    if (event?.popup && event.popup !== routeAnchor?.popup) return
+    if (anchorFrame !== null) cancelAnimationFrame(anchorFrame)
+    anchorFrame = null
+    routeAnchor?.element.remove()
+    routeAnchor = null
+  }
+
+  function openRouteAnchor({ popup }) {
+    removeRouteAnchor()
+    if (popup._source?.getLatLng) return
+    const point = popup.getLatLng?.()
+    const Marker = library.MarkerElement || library.Marker3DElement
+    if (!Marker || !Number.isFinite(point?.lat) || !Number.isFinite(point?.lng)) return
+    const element = new Marker({ position: { lat: point.lat, lng: point.lng, altitude: 2 },
+      altitudeMode: 'RELATIVE_TO_GROUND', anchorLeft: '-50%', anchorTop: '-50%' })
+    Object.assign(element.style, { opacity: '0', pointerEvents: 'none' })
+    element.setAttribute('aria-hidden', 'true')
+    const dot = document.createElement('span')
+    Object.assign(dot.style, { display: 'block', width: '1px', height: '1px' })
+    element.append(dot)
+    googleMap.append(element)
+    routeAnchor = { popup, element }
+    followRouteAnchor()
+  }
+
+  leaflet.on('popupopen', openRouteAnchor).on('popupclose', removeRouteAnchor)
 
   function saveCamera() {
     if (!active || disposed || unloaded || !googleMap.center) return
@@ -90,9 +137,12 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
     if (!active) return
     if (leaflet.getContainer?.().classList.contains('pick-cursor')) return
     event.stopPropagation()
-    const pointer = event.domEvent || event
+    const clickPointer = event.domEvent || (Number.isFinite(event.clientX) ? event : pointer)
     const rect = leaflet.getContainer?.()?.getBoundingClientRect() || { left: 0, top: 0 }
-    clickPoint = Number.isFinite(pointer.clientX) ? { x: pointer.clientX - rect.left, y: pointer.clientY - rect.top } : null
+    clickPoint = Number.isFinite(clickPointer?.clientX) && Number.isFinite(clickPointer?.clientY)
+      ? { x: clickPointer.clientX - rect.left, y: clickPointer.clientY - rect.top } : null
+    const popup = layer.getPopup?.()
+    if (popup) popup.options.screenAnchor = clickPoint
     const latlng = layer.getLatLng?.() ?? (event.position && L.latLng(event.position.lat, event.position.lng))
     if (layer.options?.hoverOnly) { leaflet.closePopup(); layer.closeTooltip?.() }
     layer.fire('click', { latlng, originalEvent: event })
@@ -265,11 +315,16 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
     cameraTimer = setTimeout(saveCamera, 150)
   }
   function onUnload() { unloaded = true }
+  const trackPointer = event => { pointer = event }
+  const clearPointer = () => { pointer = null }
   leaflet.on('unload', onUnload)
   leaflet.on('moveend', fromLeaflet)
   leaflet.on('layeradd layerremove', schedule)
   googleMap.addEventListener('gmp-steadychange', fromGoogle)
   googleMap.addEventListener('gmp-click', forwardClick)
+  googleMap.addEventListener('pointermove', trackPointer)
+  googleMap.addEventListener('pointerdown', trackPointer)
+  googleMap.addEventListener('pointerleave', clearPointer)
   const cameraEvents = ['gmp-centerchange', 'gmp-tiltchange', 'gmp-headingchange', 'gmp-rangechange']
   cameraEvents.forEach(name => googleMap.addEventListener(name, cameraChanged))
   schedule()
@@ -279,6 +334,9 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
     setActive(value) {
       if (active && !value) saveCamera()
       active = value
+      if (anchorFrame !== null) cancelAnimationFrame(anchorFrame)
+      anchorFrame = null
+      if (value && routeAnchor) followRouteAnchor()
       if (!value) overlays.forEach(overlay => overlay.hideHover())
       if (value) { fromLeaflet(); schedule(); readCamera() }
       else { readCamera.cancel(); clearTimeout(cameraTimer) }
@@ -288,6 +346,8 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
       saveCamera()
       disposed = true
       popups.dispose()
+      removeRouteAnchor()
+      leaflet.off('popupopen', openRouteAnchor).off('popupclose', removeRouteAnchor)
       readCamera.cancel()
       clearTimeout(cameraTimer)
       if (frame !== null) cancelAnimationFrame(frame)
@@ -296,6 +356,9 @@ export function attachGoogle3DBridge(leaflet, googleMap, library, L, onCamera, {
       leaflet.off('layeradd layerremove', schedule)
       googleMap.removeEventListener('gmp-steadychange', fromGoogle)
       googleMap.removeEventListener('gmp-click', forwardClick)
+      googleMap.removeEventListener('pointermove', trackPointer)
+      googleMap.removeEventListener('pointerdown', trackPointer)
+      googleMap.removeEventListener('pointerleave', clearPointer)
       cameraEvents.forEach(name => googleMap.removeEventListener(name, cameraChanged))
       overlays.forEach(overlay => overlay.remove())
       overlays.clear()

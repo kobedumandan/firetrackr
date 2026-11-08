@@ -34,13 +34,15 @@
 .mo-control-icon svg { width: 18px; height: 18px; }
 .m-page .m-period-group { flex-shrink: 0; }
 .mo-period-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; }
-.mo-date-range { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; padding-left: 12px; border-left: 1px solid var(--border-dim); }
-.mo-date-range label { display: grid; gap: 4px; color: var(--mo-muted); font-size: 10px; }
-.mo-date-range input { min-width: 0; padding: 7px 8px; border: 1px solid var(--border-dim); border-radius: 6px; background: var(--bg-panel); color: var(--text-primary); font: inherit; }
+.mo-date-range { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-left: 12px; border-left: 1px solid var(--border-dim); }
+.mo-date-range label { display: flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--mo-muted); font-size: 10px; }
+.mo-date-range input { min-width: 0; padding: 7px 8px; border: 1px solid var(--border-dim); border-radius: 6px; background: var(--bg-panel); color: var(--text-primary); font: inherit; color-scheme: dark; }
+[data-theme="light"] .mo-date-range input { color-scheme: light; }
 .mo-date-range input.is-empty { color: color-mix(in srgb, var(--text-primary) 38%, var(--bg-panel)); }
 .mo-date-range input.is-empty::-webkit-datetime-edit { color: inherit; }
-.mo-date-range.is-active input { border-color: var(--accent-fire); }
-.mo-range-error { margin: 0 0 14px; color: var(--accent-fire); }
+.mo-date-range.is-active input:not(.is-empty) { border-color: var(--accent-fire); }
+.mo-date-range input:focus { outline-color: var(--accent-fire-focus); }
+.mo-range-error { color: var(--accent-fire); font-size: 11px; }
 @media (max-width: 760px) {
   .mo-period-controls { justify-content: flex-start; width: 100%; }
   .mo-date-range { padding-left: 0; border-left: 0; }

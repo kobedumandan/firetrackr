@@ -11,14 +11,25 @@ import { SeverityBadge, StatusPill } from '../components/incidentUi'
 import useResponseAnalysis from '../hooks/useResponseAnalysis'
 import useDispatchDetail from '../hooks/useDispatchDetail'
 import { duration } from '../utils/operationalTimes'
+import { incidentControl, isFireOperation } from '../utils/incidentOperations'
 import '../styles/IncidentDetailsPage.css'
 import '../styles/ResponseAnalysisPage.css'
 
-export default function ResponseAnalysisPage({ fireId, theme, onBack, onOpenIncident, initialDispatchId = null, initialDispatchDetail = null, backLabel = 'Incident records' }) {
+export default function ResponseAnalysisPage({ fireId, theme, onBack, onOpenIncident, initialDispatchId = null, initialDispatchDetail = null, backLabel = 'Incident records', section = null, sectionFocusNonce = 0 }) {
   const { detail, error, onRetry, onSaved } = useResponseAnalysis(fireId)
   const [selection, setSelection] = useState(null)
   const headingRef = useRef(null)
+  const milestonesRef = useRef(null)
+  const milestonesReady = Boolean(detail)
   useEffect(() => { headingRef.current?.focus({ preventScroll: true }) }, [fireId])
+  useEffect(() => {
+    if (!milestonesReady || section !== 'incident-milestones') return
+    const target = milestonesRef.current
+    if (!target) return
+    target.open = true
+    target.scrollIntoView?.({ block: 'start', behavior: 'auto' })
+    target.querySelector('summary')?.focus({ preventScroll: true })
+  }, [fireId, milestonesReady, section, sectionFocusNonce])
 
   const demo = detail?.timing_basis === 'synthetic_demo'
   const dispatches = demo ? [] : detail?.dispatches || []
@@ -41,11 +52,12 @@ export default function ResponseAnalysisPage({ fireId, theme, onBack, onOpenInci
     ['Reported by', incidentRecord?.reporter], ['Casualties', incidentRecord?.casualties],
   ] : []
   const timeline = demo ? detail.synthetic_timeline : null
+  const fireOperation = isFireOperation(detail)
   const incidentMilestones = detail ? [
     ['Report received', timeline?.report_received_at || detail.reported_at],
-    ['Suppression started', timeline?.suppression_started_at || detail.suppression_started_at],
-    ['Fire contained', detail.controlled_at],
-    ['Fire out', timeline?.fire_out_at || detail.fire_out_at],
+    ...(fireOperation ? [['Suppression started', timeline?.suppression_started_at || detail.suppression_started_at]] : []),
+    [incidentControl(detail).label, detail.controlled_at],
+    ...(fireOperation ? [['Fire out', timeline?.fire_out_at || detail.fire_out_at]] : []),
     ['Operation completed', detail.operation_completed_at],
   ] : []
   const incidentEvents = detail?.events?.filter(event => !event.unit_id && event.type.startsWith('op_')) || []
@@ -70,8 +82,8 @@ export default function ResponseAnalysisPage({ fireId, theme, onBack, onOpenInci
           </header>
           <div className="rar-summary">
             <KpiCard icon={<AnalysisIcon name="response" />} label="Call-to-arrival" value={duration(detail.durations?.cta, KPI_EMPTY)} sub="Report received to first valid unit arrival" accent="fire" />
-            <KpiCard icon={<AnalysisIcon name="handling" />} label="Overall operation" value={duration(detail.durations?.operation, KPI_EMPTY)} sub="Report received to all units cleared" accent="muted" />
-            <KpiCard icon={<AnalysisIcon name="suppression" />} label="Suppression" value={detail.response_kind && detail.response_kind !== 'fire' ? 'N/A' : duration(detail.durations?.suppression, KPI_EMPTY)} sub="Suppression started to fire out" accent="muted" />
+            <KpiCard icon={<AnalysisIcon name="handling" />} label="Overall operation" value={duration(detail.durations?.operation, KPI_EMPTY)} sub="Report received to confirmed operation completion" accent="muted" />
+            <KpiCard icon={<AnalysisIcon name="suppression" />} label="Suppression" value={fireOperation ? duration(detail.durations?.suppression, KPI_EMPTY) : 'N/A'} sub={fireOperation ? 'Suppression started to fire out' : 'Applies to fire responses'} accent="muted" />
           </div>
           <section className="rar-incident-details" aria-label="Incident details">
             <header className="idp-hero-top rar-incident-details-header">
@@ -87,7 +99,7 @@ export default function ResponseAnalysisPage({ fireId, theme, onBack, onOpenInci
             </header>
             <div className="rar-incident-details-body">
               <div className="rar-incident-context">
-                <StatusPill status={detail.status || 'Status unknown'} />
+                <StatusPill status={detail.status || 'Status unknown'} incident={detail} />
                 <span>{detail.response_kind ? detail.response_kind.replace(/^./, first => first.toUpperCase()) + ' response' : 'Unclassified response'}</span>
                 <div className="rar-counts"><span><strong>{dispatches.length}</strong> Dispatches</span><span><strong>{detail.units?.length || 0}</strong> Trucks</span></div>
               </div>
@@ -99,11 +111,11 @@ export default function ResponseAnalysisPage({ fireId, theme, onBack, onOpenInci
               {incidentRecord?.remarks && <details className="rar-incident-remarks"><summary>Incident remarks<AnalysisIcon name="chevron" className="rar-chevron" /></summary><p>{incidentRecord.remarks}</p></details>}
             </div>
           </section>
-          <details className="rar-disclosure rar-incident-milestones">
-            <summary className="rp-section-heading rar-section-heading"><div className="rar-section-heading-copy"><span className="rar-section-heading-icon"><AnalysisIcon name="acknowledgement" /></span><div><h2>Incident Milestones</h2><p>Report, suppression and completion</p></div></div><AnalysisIcon name="chevron" className="rar-chevron" /></summary>
+          <details id="incident-milestones" ref={milestonesRef} className="rar-disclosure rar-incident-milestones">
+            <summary className="rp-section-heading rar-section-heading"><div className="rar-section-heading-copy"><span className="rar-section-heading-icon"><AnalysisIcon name="acknowledgement" /></span><div><h2>Incident Milestones</h2><p>Report, situation control and completion</p></div></div><AnalysisIcon name="chevron" className="rar-chevron" /></summary>
             <div className="rar-disclosure-body">
               <ResponseMilestones milestones={incidentMilestones} />
-              <ResponseEvidenceEvents events={incidentEvents} />
+              <ResponseEvidenceEvents events={incidentEvents} incident={detail} />
               {detail.location_specification && <p className="rar-note">{detail.location_specification.label}: {detail.location_specification.specification}</p>}
             </div>
           </details>

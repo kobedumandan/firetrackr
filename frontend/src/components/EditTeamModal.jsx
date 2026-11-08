@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import AppModal from './AppModal'
+import '../styles/DispatchModal.css'
+import '../styles/PersonnelFormModal.css'
 import '../styles/EditFormModal.css'
 import {
   fetchStations, fetchPersonnel, fetchShifts, fetchTrucks, fetchTeams,
@@ -68,18 +70,20 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
   }
 
   function setMemberRole(perId, role) {
+    if (returnAssignmentLock(members.find(m => m.per_id === perId))) return
     setMembers(prev => prev.map(m => m.per_id === perId ? { ...m, member_role: role } : m))
   }
 
   function addMember() {
     const p = allPersonnel.find(p => p.per_id === Number(addSelect))
-    if (!p) return
+    if (!p || returnAssignmentLock(p)) return
     setMembers(prev => [...prev, { per_id: p.per_id, name: p.name, initials: p.initials, rank: p.rank, member_role: addRole }])
     setAddSelect('')
     setAddRole('')
   }
 
   function removeMember(perId) {
+    if (returnAssignmentLock(members.find(m => m.per_id === perId))) return
     setMembers(prev => prev.filter(m => m.per_id !== perId))
   }
 
@@ -101,12 +105,21 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
   const stationId = toId(form.station_id)
   const truckOptions = assignableTrucks(trucks, teams, { stationId, shiftId, selfTeamId: team.team_id })
   const currentTeam = teams.find(t => t.team_id === team.team_id) || team
+  function returnAssignmentLock(member) {
+    if (!member) return ''
+    const latest = teams.find(t => t.team_id === team.team_id)?.members?.find(m => m.per_id === member.per_id)
+      ?? allPersonnel.find(p => p.per_id === member.per_id) ?? member
+    return latest.return_assignment_locked
+      ? latest.return_assignment_reason || 'This Driver must complete truck return and readiness before reassignment.'
+      : ''
+  }
   const truckLocked = currentTeam.has_active_dispatch ?? ['active', 'dispatched', 'en_route', 'on_scene'].includes(currentTeam.team_status)
   const shiftOptions = [{ value: '', label: 'None' }, ...shifts.map(s => ({ value: String(s.shift_id), label: s.shift_name }))]
   // The backend refuses a shift change while the team has members.
   const shiftLocked = members.length > 0
   const available = allPersonnel.filter(p =>
     !currentIds.has(p.per_id) &&
+    !returnAssignmentLock(p) &&
     (p.team_id == null || p.team_id === team.team_id) &&
     (shiftId === null || p.shift_id === shiftId)
   )
@@ -125,6 +138,8 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
   }
 
   async function confirmSave() {
+    const blockedMember = [...removed, ...roleChanged, ...added].find(m => returnAssignmentLock(m))
+    if (blockedMember) { setError(returnAssignmentLock(blockedMember)); return }
     setSaving(true)
     setError('')
     try {
@@ -178,6 +193,8 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
   return (
     <>
       <AppModal
+        variant="badged"
+        icon={<Icon d="M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 18l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm640-584-56-56 56 56ZM619-619l-28-29 57 57-29-28Z" className="cfm-badge-icon" />}
         eyebrow="EDIT TEAM"
         title={trimmed.team_name || 'Untitled team'}
         subtitle={subtitle.length > 0 ? subtitle.map((part, index) => (
@@ -188,7 +205,7 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
         )) : null}
         onClose={onClose}
         width={620}
-        className="eim-panel edit-form-modal"
+        className="eim-panel edit-form-modal team-form-modal"
         dismissible={!saving && !reviewing}
       >
         <form onSubmit={handleSubmit}>
@@ -252,7 +269,7 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
 
             <section className="eim-section">
               <SectionHead title="Status" desc="Whether it can take dispatches" changed={isChanged('team_status')} />
-              <Segmented label="Status" options={TEAM_STATUSES} value={form.team_status} onChange={v => set('team_status', v)} />
+              <Segmented label="Status" options={TEAM_STATUSES.map(option => ({ ...option, disabled: ['dispatched', 'on_scene', 'returning'].includes(option.value) || ['dispatched', 'on_scene', 'returning'].includes(initial.team_status) }))} value={form.team_status} onChange={v => set('team_status', v)} />
               <div className="frm-hint">{statusMeta(TEAM_STATUSES, form.team_status).hint.replace(/\.$/, '')}</div>
             </section>
 
@@ -273,6 +290,8 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
                   {members.map(m => {
                     const isNew = !initialById.has(m.per_id)
                     const roleEdited = !isNew && initialById.get(m.per_id).member_role !== m.member_role
+                    const returnLock = returnAssignmentLock(m)
+                    const lockId = `return-lock-${m.per_id}`
                     return (
                       <li key={m.per_id} className="lim-unit frm-member">
                         <span className="lim-unit-av frm-initials">{m.initials}</span>
@@ -282,17 +301,20 @@ export default function EditTeamModal({ team, onClose, onSubmit }) {
                             {isNew && <span className="frm-tag">New</span>}
                           </span>
                           {m.rank && m.rank !== '—' && <span className="lim-unit-sub">{m.rank}</span>}
+                          {returnLock && <span id={lockId} className="frm-hint">{returnLock}</span>}
                         </span>
                         <select
                           className={`frm-role-select ${roleEdited ? 'changed' : ''}`}
                           value={m.member_role}
                           onChange={e => setMemberRole(m.per_id, e.target.value)}
                           aria-label={`Role for ${m.name}`}
+                          disabled={!!returnLock}
+                          aria-describedby={returnLock ? lockId : undefined}
                         >
                           <option value="">No role</option>
                           {MEMBER_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
-                        <button type="button" className="lim-unit-rm" onClick={() => removeMember(m.per_id)} aria-label={`Remove ${m.name}`}>
+                        <button type="button" className="lim-unit-rm" onClick={() => removeMember(m.per_id)} aria-label={`Remove ${m.name}`} disabled={!!returnLock} aria-describedby={returnLock ? lockId : undefined}>
                           <Icon d={ICON_CLOSE} />
                         </button>
                       </li>

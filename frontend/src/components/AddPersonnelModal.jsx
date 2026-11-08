@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import AppModal from './AppModal'
+import '../styles/DispatchModal.css'
+import '../styles/PersonnelFormModal.css'
+import { ICON_PLUS } from './incidentFormOptions'
 import { fetchStations } from '../api'
 import { RANKS, DESIGNATIONS, phoneError, emailError, passwordErrors } from './resourceFormOptions'
-import { Field, SectionHead, FieldError, FormStatus, PasswordInput } from './incidentForm'
+import { Icon, Field, SectionHead, FieldError, FormStatus, PasswordInput } from './incidentForm'
 
 export default function AddPersonnelModal({ onClose, onSubmit }) {
   const [form, setForm] = useState({
@@ -70,11 +73,13 @@ export default function AddPersonnelModal({ onClose, onSubmit }) {
 
   return (
     <AppModal
+      variant="badged"
+      icon={<Icon d={ICON_PLUS} className="cfm-badge-icon" />}
       eyebrow="NEW PERSONNEL"
       title={fullName || 'Add personnel'}
       onClose={onClose}
       width={600}
-      className="eim-panel"
+      className="eim-panel personnel-form-modal"
       dismissible={!saving}
     >
       <form onSubmit={handleSubmit} noValidate>

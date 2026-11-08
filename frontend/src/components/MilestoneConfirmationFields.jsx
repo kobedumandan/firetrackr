@@ -75,7 +75,7 @@ export default function MilestoneConfirmationFields({ data, unit, milestones, ki
           <div><dt>{recordedAt && changed ? 'New occurrence' : 'Verified occurrence'}<span>Philippine time</span></dt><dd>{previewTime ? <AnalysisDateTime value={previewTime} /> : <span className="rar-confirm-pending">Enter an occurrence time</span>}</dd></div>
           <div><dt>Classification</dt><dd data-known={Boolean(responseKind)}>{titleCase(responseKind)}</dd></div>
         </dl>
-        <div className="rar-confirm-guidance"><AnalysisIcon name="info" /><p>Timestamp corrections preserve the original audit history. Incident and dispatch statuses stay unchanged.</p></div>
+        <div className="rar-confirm-guidance"><AnalysisIcon name="info" /><p>Corrections preserve audit history. New clearance starts truck return; operation completion advances the incident stage.</p></div>
       </aside>
     </div>
 

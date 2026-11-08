@@ -44,7 +44,6 @@
 .rp-filters label, .rp-field-label, .rp-detail label { display: flex; flex-direction: column; gap: 6px; font-size: 10px; font-weight: 500; color: var(--rp-muted); min-width: 0; }
 .rp-filters input:not([type="checkbox"]), .rp-filters select, .rp-detail select { box-sizing: border-box; width: 100%; min-width: 0; height: 36px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--page-default-base); color: var(--text-primary); font: 11px var(--font-condensed); }
 .rp-filters input[type="date"] { font-variant-numeric: tabular-nums; }
-.rp-filters .rp-refresh { height: 36px; padding-inline: 12px; background: var(--bg-hover); }
 .rp-team-field { position: relative; min-width: 0; }
 .rp-field-label { margin-bottom: 6px; }
 .rp-view .rp-team-trigger { width: 100%; height: 36px; justify-content: space-between; background: var(--page-default-base); padding-inline: 9px; font-weight: 400; }
@@ -81,7 +80,7 @@
 .rp-quality-meter::-moz-meter-bar { background: var(--accent-fire); border-radius: 3px; }
 .rp-distribution { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
 .rp-distribution strong { display: block; margin-top: 3px; color: var(--text-primary); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.rp-quality-counts { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 9px; }
+.rp-quality-counts { display: flex; flex-wrap: wrap; gap: 3px 10px; font-size: 9px; text-transform: capitalize; }
 .rp-quality-counts span[data-present="true"] { color: var(--text-primary); }
 .rp-sample-note { display: block; margin-top: 8px; font-size: 9px; color: var(--accent-amber); }
 .rp-disclosure { margin-top: 10px; font-size: 10px; color: var(--rp-muted); }

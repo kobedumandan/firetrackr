@@ -7,6 +7,7 @@ import DispatchModal from "./DispatchModal";
 import EscalateAlarmModal from "./EscalateAlarmModal";
 import IncidentTimeline from "./IncidentTimeline";
 import { supportsFireAlarm } from "./incidentFormOptions";
+import { incidentStatusBadgeLabel, isFireOperation, isActiveDispatch, isClearedDispatch } from '../utils/incidentOperations';
 
 function TimeIcon() {
   return (
@@ -83,10 +84,6 @@ function MaximizeIcon() {
       <path d="M200-200v-240h80v160h160v80H200Zm480-320v-160H520v-80h240v240h-80Z" />
     </svg>
   );
-}
-
-function fmtTimestamp(isoStr) {
-  return fmtTime(isoStr);
 }
 
 function SkeletonDetail() {
@@ -263,10 +260,6 @@ function TimelineTabIcon() {
   );
 }
 
-// Statuses POST /api/dispatch/{id}/full-reroute accepts; anything else 409s,
-// so the button is hidden rather than offered and then refused.
-const REROUTABLE_STATUSES = new Set(["dispatched", "en_route", "on_scene"]);
-
 // Each route answers a different question, so the label has to say which one —
 // "Alt 1" tells the dispatcher nothing about why they would pick it.
 const ROUTE_LABELS = {
@@ -311,11 +304,11 @@ const readableStatus = (status) => ({ pending: "Pending", active: "Active", disp
 
 function AssignedTeam({ dispatch }) {
   const members = [...(dispatch.members || [])].sort((a, b) => Number(isTeamLeader(b)) - Number(isTeamLeader(a)));
-  const leader = members.find(isTeamLeader);
+  const cleared = isClearedDispatch(dispatch);
   return <article className="dispatch-team-card ci-team-card">
-    <header className="dispatch-team-header"><span className="ci-team-icon"><FireTruckIcon /></span><div className="dispatch-team-meta"><h4 className="dispatch-team-name">{dispatch.team_name || "Unnamed team"}</h4><span className="dispatch-team-station">{dispatch.station_name || "Station not recorded"}{dispatch.team_code && <> <span className="ci-section-separator" aria-hidden="true">|</span> {dispatch.team_code}</>}</span></div><span className="ci-dispatch-status" data-status={dispatch.dispatch_status}>{readableStatus(dispatch.dispatch_status)}</span></header>
-    <div className="ci-team-context">{dispatch.truck_platenums?.length > 0 && <span>{dispatch.truck_platenums.join(" · ")}</span>}<span>Dispatched {fmtTime(dispatch.dispatch_at)}{dispatch.dispatch_at ? ' PHT' : ''}</span>{leader && <span className="ci-lead-preview">Team Leader<span className="ci-lead-separator" aria-hidden="true"> | </span>{leader.name || "Name Not Recorded"}</span>}</div>
-    {members.length ? <details className="ci-roster"><summary><span>Team Roster<span className="ci-count">{members.length}</span></span><AnalysisIcon name="chevron" /></summary><div className="dispatch-members">{members.map((member) => <div key={member.per_id} className={`dispatch-member-row${isTeamLeader(member) ? ' dispatch-member-leader' : ''}`}><span className="dispatch-member-av">{member.initials || '?'}</span><div className="dispatch-member-info"><span className="dispatch-member-name">{member.name || "Name not recorded"}</span><span className="dispatch-member-rank">{member.rank || "Rank not recorded"}</span></div><span className="ci-member-role">{roleOf(member) || "Role not recorded"}</span></div>)}<p className="ci-roster-note">Current team membership; attendance is not confirmed here.</p></div></details> : <p className="ci-roster-unavailable">Team roster not recorded.</p>}
+    <header className="dispatch-team-header"><span className="ci-team-icon"><FireTruckIcon /></span><div className="dispatch-team-meta"><h4 className="dispatch-team-name">{dispatch.team_name || "Unnamed team"}</h4><span className="dispatch-team-station">{dispatch.station_name || "Station not recorded"}</span></div><span className="ci-dispatch-status" data-status={cleared ? 'completed' : dispatch.dispatch_status}>{cleared ? 'Cleared' : readableStatus(dispatch.dispatch_status)}</span></header>
+    <div className="ci-team-context">{dispatch.truck_platenums?.length > 0 && <span>{isActiveDispatch(dispatch) ? 'Truck in use' : 'Truck assigned'}<span className="ci-section-separator" aria-hidden="true"> | </span>{dispatch.truck_platenums.join(" · ")}</span>}<span>Dispatched {fmtTime(dispatch.dispatch_at)}</span>{dispatch.cleared_at && <span>Cleared {fmtTime(dispatch.cleared_at)}</span>}</div>
+    {members.length ? <details className="ci-roster"><summary><span>Team Roster</span><span className="ci-count">{members.length}</span><AnalysisIcon name="chevron" /></summary><div className="dispatch-members">{members.map((member) => <div key={member.per_id} className={`dispatch-member-row${isTeamLeader(member) ? ' dispatch-member-leader' : ''}`}><span className="dispatch-member-av">{member.initials || '?'}</span><div className="dispatch-member-info"><span className="dispatch-member-name">{member.name || "Name not recorded"}</span><span className="dispatch-member-rank">{member.rank || "Rank not recorded"}</span></div><span className="ci-member-role">{roleOf(member) || "Role not recorded"}</span></div>)}</div></details> : <p className="ci-roster-unavailable">Team roster not recorded.</p>}
   </article>;
 }
 
@@ -343,22 +336,22 @@ function SevChip({ sev }) {
   );
 }
 
-function StatusChip({ status }) {
-  const statusClass = ["contained", "on_scene"].includes(status) ? "sp-contained" : ["dispatched", "en_route"].includes(status) ? "sp-dispatched" : ["pending", "active"].includes(status) ? "sp-pending" : "sp-closed";
-  return <span className={`status-pill ci-status ${statusClass}`}>{readableStatus(status)}</span>;
+function StatusChip({ status, incident }) {
+  const statusClass = status === "contained" ? "sp-contained" : ["dispatched", "en_route", "on_scene"].includes(status) ? "sp-dispatched" : ["pending", "active"].includes(status) ? "sp-pending" : "sp-closed";
+  return <span className={`status-pill ci-status ${statusClass}`}>{incident ? incidentStatusBadgeLabel(status, incident) : readableStatus(status)}</span>;
 }
 
 export default function RightSidebar({
   incident = null,
   incidentRoutes = [],
   incidentDispatches = [],
-  livePersonnelLocations = [],
   onSelectRoute,
   onFullReroute,
   loading = false,
   collapsed = false,
   onToggleCollapse,
   onDispatched,
+  onOpenIncident,
   viewMode = "normal",
   onViewModeChange,
   focusNonce = 0,
@@ -408,16 +401,17 @@ export default function RightSidebar({
     setActiveTab(TABS[next].key);
     event.currentTarget.querySelectorAll('[role="tab"]')[next]?.focus();
   };
-  const canRespond = incident && !["contained", "closed", "cancelled", "canceled", "recalled"].includes(incident.status);
+  const canRespond = incident && !incident.operation_completed_at && !["closed", "cancelled", "canceled", "recalled"].includes(incident.status);
+  const activeDispatches = canRespond ? incidentDispatches.filter(isActiveDispatch) : [];
+  const historyDispatches = incidentDispatches.filter(dispatch => !activeDispatches.includes(dispatch));
+  const respondingDispatches = incidentDispatches.filter(dispatch => !['cancelled', 'canceled', 'recalled'].includes(dispatch.dispatch_status));
+  const allTeamsCleared = respondingDispatches.length > 0 && respondingDispatches.every(isClearedDispatch);
+  const noActiveTeams = activeDispatches.length === 0 && incidentDispatches.length > 0;
   const highestAlarm = ["3rd Alarm", "General Alarm"].includes(incident?.alarm);
   const headerTime = incident?.report_received_at || incident?.reported_at;
+  const showAlarm = isFireOperation(incident) && !['not applicable', 'n/a'].includes((incident?.alarm || '').trim().toLowerCase());
   const [showDispatch, setShowDispatch] = useState(false);
   const [showEscalate, setShowEscalate] = useState(false);
-  const [rerouteConfirm, setRerouteConfirm] = useState(null); // dispatch_id awaiting confirm
-  const [rerouteLoading, setRerouteLoading] = useState(false);
-  // Kept separate from rerouteConfirm above: that one belongs to the deviation
-  // panel, and a shared key would open both confirmations at once whenever a
-  // deviated unit is on the same dispatch.
   const [forceRerouteConfirm, setForceRerouteConfirm] = useState(null);
   const [forceRerouteBusy, setForceRerouteBusy] = useState(null);
   const [routeSwitchBusy, setRouteSwitchBusy] = useState(null);
@@ -472,19 +466,29 @@ export default function RightSidebar({
 
         {incident && (
           <>
-            <div className="detail-header">
+            <a
+              className="detail-header detail-header--link"
+              href={`/incidents/${incident.fire_id}`}
+              onClick={(event) => {
+                if (!onOpenIncident || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                onOpenIncident(incident);
+              }}
+              aria-label={`View details for incident ${incident.id || incident.fire_id}`}
+              title="View incident details"
+            >
               <div className="detail-tag">
                 <span className="ci-incident-id">{incident.id}</span>
-                <StatusChip status={incident.status} />
+                <span className="ci-report-time"><TimeIcon /><time dateTime={headerTime || undefined} title={`${incident.report_received_at ? "Report received" : "Incident time"}: ${fullTime(headerTime)}`} aria-label={`${incident.report_received_at ? "Report received" : "Incident time"}: ${fullTime(headerTime)}`}>{fmtTime(headerTime)}</time></span>
               </div>
               <h3 className="detail-title" title={incident.loc}>{incident.loc || "Location not recorded"}</h3>
               {incident.addr && <p className="ci-address" title={incident.addr}>{incident.addr}</p>}
               <div className="detail-status-row">
                 <SevChip sev={incident.sev} />
-                <span className="detail-chip ci-alarm-chip"><AnalysisIcon name="preparation" />{incident.alarm || "Alarm not recorded"}</span>
-                <span className="ci-report-time"><TimeIcon /><time dateTime={headerTime || undefined} title={`${incident.report_received_at ? "Report received" : "Incident time"}: ${fullTime(headerTime)}`} aria-label={`${incident.report_received_at ? "Report received" : "Incident time"}: ${fullTime(headerTime)}${headerTime ? ' PHT' : ''}`}>{fmtTime(headerTime)}{headerTime ? ' PHT' : ''}</time></span>
+                {showAlarm && <span className="detail-chip ci-alarm-chip"><AnalysisIcon name="preparation" />{incident.alarm || "Alarm not recorded"}</span>}
+                <StatusChip status={incident.status} incident={incident} />
               </div>
-            </div>
+            </a>
 
             <div className="sidebar-tabs--below">
               <div className="sidebar-tabs-wrap" role="tablist" aria-label="Incident detail sections" onKeyDown={onTabKeyDown}>
@@ -518,20 +522,12 @@ export default function RightSidebar({
         {incident &&
           activeTab === "Routing" &&
           (() => {
-            const deviatedPersonnel = livePersonnelLocations.filter((p) => {
-              if (!p.is_deviated) return false;
-              const d = incidentDispatches.find(
-                (d) => d.dispatch_id === p.dispatch_id
-              );
-              return !!d;
-            });
-
             return (
               <div className="detail-body ci-routing-body">
-                {incidentDispatches.length === 0 && <div className="ci-empty-inline">No teams assigned yet. Route options will appear after dispatch.</div>}
-                {incidentDispatches.length > 0 && (
+                {activeDispatches.length === 0 && <div className="ci-empty-inline">{allTeamsCleared ? 'No active response routes. All teams have cleared the scene.' : incidentDispatches.length > 0 ? 'No active response routes. Previous assignments are available in response history.' : 'No teams assigned yet. Route options will appear after dispatch.'}</div>}
+                {activeDispatches.length > 0 && (
                   <>
-                    <div className="detail-section-title">Dispatch routing</div>
+                    <div className="detail-section-title">Dispatch Routing</div>
                     <div className="routing-panel">
                       <div className="routing-title">Route overview</div>
                       <div className="routing-row">
@@ -548,7 +544,7 @@ export default function RightSidebar({
                       <div className="routing-row">
                         <span className="routing-row-label">Team assignments</span>
                         <span className="routing-row-value highlight">
-                          {incidentDispatches.length}
+                          {activeDispatches.length}
                         </span>
                       </div>
                     </div>
@@ -559,12 +555,11 @@ export default function RightSidebar({
                     rather than the routes so a dispatch that came back with no
                     computed path still gets a block — that is exactly the case
                     where the dispatcher needs the reroute button. */}
-                {incidentDispatches.map((d) => {
+                {activeDispatches.map((d) => {
                   const sorted = incidentRoutes
                     .filter((r) => r.dispatch_id === d.dispatch_id)
                     .sort((a, b) => a.rank - b.rank);
                   const teamName = d.team_name || sorted[0]?.teamName || "";
-                  const canReroute = REROUTABLE_STATUSES.has(d.dispatch_status);
                   // A fallback entry is the straight station→incident line the
                   // map draws when routing produced nothing — not a real route.
                   const hasRealRoute = sorted.some(
@@ -639,8 +634,7 @@ export default function RightSidebar({
                         </div>
                       )}
 
-                      {canReroute &&
-                        (confirming ? (
+                      {confirming ? (
                           <div className="route-reroute-confirm">
                             <div className="route-reroute-warning">
                               ⚠ This replaces every route for this dispatch,
@@ -686,106 +680,32 @@ export default function RightSidebar({
                           >
                             <AnalysisIcon name="refresh" /><span>Force Reroute</span>
                           </button>
-                        ))}
+                        )}
                     </div>
                   );
                 })}
 
-                {deviatedPersonnel.map((p) => {
-                  const dispatch = incidentDispatches.find(
-                    (d) => d.dispatch_id === p.dispatch_id
-                  );
-                  return (
-                    <div
-                      key={p.per_id}
-                      className="routing-panel ci-deviation-panel"
-                    >
-                      <div
-                        className="routing-title ci-deviation-title"
-                      >
-                        ⚠ DEVIATION ACTIVE
-                      </div>
-                      <div className="routing-row">
-                        <span className="routing-row-label">Unit</span>
-                        <span className="routing-row-value">{p.name}</span>
-                      </div>
-                      <div className="routing-row">
-                        <span className="routing-row-label">Status</span>
-                        <span
-                          className="routing-row-value ci-deviation-value"
-                        >
-                          Off Route — branch path active
-                        </span>
-                      </div>
-                      {p.deviation_detected_at && (
-                        <div className="routing-row">
-                          <span className="routing-row-label">Detected</span>
-                          <span className="routing-row-value">
-                            {fmtTimestamp(p.deviation_detected_at)}
-                          </span>
-                        </div>
-                      )}
-
-                      {rerouteConfirm === p.dispatch_id ? (
-                        <div className="route-reroute-confirm">
-                          <div className="route-reroute-warning">
-                            ⚠ This replaces the current route entirely. Use only
-                            if the branch path is insufficient.
-                          </div>
-                          <div className="route-reroute-actions">
-                            <button
-                              className="btn-dispatch"
-                              disabled={rerouteLoading}
-                              onClick={() => {
-                                setRerouteLoading(true);
-                                onFullReroute?.(p.dispatch_id);
-                                setRerouteConfirm(null);
-                                setRerouteLoading(false);
-                              }}
-                            >
-                              {rerouteLoading
-                                ? "Rerouting…"
-                                : "Confirm Reroute"}
-                            </button>
-                            <button
-                              className="btn-secondary"
-                              onClick={() => setRerouteConfirm(null)}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn-secondary route-reroute-btn"
-                          onClick={() => setRerouteConfirm(p.dispatch_id)}
-                        >
-                          <AnalysisIcon name="refresh" /><span>Full Reroute from Current Position</span>
-                        </button>
-                      )}
-                      {dispatch && (
-                        <div className="ci-deviation-team">
-                          Team: {dispatch.team_name}
-                          {dispatch.team_code ? ` · ${dispatch.team_code}` : ""}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
               </div>
             );
           })()}
 
         {incident && activeTab === "Incident" && (
           <div className="detail-body ci-incident-body">
-            <section className="ci-response-summary" aria-label="Response overview">
-              <AnalysisIcon name="travel" />
-              <div><strong>{incidentDispatches.length} {incidentDispatches.length === 1 ? 'Team Assigned' : 'Teams Assigned'}</strong><span>{incidentDispatches.length ? <>{incidentDispatches.filter(d => d.dispatch_status === 'on_scene').length} On Scene <span className="ci-section-separator" aria-hidden="true">|</span> {incidentDispatches.filter(d => d.dispatch_status === 'en_route').length} En Route</> : 'No units have been assigned to this incident.'}</span></div>
-              {incidentDispatches.length > 0 && <button className="ci-text-button" onClick={() => { setActiveTab('Routing'); document.getElementById(`${tabId}-Routing`)?.focus(); }}>View routes<AnalysisIcon name="chevron" /></button>}
+            <section className="ci-response-summary" aria-label="Response overview" aria-live="polite">
+              <AnalysisIcon name={allTeamsCleared ? 'acknowledgement' : 'travel'} />
+              <div>
+                <strong>{allTeamsCleared ? 'All teams cleared' : noActiveTeams ? 'No active teams' : `${activeDispatches.length} ${activeDispatches.length === 1 ? 'Team Assigned' : 'Teams Assigned'}`}</strong>
+                <span>{activeDispatches.length ? <>{activeDispatches.filter(d => d.dispatch_status === 'on_scene').length} On Scene <span className="ci-section-separator" aria-hidden="true">|</span> {activeDispatches.filter(d => d.dispatch_status === 'en_route').length} En Route</> : noActiveTeams ? 'No teams remain assigned to the scene.' : 'No units have been assigned to this incident.'}</span>
+              </div>
+              {activeDispatches.length > 0 && <button className="ci-text-button" onClick={() => { setActiveTab('Routing'); document.getElementById(`${tabId}-Routing`)?.focus(); }}>View routes<AnalysisIcon name="chevron" /></button>}
+              {noActiveTeams && <a className="ci-text-button" href={`/incidents/${incident.fire_id}?section=response-reporting`} onClick={event => {
+                if (!onOpenIncident || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                onOpenIncident(incident, 'response-reporting');
+              }}>Response &amp; Reporting<AnalysisIcon name="chevron" /></a>}
             </section>
             <section className="ci-section">
-              <h4>Incident details</h4>
+              <h4>Details</h4>
               <dl className="ci-facts">
                 {incident.addr && <div className="ci-full-address"><dt>Address</dt><dd>{incident.addr}</dd></div>}
                 <div><dt>Dispatch type</dt><dd>{incident.dispatch_type || 'Unspecified'}</dd></div>
@@ -795,9 +715,12 @@ export default function RightSidebar({
               </dl>
             </section>
             {incident.remarks && <section className="ci-section ci-notes"><h4>Incident notes</h4><p>{incident.remarks}</p></section>}
-            <section className="ci-section ci-assigned-teams"><h4>Assigned teams<span className="ci-count">{incidentDispatches.length}</span></h4>
-              {incidentDispatches.length ? incidentDispatches.map(dispatch => <AssignedTeam key={dispatch.dispatch_id} dispatch={dispatch} />) : <p className="ci-section-empty">Assigned teams and their rosters will appear here after dispatch.</p>}
+            <section className="ci-section ci-assigned-teams"><h4>Assigned Teams<span className="ci-count">{activeDispatches.length}</span></h4>
+              {activeDispatches.length ? activeDispatches.map(dispatch => <AssignedTeam key={dispatch.dispatch_id} dispatch={dispatch} />) : <p className="ci-section-empty">{noActiveTeams ? 'No teams remain assigned to the scene.' : 'Assigned teams and their rosters will appear here after dispatch.'}</p>}
             </section>
+            {historyDispatches.length > 0 && <section className="ci-section ci-response-history"><h4>Response History<span className="ci-count">{historyDispatches.length}</span></h4>
+              {historyDispatches.map(dispatch => <AssignedTeam key={dispatch.dispatch_id} dispatch={dispatch} />)}
+            </section>}
           </div>
         )}
 

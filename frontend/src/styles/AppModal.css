@@ -1581,8 +1581,12 @@
   cursor: pointer;
   transition: background 0.15s;
 }
-.dpm-team:hover,
+.dpm-team:hover:not(:disabled),
 .eam-cand:hover {
+  background: var(--bg-hover);
+}
+.dpm-team:disabled {
+  cursor: not-allowed;
   background: var(--bg-hover);
 }
 .dpm-team:focus-visible,
@@ -2245,6 +2249,25 @@
 .stn-commander {
   margin-bottom: 12px;
 }
+.barangay-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.barangay-input-wrap input[aria-busy="true"] {
+  padding-right: 34px;
+}
+
+.barangay-input-spinner {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  margin-top: -7px;
+  border-color: var(--border);
+  border-top-color: var(--text-secondary);
+  pointer-events: none;
+}
+
 .frm-tag.stn-cmd-tag {
   color: var(--accent-fire);
   background: var(--accent-fire-dim);

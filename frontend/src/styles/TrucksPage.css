@@ -226,6 +226,11 @@
   outline: none;
   cursor: pointer;
 }
+.trk-filter-select.is-active,
+.trk-search-wrap:has(input:not(:placeholder-shown)) .trk-search-icon {
+  color: var(--text-primary);
+}
+
 .trk-filter-select option { background: var(--bg-card); }
 
 .trk-result-count {
@@ -387,14 +392,18 @@
 .trk-row-meta {
   font-family: var(--font-condensed);
   font-size: 10.8px;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
 }
-.trk-row-meta.is-empty { color: var(--text-tertiary); }
 .trk-row-time {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
+.trk-row-time-clock { color: color-mix(in srgb, var(--text-primary) 70%, transparent); }
+.trk-row-time.is-empty { color: var(--text-secondary); }
 
 /* ── Truck icon tile — the tinted puck used by KpiCard and Stations ── */
 .trk-tile {
@@ -439,6 +448,7 @@
 .trk-tone-amber { background: var(--accent-amber-dim); color: var(--accent-amber); }
 .trk-tone-fire  { background: var(--accent-fire-dim);  color: var(--accent-fire); }
 .trk-tone-muted { background: var(--chip-muted-bg);    color: var(--chip-muted-fg); }
+.trk-status-pill.trk-tone-muted { color: var(--text-secondary); }
 
 .trk-blink-dot {
   width: 5px;
@@ -652,7 +662,7 @@
   border: 1px solid var(--border-dim);
   border-radius: 12px;
   padding: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 28px;
 }
 
 .trk-hero-top {
@@ -691,7 +701,7 @@
   font-size: 10px;
   color: var(--text-secondary);
 }
-.trk-meta-separator { opacity: 0.45; }
+.trk-meta-separator { color: var(--text-secondary); opacity: 0.45; }
 
 .trk-detail-grid {
   display: grid;
@@ -711,8 +721,8 @@
   font-weight: 600;
   letter-spacing: -0.1px;
   text-transform: uppercase;
-  color: var(--text-secondary);
-  margin-bottom: 5px;
+  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
+  margin-bottom: 10px;
 }
 .trk-ds-value {
   font-family: var(--font-condensed);
@@ -730,7 +740,7 @@
   text-transform: uppercase;
 }
 
-.trk-info-section { margin-bottom: 16px; }
+.trk-info-section { margin-bottom: 28px; }
 
 .trk-info-title {
   font-family: var(--font-condensed);
@@ -738,7 +748,7 @@
   font-weight: 600;
   letter-spacing: -0.2px;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border-dim);
   margin-bottom: 12px;
@@ -773,6 +783,13 @@
   font-family: var(--font-mono);
   font-size: 11px;
 }
+
+.trk-return-reason { grid-column: 1 / -1; }
+.trk-return-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
+.trk-return-actions .act-btn { min-width: 0; justify-content: center; }
+.trk-readiness-source { margin-top: 16px; }
+.trk-readiness-modal textarea { min-height: 80px; resize: vertical; }
+.trk-readiness-modal .cfm-badge .material-symbols-outlined { font-size: 20px; }
 
 .trk-detail-actions {
   display: flex;

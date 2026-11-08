@@ -2,5 +2,5 @@
 // not operational timings or report populations. Route replacements still
 // refresh reports because they can change the saved ETA evidence.
 export function shouldRefreshOperationalData(type) {
-  return type !== 'dispatch_deviation' && /^(operational_times_updated|incident_|dispatch_|route_updated)/.test(type || '')
+  return type !== 'dispatch_deviation' && /^(operational_times_updated|workflow_|incident_|dispatch_|report_|route_updated)/.test(type || '')
 }

@@ -1,17 +1,18 @@
 import { DetailsField, DetailsGrid, DetailsProse } from "../layout/DetailsLayout";
 import KpiCard from "./KpiCard";
-import { EditIcon } from "./incidentUi";
 import { duration } from "../utils/operationalTimes";
+import { incidentControl, isFireOperation } from '../utils/incidentOperations';
 import "../styles/IncidentDetailsPage.css";
 import "../styles/ResponderRouteHistory.css";
 import "../styles/AfterActionReport.css";
+import "../styles/IncidentWorkflow.css";
 
 const hasValue = value => value != null && (typeof value !== "string" || value.trim() !== "");
 const valueOrMissing = value => hasValue(value) ? value : "Not recorded";
 const reportDate = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", year: "numeric", month: "short", day: "numeric" });
 const reportClock = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit", second: "2-digit" });
 
-function ReportTime({ value, stacked = false }) {
+export function ReportTime({ value, stacked = false }) {
   const date = value ? new Date(value) : null;
   if (!date || !Number.isFinite(date.getTime())) return stacked ? <span className="aar-missing">-</span> : <>Not recorded</>;
   return (
@@ -23,24 +24,25 @@ function ReportTime({ value, stacked = false }) {
   );
 }
 
-export default function AfterActionReport({ report, loading, error, onPhotoSelect, onEdit }) {
-  if (loading) return <div className="idp-aside-state" role="status">Loading after-action report…</div>;
+export default function AfterActionReport({ report, incident, loading, error, onPhotoSelect }) {
+  if (loading) return <div className="idp-aside-state" role="status">Loading incident report…</div>;
   if (error) return (
     <div role="alert">
       <DetailsProse tone="danger">Failed to load report: {error}</DetailsProse>
     </div>
   );
   if (!report) return (
-    <div className="idp-aside-empty" role="status">
-      <div className="idp-aside-empty-icon" aria-hidden="true">
-        <span className="material-symbols-outlined">description</span>
-      </div>
-      <div className="idp-aside-state">No report filed for this incident</div>
+    <div className="wf-empty wf-empty-reports" role="status">
+      <span className="material-symbols-outlined wf-icon" aria-hidden="true">description</span>
+      <h4>No report filed for this incident</h4>
+      <p>Report details will appear here once an incident report is saved.</p>
     </div>
   );
 
   const photos = report.photos ?? [];
   const timing = report.operational_timing;
+  const operation = { ...report, ...incident, operational_timing: timing };
+  const fireOperation = isFireOperation(operation);
   const author = hasValue(report.author) ? report.author : "Unknown author";
   const initials = String(report.author || "").trim().split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "?";
   const facts = [
@@ -50,7 +52,7 @@ export default function AfterActionReport({ report, loading, error, onPhotoSelec
   ];
 
   return (
-    <article className="aar-report" aria-label="Filed after-action report">
+    <article className="aar-report" aria-label="Filed incident report">
       <header className="idp-unit">
         <div className="idp-unit-top">
           <span className="idp-unit-icon aar-initials" aria-hidden="true">{initials}</span>
@@ -61,17 +63,12 @@ export default function AfterActionReport({ report, loading, error, onPhotoSelec
           </div>
           <span className="idp-pill idp-tone-green">Filed</span>
         </div>
-        <div className="idp-unit-rows">
-          <div className="dl-meta-row aar-filed-at">
+          <div className="wf-recorded aar-filed-at">
             <span className="aar-filed-timestamp">
-              <span className="material-symbols-outlined" aria-hidden="true">schedule</span>
+              <span className="material-symbols-outlined wf-icon" aria-hidden="true">schedule</span>
               <ReportTime value={report.submitted_at} />
             </span>
-            {onEdit && <button type="button" className="act-icon-btn aar-edit" onClick={onEdit} aria-label="Edit after-action report" title="Edit after-action report">
-              <EditIcon />
-            </button>}
           </div>
-        </div>
       </header>
 
       <div className="rt-personal-metrics aar-metrics">
@@ -86,14 +83,11 @@ export default function AfterActionReport({ report, loading, error, onPhotoSelec
         ))}
       </div>
 
-      {timing?.response_kind === "fire" && (
+      {timing && fireOperation && (
         <section className="idp-unit aar-operations" aria-label="Fire operations">
-          <div className="dl-meta-row aar-operations-heading">
-            <span className="dl-label">Fire-operation times</span>
-          </div>
           <DetailsGrid min={150}>
             <DetailsField label="Suppression started" value={<ReportTime value={timing.suppression_started_at} stacked />} />
-            <DetailsField label="Fire contained" value={<ReportTime value={timing.controlled_at} stacked />} />
+            <DetailsField label={incidentControl(operation).label} value={<ReportTime value={timing.controlled_at} stacked />} />
             <DetailsField label="Fire out" value={<ReportTime value={timing.fire_out_at} stacked />} />
             <DetailsField label="Suppression duration" value={<span className={!Number.isFinite(timing.suppression_seconds) ? "aar-missing" : undefined}>{duration(timing.suppression_seconds, "-")}</span>} />
           </DetailsGrid>
