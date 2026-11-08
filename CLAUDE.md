@@ -313,9 +313,22 @@ Alembic stamp remains unchanged. Do not blindly stamp/upgrade that database.
 
 Routing restores absent registered versions from the private Supabase
 `SUPABASE_MODEL_BUCKET` bucket (default `model-artifacts`) using existing backend
-Supabase credentials. Publication is explicit: from `backend/`, run
+Supabase credentials. Explicit operator publication from `backend/` uses
 `python publish_model_bundle.py --version v1 --manifest-sha256 REGISTERED_DIGEST`.
 The uploader verifies the bundle, creates only a missing private bucket, and does
 not overwrite objects or alter model-registry records. Runtime recovery checks
 the registered manifest and file hashes before atomically installing its cache.
 See [Render trial](documentation/render-free-trial.md) for limits and validation.
+
+Hosted retraining uses the repository root, the Modal client requirements,
+`RETRAIN_RUNNER=modal`, backend `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` secrets and
+`MODEL_ARTIFACT_STORAGE=supabase`. New jobs save recovery metadata in the existing
+training report JSON, so an empty local disk does not lose the cloud job identity.
+The worker also persists its call ID. Completed candidates are published privately
+before their candidate status commits; interrupted storage operations retry without
+overwriting objects. Candidate review and promotion restore absent registered
+bundles. No new schema migration is needed for these changes. Deploy the matching
+updated `training.modal_app`; source hashes accept CRLF/LF but reject code changes.
+Run `python check_retraining.py` from `backend/` for a read-only runner/storage
+check. See [hosted setup](documentation/render-free-trial.md#hosted-retraining-setup-november-7-2026)
+for Render build/start settings and validation limits.

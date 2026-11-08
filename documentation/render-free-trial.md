@@ -110,7 +110,7 @@ and CPU/database/memory behavior is necessary to verify the hosted improvement.
   and reduces their memory cost on a small CPU allocation.
 - The connection pool allows four base connections and two overflow connections.
   The watchdog and blacklist reaper hold two of those connections.
-- `backend/.python-version` selects the latest Python 3.12 patch; the local test
+- The repository-root `.python-version` selects the latest Python 3.12 patch; the local test
   used 3.12.10. The Linux dependency installation still needs a Render build.
 - Report photos use the existing private Supabase storage implementation.
 - Missing registered model bundles are restored from the private
@@ -205,13 +205,91 @@ regular filenames, verifies the registered manifest and every file digest, check
 the version, and publishes the cache atomically. It never switches to an
 unregistered baseline or overwrites an existing model directory.
 
-New trained versions need explicit publication too; automatic archival after
-retraining is not implemented. Runtime model recovery never creates buckets or
-uploads artifacts. With operator approval on November 4, 2026, the verified `v1`
+With `MODEL_ARTIFACT_STORAGE=local`, new trained versions need explicit publication.
+With `MODEL_ARTIFACT_STORAGE=supabase`, completed retrains are published automatically
+before becoming reviewable candidates. Startup/recovery only downloads and never
+creates buckets. With operator approval on November 4, 2026, the verified `v1`
 archive (1,358,449 bytes) was published to the private `model-artifacts` bucket.
 An actual HTTPS download into a new empty local cache passed manifest and all six
 artifact hash checks. Model-registry records were not changed. Hosted routing
 activation still needs the updated backend deployed on Render.
+
+## Hosted retraining setup (November 7, 2026)
+
+The updated Blueprint keeps the API on Render and training on Modal. PostgreSQL
+stores each job's runner/app/volume/environment, creation time, submission intent
+and acknowledged Modal call ID in the existing training report JSON. No new
+database migration is needed for this recovery metadata. Local files are a cache;
+polling and cancellation can resume on an empty host. The cloud worker also saves
+its call ID with durable status, covering a lost submission acknowledgement.
+Recovery never submits another training job.
+
+For an existing Render service, apply these settings explicitly; editing this
+checkout does not change the hosted service:
+
+1. Clear **Root Directory** so Render includes both `backend/` and `training/`.
+   Set **Build Command** to
+   `python -m pip install --no-cache-dir -r backend/requirements.txt -r backend/requirements-modal.txt`
+   and **Start Command** to `cd backend && python run.py`. The repository-root
+   `.python-version` retains Python 3.12. If Render has a `PYTHON_VERSION` override,
+   it must select a compatible 3.12 release too.
+2. Supply `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` using Render's secret environment
+   settings. These authenticate the backend process; a browser login on a developer
+   PC does not authenticate Render. Create the credentials in the Modal workspace,
+   or authenticate the local backend CLI with
+   `.\backend\venv\Scripts\python.exe -m modal token new`. Do not place the values in
+   Git, frontend/mobile `.env` files, build commands or logs.
+3. Keep the following backend settings aligned with the private deployed trainer:
+
+   ```dotenv
+   RETRAIN_RUNNER=modal
+   RETRAIN_MODAL_APP=firetrackr-training
+   RETRAIN_MODAL_VOLUME=firetrackr-training-jobs
+   RETRAIN_MODAL_ENVIRONMENT=main
+   MODEL_ARTIFACT_STORAGE=supabase
+   SUPABASE_MODEL_BUCKET=model-artifacts
+   ```
+
+   Render also needs the existing `DATABASE_URL`, `SUPABASE_URL` and
+   `SUPABASE_SECRET_KEY`. The private model bucket and the registered original
+   `v1` archive must already exist. The operator publication command above can
+   create a missing private bucket; retrain submission never creates one.
+4. From the same source revision as the backend, authenticate locally and deploy
+   the updated private trainer from the repository root:
+
+   ```powershell
+   .\backend\venv\Scripts\python.exe -m modal deploy -m training.modal_app --env main
+   ```
+
+   This deploys the trainer without starting a training run. Source hashes now
+   normalize Windows/Linux line endings; actual code changes still require a
+   matching trainer deployment. The worker call-ID recovery change also requires
+   this redeployment.
+5. Deploy the updated API. With the intended deployment environment, run
+   `python check_retraining.py` from `backend/` to check authentication, source
+   compatibility and private storage. It calls the small CPU diagnostic function;
+   it never starts GPU training, uploads artifacts or changes database records.
+   Render Free has no interactive shell: this command can also be run locally
+   with the deployment's environment settings, without copying credentials into
+   source files. Confirm the hosted logs during the first intended admin retrain.
+
+The storage preflight refuses a missing/public/unavailable bucket before submission.
+After successful training, a storage outage retains the training reservation and
+retries publication on later polls. Candidate status commits only after a verified
+archive upload. Repeated uploads never overwrite an object: duplicate responses are
+accepted only after downloading and checking the existing archive's registered
+digest and every artifact hash. A restart can refetch the result from the Modal
+Volume and retry. Candidate review/preview and promotion/rollback restore absent
+registered bundles from private storage. Promotion still requires explicit admin
+confirmation and the existing integrity/provenance checks.
+
+Local validation uses SQLite with PostgreSQL locks mocked, fake Modal transport,
+private storage HTTP mocks and fresh cache directories. It exercises cold recovery,
+lost acknowledgements, cancellation, storage failures/retries, duplicate-object
+verification, restored candidate review/promotion checks and cross-platform source
+hashes. This is not a completed Render deployment, GPU-training run or a Linux
+memory/latency measurement. Render Free still pauses when idle; the API imports
+finished cloud results on its next wake rather than while asleep.
 
 ## Before the hosted trial
 
@@ -242,11 +320,12 @@ activation still needs the updated backend deployed on Render.
    deploy the updated backend before using that hosted dashboard. Other frontend
    origins need their exact origin added explicitly.
 
-Do not run model retraining/promotion as part of this Free trial: local job files
-do not survive restarts, redeploys or idle sleep, and new model versions must be
-published explicitly before another host can retrieve them. Keep training
-elsewhere. Registered published bundles can be restored after a restart;
-in-memory reporter sessions are still lost.
+For an initial read-only Free trial, leave training/promotion unexercised. When
+testing the Models workflow, first apply the hosted retraining setup above and use
+an intended test database; its Modal jobs and storage uploads are real writes.
+The durable mode covers new jobs created with the updated code. Legacy jobs that
+only have local recovery metadata still need their original files. In-memory
+reporter sessions are still lost when the service restarts.
 
 ## Hosted acceptance
 

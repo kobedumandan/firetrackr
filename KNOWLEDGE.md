@@ -17,6 +17,396 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### Response and Operations shift comparison (2026-11-09)
+
+Shift comparison appears below team analysis in a separate `.ro-shift-analysis`
+disclosure, collapsed by default with the same header style as team comparison.
+It shares the analysis window and page refinements, uses dispatch dates,
+and defaults to initial assignments. A dedicated filter panel controls interval,
+assignment and median/average/p90. Preparation, travel and dispatch-to-arrival
+use two shift lines with hourly buckets for windows up to two days, daily up to
+62 days, and monthly otherwise, in Asia/Manila. Missing periods remain gaps.
+Statistics and quality counts sit beside the chart in the team trend grid layout,
+stacking on smaller screens. Selecting a period scopes those statistics;
+clearing it restores raw-sample statistics for the full window.
+The response-performance summary includes `shift_comparison` groups for all,
+initial and reinforcement assignments. Legacy current-metadata attribution is
+counted and disclosed; unknown shift labels are omitted and counted separately.
+Suppression and overall operation durations are not assigned to a shift.
+
+### Response and Operations filters (2026-11-08)
+
+Response and Operations offers only Recorded Operational Times in its Timing Data
+selector. The synthesized BFP history option is no longer exposed on this page.
+Analysis Window and refinement filters use title-cased labels and displayed values.
+The page refresh and stage-selection clear buttons are removed; existing filter
+resets, chart selection toggling and automatic refresh remain available.
+
+### Reporter contact display (2026-11-08)
+
+Incident responses include separate `reporter_name` and `reporter_contact` fields
+alongside the existing `reporter` display fallback. Incident details shows the contact
+number separately. The edit modal prefills both stored values, reviews the actual
+previous number, and sends only changed fields; clearing the contact removes it.
+
+### Incident report export (2026-11-08)
+
+Incident details places Export beside Edit and Delete. Its preview modal offers
+PDF and editable DOCX, a custom title, portrait/landscape orientation, A4/Letter/Legal
+paper, content switches, optional signature lines, and a file name. The PDF preview
+renders actual document pages; Word uses native editable headings and paragraphs
+with the same content, with possible pagination differences. Documents use letterhead,
+numbered sections, open fact layouts and full-width narratives rather than register
+tables. Sections use deterministic narratives based on recorded incident, report,
+assignment and timing data. Summary wording distinguishes Interim/current information
+from Final/closed records, names the report source and severity separately, includes
+the address/area, and includes structure and alarm statements only for fire operations.
+Casualty statements preserve recorded observations without summing team reports.
+Responding teams appear as separate blocks below the introduction, with a shared local
+team icon and editable Name/Team Role crew tables. Roles use assignment `member_role`,
+not personnel designation. Unit reports use bordered blocks headed by the recorded
+report author and team, grouped under one numbered Unit Reports section. Missing
+submissions are headed Awaiting Team Report with their team name. Milestone history
+uses an editable Action/Time/Source table with human-readable event and source labels,
+Philippine-time timestamps and the recorded actor; unverified/corrected events remain
+identified. Unknown codes are converted to words. Section numbers use fire orange
+and section labels use Title Case.
+Incident and unit analysis show four icon cards with prominent duration values plus
+a colored proportional bar and percentage legend. Bar percentages use the sum of
+available nonnegative processing, preparation, travel and applicable suppression
+durations; missing stages are omitted, zero stages have no width, and an empty total
+shows a no-data state. Unit analysis has its own bordered block and unit icon.
+Analysis Status and Timing Basis fields are omitted; preliminary and synthetic
+context remains in the narrative. Missing crew rosters remain explicit. Missing
+field values display as dim dashes in both formats; pending submissions, unreviewed
+reports and non-applicable metrics retain their explicit status. Content switches
+select the incident summary, responding assignments and crew,
+attributed unit reports, overall report, and response analysis. Open incidents retain
+Interim classification; closed incidents retain Final classification even with a custom
+title. Missing submissions and pending reviews remain explicit. Optional response
+analysis includes incident/truck durations, planned travel comparisons and milestone
+history; open analysis is preliminary and synthetic timing is labeled demonstration
+data. Opening/retrying the modal reads a fresh authenticated snapshot, shared by the
+preview and download. Requested sections that fail to load block download until retried
+or deselected. Times use Asia/Manila. Photo counts are included; photo images remain
+on the incident page rather than embedded in the document.
+
+### Command route popups (2026-11-08)
+
+Personnel pin cards omit the kind label and provide a View personnel button
+below the GPS update line. `/personnel?personnel=<per_id>` opens that person's
+detail pane after the roster loads; the query survives login and browser history.
+
+Clicking truck or personnel routes opens a card with a route icon, route type,
+unit name, distance and ETA. Truck metrics describe the stored route; personnel
+distance describes the displayed segment and ETA is unavailable because the
+connector response has no travel-time metric. The Routing tab omits deviation
+cards. Personnel approaches hide for off-duty, stopped, stale or arrived units;
+GPS fixes expire after the greater of 60 seconds or three tracking intervals,
+checked every 15 seconds even if no new location response arrives.
+
+### Resource status and register filters (2026-11-07)
+
+Returning badges use amber and the Dispatched blinking dot on Personnel, Teams,
+Trucks, and station resource lists. Personnel adds team and tracking filters;
+tracking offers Live and Offline choices and follows fresh location updates.
+Resource exports include these filters.
+
+Incidents offers a Range control beside the date presets. `GET /api/incidents`
+accepts `period=custom`, `date_from`, and `date_to` as inclusive Asia/Manila
+calendar dates. Calendar inputs apply immediately when either date changes;
+leaving From blank has no lower bound, and leaving To blank includes through
+today. Clearing both restores All Time. Malformed, reversed, or future dates
+return HTTP 422. The range applies before status counts, list
+filters, and pagination, and is preserved in register exports. Presets clear it.
+
+Metrics uses the same Range control and immediate date changes. Either boundary
+can be left blank with the same meaning as Incidents, and clearing both restores
+All dates. `GET /api/metrics/summary` accepts either custom boundary; the range
+also limits chart history, selected-month breakdowns and export labels.
+
+### Model display names (2026-11-07)
+
+Model history offers an edit-name modal next to each review action. Administrators
+can set a trimmed, nonempty display name of up to 120 characters through
+`PATCH /api/models/{version}` with `{ "name": "..." }`. Names appear in history,
+search, the current model and the review heading; version IDs and artifact paths
+stay stable. Migration `0035` adds nullable `model_versions.name` and was applied
+to the local loopback database. Other installations must apply it before running
+the updated API. Names are shared registry data rather than browser preferences.
+The retrain confirmation also accepts an optional model name below its message.
+`POST /api/models/retrain` accepts an optional `{ "name": "..." }` body using the
+same validation and saves the name while reserving the training job. Existing
+requests without a body remain supported. If model status changes while the
+confirmation is open, its status notice replaces the description and hides the
+name field until the user closes and reviews the latest state.
+
+### Incident deletion guard (2026-11-07)
+
+`DELETE /api/incidents/{fire_id}` rejects deletion with HTTP 409 while any linked
+dispatch is `dispatched`, `en_route` or `on_scene`, or a truck has started its
+return without readiness confirmation. The check holds the same incident row
+lock as dispatch assignment and clearance. Rejection preserves response records,
+crew/truck state and report photos. The delete confirmation modal checks current
+workflow status, explains any dispatch/return blocker inside the modal, and keeps
+confirmation disabled until deletion is eligible.
+Eligible deletions retain the existing child-record and photo cleanup behavior.
+
+### Current local testing profile (2026-11-06)
+
+Backend recovery on 2026-11-07 stopped duplicate Uvicorn reload instances after
+one stalled during source reload while retaining port 8000. The recovered local
+API uses a single server without auto-reload. The no-constraint routing path now
+retains its existing graph and pool on unchanged synchronization polls; initial
+startup and explicit forced reloads still build a replacement.
+
+The ignored backend/frontend/mobile `.env` files now select the existing loopback
+`bfp_capstone` database, local API on port 8000, and local Vite dashboard on port
+5173. The native test APK uses an ngrok HTTPS tunnel to that API; backend public
+photo/reporter links use the same tunnel. The local testing region was subsequently
+changed to `new_corella` in both backend and frontend env files, and both services
+were restarted. New Corella's OSM graph is online (19,246 nodes, 38,905 edges), with
+raw travel-time routing and no predicted constraints. Panabo assets are preserved.
+Local photo storage is enabled and SMS is disabled for testing.
+
+The loopback database was backed up and upgraded from `0032` to `0034`, preserving
+all existing table row counts, including 331 incidents. All four referenced report
+photos are available on disk, including two recovered from private storage without
+changing remote objects. The cloud database was not migrated or changed.
+The signed standalone APK contains the verified ngrok URL and its own JS bundle.
+Local API, Vite proxy, ngrok health and routing startup passed; actual-phone
+acceptance remains pending. Subsequent network checks observed intermittent DNS
+failures and ngrok reconnects on this PC; local API/proxy health remained OK. System
+network settings were not changed. The workspace's `local-device-testing/` directory holds
+the APK, restart instructions, setup record and logs; `local-backups/` holds the
+pre-change env files and verified database dump. Neither directory is in this repo.
+
+### Two-account response workflow (2026-11-06)
+
+Implemented locally across the backend, web dashboard and separate personnel
+client. The loopback test database now has additive migration
+`0034_response_workflow.py`; other installations need it before running the updated
+API. No shared/cloud database migration or hosted deployment was performed.
+
+- Accounts remain `admin` (Dispatcher) and `personnel`. Existing team assignments
+  determine Team Leader and Driver authority. The backend exposes `workflow_version: 2`,
+  `lifecycle_stage` and `effective_response_kind` without changing stored incident
+  status keys. Stages are Pending, Responding, Under Control, Operation Complete
+  and Closed; fire operations display Fire Contained at Under Control.
+- The incident editor displays the same five lifecycle stages, including a
+  read-only Operation Complete step. Its current step and header recognize both
+  the server lifecycle and recorded operation-completion timestamp. Editing other
+  incident fields preserves the stored status; completion and closure remain
+  dedicated Response & Reporting actions. Intake forms retain their existing
+  stored-status choices.
+- Assigned leaders submit attributed `field` reports, including prior verified
+  assignments through mobile My Incidents. Historical roster evidence survives
+  membership changes. Reporting for an earlier incident leaves a newer assignment
+  intact. Closed incidents remain readable; dispatcher corrections go through the
+  consolidated report. Unsent form text is not persisted across app termination.
+  On active assignments, field submission requires the leader's own confirmed
+  personal arrival. Truck/driver arrival alone does not qualify. The native action,
+  My Incidents eligibility and report API enforce the same rule; blocked history
+  entries show `report_blocker` and remain readable. Ended-assignment reporting
+  remains available to verified historical leaders without inventing old arrival
+  evidence. Reporting still does not require containment or release resources.
+- Dispatcher reports are separate `consolidated` records with revisions and review
+  metadata. Saving text/photos never clears teams, restores availability or closes
+  an incident. Explicit Review & Close verifies the exact report revision and
+  operational prerequisites. Existing reports retain `legacy` ownership/purpose
+  rather than receiving invented review or operational timestamps.
+- The reporting interface calls the final document **Incident Report**. For open
+  incidents, Response & Reporting is the creation entry point: one field report
+  prefills the editor through Review Field Report; multiple submissions are shown
+  for an explicit starting-report choice; no submissions still permits preparation
+  from confirmed information. Original submissions/photos remain available as
+  evidence. Report preparation and editing pool submitted scene photos in a compact
+  horizontally scrollable picker, with source attribution available on hover and
+  in the save review. Clicking a thumbnail opens the shared scene-photo viewer
+  with navigation and keyboard controls; the separate checkbox selects the photo.
+  Closing the viewer returns to the report draft. Selected photos share the existing stored image;
+  original submissions retain their attachments. New uploads, existing attachments
+  and field selections share the eight-photo limit. The administrator save contract
+  accepts optional `field_photo_ids`; the server verifies same-incident field/legacy
+  ownership, deduplicates stored images and audits source photo/report IDs. Report
+  JSON retains `photos` URLs and adds `photo_attachments` metadata (`photo_id`,
+  `file_name`, `original_name`, `url`) for selection and stable duplicate detection.
+  No schema migration is required. Closed records retain the existing missing-report recovery action.
+  Workflow controls and the filed incident report share one **Response & Reporting**
+  details section, with the global incident status pill used in the workflow.
+  Workflow tasks reuse the unit-card and compact action-button styles; task
+  statuses sit at the right of each task header as plain text (amber while waiting,
+  grey when not prepared). Completion requirements name the responding teams
+  beside truck icons instead of bare dispatch IDs. Labels use dim text in title
+  case, and field-report counts use the shared command count badge.
+- Dispatcher release authorization records the field command instruction. Team
+  release and radio-confirmed clearance controls live in
+  each Responding Units card on Incident Details, using compact `act-btn block`
+  buttons. Authorize Team Release opens the shared web confirmation modal with
+  the selected team/dispatch, final-team work warning and inline save errors;
+  the release request is sent only after confirmation. Response & Reporting
+  shares the same workflow state and focuses on
+  operation completion and reports without a second team list. Actual
+  leader clearance (or a reasoned dispatcher radio confirmation) ends only that
+  dispatch and starts its trucks Returning. Receipt of a notification has no state
+  effect. The captured responsible Driver retains return/readiness access after
+  clearance, incident closure and app restart. Back at Station / Ready restores
+  availability; Back at Station / Not Ready records a fault/replenishment reason.
+  Confirmed station arrival ends crew Returning even when the truck is Not Ready:
+  the on-duty crew is Standby, the truck stays Unavailable, and unfinished readiness
+  still blocks manual/automatic dispatch and Driver reassignment until Ready.
+  All trucks must have arrived before a multi-truck team leaves Returning.
+  Team/personnel reads derive this distinction for older Not Ready records without
+  rewriting their timestamps; off-duty personnel remain Off Duty after return.
+  Generic fleet edits cannot bypass unfinished returns. Standalone maintenance
+  readiness also requires a dispatcher reason, with actor/time stored on the truck.
+  Dispatcher return/readiness recording lives in **Trucks > selected truck >
+  Return & Readiness**, with a confirmation modal and mandatory radio source or
+  reason. Incident Details omits truck return/readiness status from Responding Units.
+  Truck JSON adds `pending_return` with the original dispatch-truck ID, response
+  team and return station, so unfinished returns remain accessible after incident
+  closure. The existing readiness endpoint and responsible-Driver permissions
+  remain unchanged.
+- Incident Details includes the five-stage progress timeline beneath the hero
+  statistics, with the shared Edit Incident step styling. Responding unit cards
+  show only the station below the team name and the arrival clock time. On Scene
+  uses amber in web/mobile status badges, personnel indicators and map pins;
+  completed and cleared states retain green.
+- Normal release preserves on-scene coverage. Before Fire Out, a fire-response
+  team can be authorized/cleared only while another distinct, uncleared team is
+  already on scene; dispatched/en-route/ended assignments do not count. Final-team
+  release requires Fire Out and the dispatcher's audited confirmation that the
+  team's assigned work is finished. Every new authorization explicitly confirms
+  that work through `POST /api/workflow/dispatch/{id}/release` with
+  `{ "work_finished": true }`. Authorization and actual clearance both recheck
+  eligibility under the incident lock; parallel clearances cannot remove the last
+  team. Legacy final-team authorizations need confirmation/renewal, not backfilled
+  evidence. Web/mobile status exposes the shared `release` eligibility and reason.
+  Mobile orders personal arrival/control ahead of separate release/reporting tasks;
+  field reports remain independent of containment and never release resources.
+- Dispatcher operation completion requires all eligible responding teams cleared
+  and fire out for fire operations. Returning trucks can remain unavailable after
+  the incident closes. Return GPS preserves driver/truck attribution and stays out
+  of approach tracks, response routing, suppression and response-time evidence.
+- The Command incident panel counts only active, uncleared scene assignments and
+  keeps ended assignments under Response History across live updates and reloads.
+  Acknowledgement, departure and arrival broadcasts update the shared dispatch
+  list used by the team cards and On Scene / En Route counts. Personal arrival
+  counts toward team arrival only when the server confirms the dispatch is on
+  scene; delayed milestone events cannot revive cleared teams or undo arrival.
+  Drivers who confirmed personal arrival before claiming their truck can use
+  Confirm Truck Arrival in the mobile incident modal after claiming it. This
+  records the vehicle arrival explicitly and preserves the personal arrival time.
+  After every responding assignment has confirmed clearance, its summary shows
+  All teams cleared and links to Response & Reporting. Cleared assignments have
+  no response route controls, fallback warnings or deviation panels. Release
+  authorization alone preserves the team's on-scene assignment and routes; return
+  readiness, operation completion and closure remain separate confirmations.
+  Personnel deviation panels show status, detection time and team; manual
+  Force Reroute remains one control per active dispatch in its route group.
+- Casualties use one shared text summary, e.g. `0 fatalities | 1 injured`.
+  Missing facts remain Unconfirmed. The first field observation is provisional;
+  other teams' observations remain separate, without summing or silent overwrite.
+  Dispatcher consolidation/review owns the canonical outcome.
+- Known operation type controls classification, fire timing eligibility and metrics.
+  Contradictory new declarations are rejected. Corrections retain previous timing
+  facts and audit the classification change. Fire timing inputs and operational
+  display use Asia/Manila explicitly.
+- Arrived, assigned Team Leaders can record **Suppression Started** and
+  command-declared **Fire Out** from the native incident's Fire Milestones controls,
+  without a narrative or report. `POST /api/workflow/dispatch/{id}/fire-milestones`
+  accepts `kind` (`suppression_start` or `fire_out`), timezone-aware `occurred_at`
+  and an `idempotency_key`. Ownership, current leader authority, personal arrival,
+  active response and incident-row locking are enforced server-side. Saved retries
+  reconcile after clearance; conflicting updates require dispatcher correction.
+- Verified Fire Out is accepted with unknown suppression start through personnel
+  milestones, dispatcher milestones, reports and corrections. The start remains
+  null and suppression duration remains missing; known receipt, dispatch, arrival,
+  containment and fire times still constrain chronology. Fire Out does not release
+  a team or finish an operation. New personnel Fire Out entries require the incident
+  to be marked contained first. If Fire Out was already recorded while Responding,
+  the leader can recover the status through `/api/dispatch/{id}/contain` with a
+  verified `occurred_at` at or before Fire Out. The native confirmation leaves this
+  time blank until selected; the API checks known chronology and preserves the
+  original Fire Out. A stale containment action without that time remains rejected.
+  Fire milestone events reach incident participants while
+  team release events retain their team scope. No additional migration is needed.
+- Web Response & Reporting provides per-team release/clearance, return readiness,
+  field submissions, completion and review/closure. Register/Analysis labels,
+  summaries, filters and exports share the derived stages. Workflow events clear
+  fleet caches and refresh open views; mobile also refreshes on reconnect, focus,
+  foreground and polling. Outstanding tasks are loaded from the backend after
+  missed notifications. Push delivery and actual-phone background behavior still
+  require a device rehearsal; radio remains the operational communication channel.
+- The Command map removes incident pins and response routes at Operation Complete,
+  including live updates, reloads and reconnect recovery. Contained/Under Control
+  incidents remain visible until the operation ends; Fire Out alone does not hide
+  them. Completed incidents remain in the register and Response & Reporting for
+  report preparation, review and explicit closure.
+
+Implementation and rollout checks are recorded in
+[the workflow plan](plans-todo/mobile-web-operational-workflow.md).
+
+### Follow-up workflow fixes (2026-11-06)
+
+- Recommendations and assignment share `services/resource_availability.py` checks
+  for team readiness, the team's own truck, active personnel and unfinished returns.
+  Recommendations batch availability reads across teams; assignment rechecks the
+  same conditions under locks before reserving resources.
+  A lost automatic recommendation returns the already saved incident with
+  `auto_dispatch.status=no_team_available`; a successful automatic assignment
+  returns its actual Responding stage. Intake retries are not required to recover
+  from an unavailable candidate.
+- Captured Drivers cannot be removed, transferred, have their assignment role or
+  status changed, or receive another dispatch until their return has `ready_at`.
+  Not Ready keeps that responsibility open. Web roster controls show the same
+  server-provided reason. Membership/dispatch writers serialize shared personnel
+  using sorted transaction advisory locks. If a new dispatch appears while taking
+  the team lock, roster editing returns 409 for a fresh retry before changing data.
+  Stale truck manning requests after clearance/completion also return 409 and do
+  not remove return custody or GPS attribution. Normal claim/release retries remain
+  idempotent. Pending field reports still do not prevent a ready team's assignment.
+- Personnel lists/filters/counts/exports show Returning; active or returning work
+  remains visible across shift rollover. The separate duty flag still controls GPS
+  privacy. Native Home/map crew status uses active assignments and physical return
+  evidence; pending truck readiness is displayed separately from Standby and GPS
+  collection mode. Native report badges use the actual stage.
+- Consolidated drafts show current verified timing. Review captures the timeline
+  for the exact report revision; audited time or operation-type corrections bump
+  that revision and invalidate review without changing the original closure time.
+  Older review snapshots and personnel submission evidence remain available in the
+  event history. Re-review is explicit and old review submissions are rejected.
+- Live casualty intake defaults to unknown, not an inferred None. Incident calendar
+  filters use Asia/Manila boundaries for Today, This Month and This Year, including
+  month/year rollover. Counts and exports reuse the same filtered population.
+- Dispatcher web controls include reasoned Back at Station / Not Ready for radio
+  fallback. Mobile clearance alerts prefer the saved Team Cleared event, replacing
+  a generic Dispatch Ended fallback even when the event arrives on a later poll.
+  Web correction/review alerts respect notification preferences and do not duplicate
+  report-prepared/submitted notifications.
+
+These fixes add no migration beyond the prepared workflow migration `0034`.
+The [audit and resolution record](plans-todo/mobile-web-operational-workflow-audit-2026-11-06.md)
+records the targeted test/build results and remaining actual-phone acceptance.
+
+### Incident control labels (2026-11-06)
+
+- Dashboard incident status-pill spans use the compact non-fire label Under
+  Control and omit indicator dots across Command, Incidents and Analysis.
+- Personnel actions, timelines, notifications and register exports use
+  "Fire Contained" for Firefighting Operations and "Situation Under
+  Control" for non-fire or unclassified incidents. When operation type is absent,
+  only an explicit fire response classification enables fire wording. A known
+  non-fire operation takes precedence over a conflicting legacy classification.
+- Mobile status includes `dispatch_type` and `response_kind`; dashboard incident
+  JSON also includes `response_kind`. Existing `contained` status values, event
+  timestamps and the `/contain` API remain compatible; no migration is needed.
+- Reports and milestone forms show suppression/fire-out timing only for fire
+  responses. Situation control, each team's clearance, and command's existing
+  operation-completion milestone remain separate. Report filing does not clear
+  teams or restore resources; dispatcher review/closure is explicit and does not
+  supply an operational completion time.
+
 ### GPS routing admission and connection use (2026-11-06)
 
 - Accepted GPS uploads keep their existing history, deduplication, tracking
@@ -38,6 +428,29 @@ Plans and docstrings are cross-checked against handlers and callers.
   event is present in that excerpt. Overlapping route work and connections held
   during computation are confirmed code risks, not proof of the exact resource
   bottleneck behind that hosted timeout. The HTTP health contract is unchanged.
+
+### Faster current-position route updates (2026-11-07)
+
+- Claiming a truck queues a driver refresh immediately when its last accepted
+  mobile fix is recent, after dispatch, and has recorded accuracy of 25 m or
+  better. Missing, stale or inaccurate GPS retains the next-upload refresh path.
+- Main and pool engines prepare ALT landmarks during construction, including
+  replacement engines. Two-way position routing compares primary paths first
+  and generates full options only for the chosen direction.
+- Force Reroute, recommended driver navigation and automatic driver refreshes
+  publish the primary route first. A separate bounded queue adds alternatives
+  without replacing the selected route ID, geometry or personnel branches.
+  Explicit fastest/alternative selections retain their objective. Completion
+  rechecks route revision, dispatch/incident activity, manning, destination,
+  obstructions and model generation; optional failures retain primary navigation.
+- Route responses/events may carry `alternatives_pending`; completed option
+  events use `options_only`. Dashboard consumers reject stale option events and
+  retain options when a delayed primary response arrives. Mobile immediately
+  refreshes a new primary and ignores option-only events.
+- Local three-run medians on representative routes: New Corella 999.4 ms full
+  before versus 278.8 ms primary first; Panabo 4102.2 ms versus 408.6 ms. Complete
+  options remained identical in these comparisons. These are graph timings,
+  excluding phone/network latency and persistence, not field ETA measurements.
 
 ### Dashboard URL navigation (2026-11-06)
 
@@ -62,6 +475,63 @@ Plans and docstrings are cross-checked against handlers and callers.
 - Vite development/preview serve the SPA for deep paths. Production static
   hosting must rewrite application paths to `/index.html` (HTTP 200); see
   [frontend setup](frontend/README.md). This change does not update live hosting.
+
+### Dashboard incident alerts (2026-11-07)
+
+- The latest 50 alerts, original timestamps and read/unread state persist in
+  account-scoped browser storage across page reloads. Restoring history does not
+  replay old toast popups. Remove, Clear all and logout also clear saved entries;
+  storage failures leave the in-memory alerts usable.
+- Toasts and alert history use neutral card surfaces. New alerts have a thin,
+  dim fire-coloured border glow; read history returns to a neutral border. New incident
+  and alarm escalation labels omit the extra Critical badge. Escalation icons use
+  the fire accent; critical alerts
+  retain their existing announcement and manual-dismiss behavior.
+  Other toast notifications auto-dismiss after 20 seconds, with the countdown
+  animation using the same duration.
+- On-scene alerts use neutral borders and amber icons. Titles use the arrival
+  role in title case (for example, Team Leader On Scene); descriptions show
+  Name | Arrived at Location, with a dim pipe separator. Driver/truck arrivals
+  use the same named-person format without duplicating the accompanying
+  personal arrival event.
+- Under-control alerts use a very dim green border glow. Response updates use
+  neutral borders and muted gray icons, with amber for Suppression Started.
+  Specific titles include Release Authorized. Their descriptions identify the
+  team and next step (for example,
+  Alpha | Awaiting leader confirmation), with a dim pipe separator. Team names
+  resolve from the matching dispatch; incident-wide updates use the location.
+  View details opens `/incidents/{fire_id}?section=response-reporting` and
+  scrolls/focuses Response & Reporting. This action remains available after
+  the incident leaves the map, and repeated clicks refocus the section.
+  Suppression Started instead offers View response analysis, opening
+  `/analysis/response/incidents/{fire_id}?section=incident-milestones` with
+  Incident Milestones expanded, scrolled into view and focused. The section
+  survives reload/login, and repeated alert clicks reopen and refocus it.
+  Truck Ready and Truck Not Ready alerts use firetruck icons. Ready uses green
+  and the description Team Name | Ready and On Standby; Not Ready retains a
+  muted icon and unavailable wording. Existing history receives this formatting.
+- Tracking offline alerts appear under the Tracking notification tab, with
+  neutral borders and a muted gray Wi-Fi-off icon. They use
+  title-cased titles and explicit text such as No new GPS locations received
+  for 15 minutes. The reported duration reflects the age when the alert arrived.
+  View last location restores Normal view and personnel pins, then focuses the
+  person's latest fix or the alert's saved location at zoom level 18 or closer.
+  Saved history retains this target; an explicitly focused old pin bypasses the normal
+  eight-hour visibility cutoff without exposing other old pins.
+- New incident icons use the shared operation classification: fire responses
+  show a flame, while other and unclassified incidents show a beacon. Both icons
+  use the fire accent.
+- New incident descriptions label severity explicitly (for example, Moderate
+  Severity | 1st Alarm), using a dim pipe separator in both toasts and history,
+  including retained alerts. Fire alarms appear only when applicable and recorded;
+  non-fire operations omit alarm text. Toast and history timestamps update every second,
+  showing elapsed seconds, minutes, hours or days and refreshing on tab return.
+  Both surfaces format descriptions when rendering, so notifications retained
+  during a hot update also receive the severity label and applicable alarm text.
+- An active incident's View on map action returns to Command's Normal view,
+  enables incident pins, selects the incident, opens its Incident tab and zooms
+  to its coordinates. Repeated history actions refocus the same incident.
+  Closed incidents remain in session history without an active map action.
 
 ### Hosted dashboard startup and availability (2026-11-05)
 
@@ -307,18 +777,18 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ### Administrator after-action reports (2026-10-31)
 
-- Incident Details shows Add report or Edit report for contained and closed
-  incidents. The dedicated modal contains cause, casualties, damage estimate,
+- Incident Details shows Add report or Edit report for eligible incidents,
+  including active and closed records. The dedicated modal contains cause, casualties, damage estimate,
   incident remarks, narrative and recommendations. General Edit Incident no
   longer edits or clears casualty/remarks fields when changing status.
 - Administrator-only `PUT /api/incidents/{fire_id}/report` creates a missing
-  report or updates the latest report identified by `report_id`. A stale or
-  mismatched report ID returns 409. Narrative is required; existing photos,
+  consolidated report or updates the record identified by `report_id` and `revision`.
+  A stale or mismatched revision returns 409. Narrative is required; existing photos,
   operational times, submission time and original leader attribution survive
   corrections. Report changes and the editing administrator are audited in
   incident events. New reports identify their administrator author directly.
-- Filing on a contained incident closes it and releases every responding team
-  and truck using the normal closure path. Saving a closed incident does not
+- The November 6 workflow replaces the former report-triggered close/release.
+  Saving a report leaves response and resource states unchanged and does not
   manufacture operation timestamps. Report casualty summaries and incident
   outcome fields are saved together. The dashboard refreshes reports and
   incident rows after local saves and report WebSocket events.
@@ -341,7 +811,7 @@ Plans and docstrings are cross-checked against handlers and callers.
   When files are present it sends a multipart POST to
   `/api/incidents/{fire_id}/report/photos`, with JSON in `report` and repeated
   `photos` fields. This administrator-only endpoint uses the same locked report
-  save, stale-report guard, incident close/release and notification behavior.
+  save, revision guard and notification behavior, without closing or releasing resources.
 - The server enforces eight photos total including existing attachments, a
   10 MiB per-file limit and actual image format verification with Pillow. Report
   text and additional objects commit together; upload, signing or commit errors
@@ -413,8 +883,9 @@ Plans and docstrings are cross-checked against handlers and callers.
 - Replay remains process-local, consistent with the one-worker deployment. A
   restart or expired buffer cannot recover every old event: the dashboard emits
   a Connection Recovery alert and refreshes current state. The corresponding
-  browser-local preference controls these notices. History does not survive a
-  browser reload or logout; this change does not provide a durable alert archive.
+  browser-local preference controls these notices. Alert history now survives a
+  browser reload in account-scoped browser storage and is cleared on logout;
+  there is no server-side alert archive or cross-device history.
 
 ### Complete Response Lab workflow (2026-10-26)
 
@@ -606,6 +1077,14 @@ Plans and docstrings are cross-checked against handlers and callers.
   notes, and expandable team rosters replace the flat detail list. Team cards show
   station, truck, dispatch status and the team leader; rosters describe current
   membership rather than confirmed incident attendance.
+  Updated 2026-11-07: report time sits beside the incident ID; status appears
+  with severity and the applicable fire alarm. Non-fire/inapplicable alarm
+  chips are hidden. The main section is labeled Details, with larger gaps
+  after the response summary and before Assigned teams.
+  Routing section headings match the 10px Details heading, and successive
+  team route groups have a 21px gap (three times the panel spacing).
+  Dispatch Routing uses title case, with the same 21px gap between its
+  overview and the first team route group.
   Incident IDs use smaller, dimmer text. Leader previews separate the title and
   name with a dim pipe; leader, roster and sidebar headings use title case.
   Obstruction and heatmap view/summary headings and Refresh Data use title case;
@@ -745,7 +1224,13 @@ Plans and docstrings are cross-checked against handlers and callers.
   and selected-route ETA comparisons appear before the map.
   Operational trend points include a `breakdown` (common-cohort count, mean
   stage `seconds`, and metric `values`/`counts`), so chart selections update stage distribution for that timeframe.
-  Selecting the same timeframe again restores the full-window distribution.
+  Each point also includes a full metric `summary`. Chart selections filter the
+  lifecycle overview and stage KPI means, quality statistics and percentage changes.
+  Changes compare the selected bucket (clipped to the analysis window) with an
+  equal-length immediately preceding window, using the same filters. KPI measurements
+  continue to include all valid stage samples in either distribution mode.
+  Selecting the same timeframe again, closing the tooltip or clearing the selection
+  above the stage cards restores the full-window KPIs and distribution.
   The distribution panel includes averages and sample counts and controls both
   views with All valid measurements (default) / Four stages recorded. The latter
   uses the same complete-incident sample for chart values and stage percentages;
@@ -932,7 +1417,7 @@ but its installed behavior cannot.
 | Location/rerouting | Personnel location history/current position, membership checks, truck synchronization, deviations, connectors/rebuilds and stale-driver fallback | Mobile updates plus WS events; dashboard also polls every 10 seconds |
 | Reporter location | Admin sends PhilSMS link or receives a dry-run link; public page posts GPS; map receives broadcast/poll result | Sessions live only in memory; token expiry/registration enforcement is absent |
 | After-action reports | Assigned team leader submits narrative/details and scene photos after containment; dispatcher can recover or edit reports and append photos | Configured private Supabase Storage with signed viewing links; local disk remains the code default |
-| Notifications | Dashboard toasts, bell/history panel, configurable event alerts and WebAudio chime; backend Expo dispatch push with SMS fallback | Browser preferences persist; history is session memory, not a DB notification log |
+| Notifications | Dashboard toasts, bell/history panel, configurable event alerts and WebAudio chime; backend Expo dispatch push with SMS fallback | Browser preferences and account-scoped alert history persist across reloads; logout clears history; no DB notification log |
 | Metrics | Period totals/deltas, severity/containment counts, monthly/per-barangay data, first-arrival response averages | Missing measurements produce null/empty results rather than calibrated predictions |
 | Coverage planning | 3/5/8-minute service areas, barangay coverage-gap tables, refresh and CSV export | Descriptive reachability, not station placement optimization |
 | Incident exports | CSV, PDF and DOCX generated from a common register model with preview | Export fetch is capped at 5,000 rows |
@@ -1001,7 +1486,8 @@ Apply migration `0024` before running the updated backend.
 - Reports store public-base photo URLs; the dashboard rewrites their path onto its
   own API base to avoid tunnel interstitials on image requests.
 - Notification preferences/theme/map/session settings use localStorage. Notification
-  history is capped at 50 in-memory entries and resets with the mounted session.
+  history is capped at 50 account-scoped browser entries, survives reloads and
+  resets on logout. Toast visibility remains in memory.
 
 Sources: [api.js](frontend/src/api.js), [App.jsx](frontend/src/App.jsx),
 [useNotifications.js](frontend/src/hooks/useNotifications.js),
@@ -1214,6 +1700,11 @@ training limit. Local CPU training remains the default. The web environment uses
 No new database migration is required. See [setup](training/README.md#modal-online-training).
 Explicit source/artifact allowlists exclude backend credentials and private app
 data. Source hashes prevent stale deployments from training new snapshots.
+Known runner configuration failures, including a stale Modal trainer, return
+their safe setup message in the admin response and failed job history. Other
+submission errors retain the generic response and server traceback. A local API
+configured with `RETRAIN_RUNNER=modal` requires the same deployed training source
+as a hosted API; see the redeployment command in the training setup guide.
 Modal Volume status and local call metadata support restart recovery; network
 outages and interrupted downloads preserve the reservation for retry. Candidate
 downloads verify hashes before atomic installation. Promotion remains explicit.
@@ -1226,6 +1717,12 @@ allowlisted source hashes matched this checkout. The local backend `.env` now
 selects Modal; a restarted backend resolves `ModalRunner`. Deployment verification
 did not submit a GPU training job or promote a model. A read-only database check
 still reports champion v1, no active job and unchanged effective labels.
+
+On 2026-11-07, local retraining failed because eight allowlisted source hashes
+differed from the deployed trainer. Redeploying the same app/environment from
+this checkout restored protocol compatibility and all 19 matching source hashes.
+The local API/database health check and 18 isolated retraining regressions passed.
+Verification did not submit a GPU training job or promote a model.
 
 A synthetic integration run trained 94 epochs and verified failure/timeout and
 concurrency handling without touching a DB or active champion. Full CPU optimizer
@@ -1432,6 +1929,17 @@ and RL checkpoint directory are not supplied by this checkout.
 ## Important workflows and algorithms
 
 ### Incident intake and dispatch
+
+Both log modals default response classification from dispatch type: Firefighting
+Operations selects Fire, EMS selects Medical, and Fire Safety Enforcement or
+Fire/Arson Investigation selects Other. Special Operations and Disaster Management
+start Not yet verified. Changing dispatch type resets this selection; Fire and EMS
+are fixed to their matching classification, while other types allow non-fire choices.
+Moving a Command map pin preserves the classification draft. Command's manual
+reporting channels are 911 Call, BFP Hotline, Walk-in and Dispatcher. Intake opened
+from a reporter's shared location displays SMS Report as a read-only source and
+preserves its session token. Logging contact numbers remain optional; Request
+Location requires a number only for sending its SMS link.
 
 The Incidents page and map quick-entry forms reuse `AppModal` and the shared
 incident form controls. Intake puts location and assessment first, with reporter
@@ -1699,6 +2207,11 @@ that legacy state explicitly; the source merge does not convert the database.
 
 Measurement rules:
 
+- Incident report exports explain that preparation/travel describe the first-arriving
+  truck rather than per-truck averages. Exported processing follows that truck's
+  dispatch; dashboard processing uses the first dispatch per incident. Suppression
+  remains incident-wide and is omitted from per-unit KPI cards in PDF/Word exports.
+
 - Receipt is explicitly confirmed in an intake form or the response modal. Incident
   occurrence, record creation, reporter GPS and SMS delivery are not call receipt.
 - Processing is dispatch minus receipt; preparation is unit departure minus dispatch;
@@ -1828,8 +2341,10 @@ explicitly removes associated vehicle logs. Retention currently lasts until
 explicit incident/dispatch deletion; no automatic age purge is configured.
 Agree a deployment retention policy before using production GPS history.
 
-Incident Details and the Response & Operations incident/dispatch drill-downs share
-the recorded responder route viewer. Its administrator-only
+The Response & Operations incident/dispatch drill-downs share the recorded
+responder route viewer. Incident Details links to the incident's response analysis
+with a "View response analysis" action below the report, instead of embedding the
+route viewer. Its administrator-only
 `GET /api/operational-times/{fire_id}/responder-tracks` endpoint reads explicit
 dispatch/personnel associations, orders device timestamps, and clips samples to
 the dispatch's recorded assignment/completion window. It preserves the assignment
@@ -1973,12 +2488,45 @@ and observed field dispatch/arrival measurements. Do not record secret values he
   (MapLibre zoom 15), retaining grouped details for shared coordinates.
 - Camera controls live in an independent bottom-right slot. The incident/layer
   dock reserves space above them, including when the incident panel is collapsed.
+- One camera button toggles between Bird's-eye view (zero tilt) and Back to
+  default (40-degree tilt for standard maps, 55 degrees for photorealistic 3D),
+  facing north while preserving the current location and zoom. Its label follows
+  the live camera tilt, including changes made with the other camera controls.
 
 - Command-map incident details are hover-only (including newly logged incidents):
   clicking selects the incident and closes hover content without creating a
   fallback popup. Heatmap incident detail popups remain available. Incident and
   obstruction cards share the constraint hover-card typography and surface style.
   Camera and Actions panels share the same 9.8px bottom offset.
+
+### Hosted retraining recovery (2026-11-07)
+
+- The Render Blueprint builds from the repository root, installs the optional
+  Modal adapter and starts the API from `backend/`. The root `.python-version`
+  retains Python 3.12. Hosted secrets supply Modal credentials independently of
+  a developer's local login. `training/` remains available for source verification.
+- New Modal jobs save app/volume/environment, creation time, spawn intent and
+  acknowledged call ID in the existing training row's report JSON. Polling and
+  cancellation resume from that metadata on an empty disk. Cloud worker status
+  also records its call ID for lost-acknowledgement recovery. Recovery never
+  resubmits training; legacy jobs without this metadata still need their files.
+- `MODEL_ARTIFACT_STORAGE=supabase` checks the existing private model bucket
+  before submission and publishes verified results before candidate status commits.
+  Storage outages retain the reservation for retries. Duplicate uploads require
+  verification of the stored archive and never overwrite objects. The local
+  default remains explicit operator publication. Original, candidate and archived
+  registered artifacts can be restored for snapshots, review and promotion checks.
+- Source compatibility hashes normalize CRLF/LF without ignoring code changes.
+  The updated worker/contract requires redeploying the matching Modal trainer.
+  `backend/check_retraining.py` checks authentication, compatibility and private
+  storage using the CPU diagnostic endpoint; it submits no training or DB writes.
+  The Models client now displays the backend's safe 503 detail when provided.
+- Isolated SQLite tests with advisory locks mocked and fake Modal/storage
+  transports cover restart recovery, lost acknowledgements, cancellation, storage
+  retries, verified duplicate uploads, restored candidate review/promotion readiness
+  and source line endings. No hosted deployment, live GPU job, model promotion,
+  database migration or live storage write was performed for this change.
+  See [hosted setup](documentation/render-free-trial.md#hosted-retraining-setup-november-7-2026).
 
 ### Registered model restoration on ephemeral hosts (2026-11-04)
 

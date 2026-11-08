@@ -103,6 +103,21 @@ RETRAIN_MODAL_VOLUME=firetrackr-training-jobs
 RETRAIN_MODAL_ENVIRONMENT=main
 ```
 
+The local API can also use this Modal runner. If retraining reports that the
+Modal trainer is out of date, deploy again from the same checkout as the API
+using the command above, then retry. Source and protocol checks run before any
+snapshot upload or GPU training. Known runner setup errors appear in the admin
+response and failed job history; unexpected provider errors retain the generic
+message, with details in the server log.
+
+For an ephemeral hosted API also set `MODEL_ARTIFACT_STORAGE=supabase`, install
+the Modal requirements during its build, and supply backend `MODAL_TOKEN_ID` and
+`MODAL_TOKEN_SECRET` secrets. Deploy the repository root so `training/` remains
+available to source verification. See the concrete
+[Render setup](../documentation/render-free-trial.md#hosted-retraining-setup-november-7-2026).
+`python check_retraining.py` from `backend/` checks the configured hosted runner
+and private storage without submitting training or changing database records.
+
 The authenticated OS user must have a Modal profile (normally `~/.modal.toml`),
 or the backend process can receive `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`
 through its deployment environment. Credentials are never uploaded. Custom app
@@ -131,16 +146,28 @@ Volume. Whole repository/environment mounts are disabled. The image contains no
 database module or connection credentials. Backend runtime credentials, incident
 records, report uploads and personnel data are not part of the transfer.
 
-`ModalRunner.submit/status/fetch` persists the registry job ID and Modal call ID
-under ignored `backend/data/retraining/registry/modal_jobs/`. Cloud status, logs
-and bundles persist in the Volume under the same job ID, even after call results
-expire. Keep both the local metadata and the Volume while jobs need recovery.
+`ModalRunner.submit/status/fetch` persists credential-free recovery metadata in
+the existing training row's report JSON before submission, updating it with the
+acknowledged call ID. Ignored `backend/data/retraining/registry/modal_jobs/` files
+are a cache for new registry jobs. Cloud status, logs and bundles persist in the
+Volume under the same job ID, even after call results expire. The worker records
+its call ID in status too, so a lost acknowledgement can recover cancellation.
+Keep the Volume while jobs need recovery. Legacy jobs created without registry
+recovery metadata still need their original local files.
 Running jobs retain their saved volume/environment if configuration changes.
 A dropped submission acknowledgement preserves the training reservation; polling
 never automatically resubmits. Network outages preserve the job for the next poll.
 Interrupted downloads leave no installed version, and imports verify all hashes
 before atomically installing a complete bundle. Remote artifacts remain in the
 Volume for inspection; deletion/retention is a separate administrator operation.
+
+Hosted durable mode publishes a verified candidate to private Supabase storage
+before committing candidate status. Interrupted storage uploads/acknowledgements
+are retried; existing objects must pass all registered bundle checks and are never
+overwritten. Missing published candidate, champion and original baseline caches
+are restored for review, snapshots and promotion/rollback. The local default
+retains explicit operator publication. Source compatibility hashes normalize
+CRLF/LF, preserving the code-change gate across Windows and Linux deployments.
 
 Cloud adapter/worker regression checks use a fake transport and temporary
 directories; registry tests use disposable SQLite with PostgreSQL locks mocked:
