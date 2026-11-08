@@ -22,7 +22,7 @@ from services.label_snapshot import build_snapshot, read_database_snapshot, writ
 from services.model_artifacts import verify_artifacts, sha256, read_json
 from services.model_bundle_store import BundleStoreUnavailable, check_model_storage, publish_model_bundle
 from services.retrain_runner import LocalRunner, RunnerConfigurationError, RunnerUnavailable
-from services.resource_limits import serialized_memory_work
+from services.resource_limits import container_memory, serialized_memory_work
 
 logger = logging.getLogger(__name__)
 _REGISTRY_LOCK_KEY = 74120933
@@ -32,6 +32,17 @@ class RegistryError(Exception):
     def __init__(self, message, status_code=409):
         super().__init__(message)
         self.status_code = status_code
+
+
+def _require_model_memory():
+    # Snapshots still need temporary decoded GIS data even with cloud training.
+    # Refuse before allocating when the host is already near its hard limit.
+    budget = container_memory()
+    if budget is not None:
+        used, limit = budget
+        if limit - used < 96 * 1024 * 1024:
+            logger.warning('Model operation deferred: container memory used=%s limit=%s', used, limit)
+            raise RegistryError('Insufficient backend memory for model processing. Retry after load decreases or use an instance with more memory.', 503)
 
 
 def registry_lock(db):
@@ -80,6 +91,7 @@ def serialize_version(row):
 
 @serialized_memory_work
 def registry_summary(db):
+    _require_model_memory()
     champion = db.query(ModelVersion).filter_by(status="champion").one_or_none()
     training = db.query(ModelVersion).filter_by(status="training").one_or_none()
     if champion is None:
@@ -195,6 +207,7 @@ def retrain_runner(job_id=None, metadata=None):
 
 @serialized_memory_work
 def _reserve_retrain(db, actor, name=None):
+    _require_model_memory()
     registry_lock(db)
     if db.query(ModelVersion).filter_by(status="training").first():
         raise RegistryError("A retrain is already active")
@@ -308,7 +321,9 @@ def cancel_retrain(db, version, actor):
     return row
 
 
+@serialized_memory_work
 def _complete_job(db, row, runner):
+    _require_model_memory()
     try:
         status = runner.status(row.job_id)
     except KeyError:

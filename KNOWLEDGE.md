@@ -17,6 +17,19 @@ Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
 
+### Model-processing memory budget (2026-11-09)
+
+Snapshot building avoids unconditional spatial indexes and duplicate prediction
+properties, and streams label hashing and JSON writes while preserving existing
+snapshot labels and hashes. Model summary, retrain reservation and result
+completion require 96 MiB available in readable finite Linux cgroup budgets;
+requests return 503 under pressure and completion polling retries without
+discarding the training reservation. Result completion shares the memory-work
+lock with snapshots and coverage. The guard cannot reserve memory against
+unrelated requests. Redeploy the Modal trainer with backend changes to the
+shared snapshot source and artifact-hashing dependency; the source gate rejects
+older trainers. See [Render trial notes](documentation/render-free-trial.md).
+
 ### Hosted health checks and road catalog (2026-11-09)
 
 Render's Blueprint probes public `GET /health/live`, which checks the serving

@@ -8,6 +8,50 @@ Blueprint's Settings page if you want to apply configuration changes manually.
 
 This is a trial configuration, not evidence of a working hosted deployment.
 
+## Model processing memory exhaustion — November 9, 2026
+
+The Events screenshot for 02:02 Asia/Manila explicitly reports usage above the
+512 MB instance limit. `/health/live` continued returning 200 through 02:02:54,
+model-summary/report reads completed at 02:02:57 and the instance restarted at
+02:03:00. The excerpt contains no completed retrain POST or allocation traceback,
+so it confirms memory exhaustion without identifying its exact allocation.
+
+Model summary and submission both build effective-label snapshots in the API,
+even when GPU training runs on Modal. Snapshot building now constructs a projected
+spatial index only for legacy drawings without saved segment IDs, constructs edge
+pair maps only when needed, releases prediction attributes while transforming the
+private parsed baseline, and streams canonical label hashing, snapshot JSON output
+and file hashing. Existing labels and artifact hashes remain unchanged.
+
+On Linux cgroup v1/v2 hosts exposing a finite memory budget, model summary,
+submission reservation and candidate completion check for at least 96 MiB free
+before allocating. A pressured request returns HTTP 503 with an insufficient-memory
+message; a completion poll keeps the training job and retries later. Completion
+also shares the memory-work lock with snapshots, coverage and road catalogs.
+This headroom check is conservative, not a reservation or a guarantee against
+concurrent allocations by ordinary requests. Hosts without readable cgroup counters
+retain the allocation reductions and serialization but cannot use this guard.
+
+Local standalone checks compare six annotation cases with the deployed snapshot
+implementation, including legacy snapping, overrides, selected edges and inactive
+rows; feature/history/manifest values and written file hashes match. A Windows
+profile with the real Panabo routing graph, cached map layer and three edge-label
+snapshot writes reduced sampled peak RSS from 380.51 MiB to 357.69 MiB. These are
+not Linux cgroup or hosted-load measurements. All 31 isolated mocked-cloud,
+SQLite recovery and bundle-storage checks pass; no cloud training was launched.
+
+Deploy both sides from this source revision. `label_snapshot.py` and its hashing
+dependency participate in the compatibility gate, so update the private trainer:
+
+```powershell
+.\backend\venv\Scripts\python.exe -m modal deploy -m training.modal_app --env main
+```
+
+Then deploy the backend and retain `/health/live` as Render's Health Check Path.
+An older trainer will be rejected as out of date rather than silently accepting
+different source. Observe Render memory and a single controlled retrain after
+deployment; a memory-budget refusal means the current host needs more headroom.
+
 ## Road catalog and health timeout — November 9, 2026
 
 The supplied logs last show a health response at 01:33:10 Asia/Manila, a road-edge

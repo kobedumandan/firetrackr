@@ -14,6 +14,7 @@ SOURCE_FILES = (
     "backend/services/retrain_contract.py", "training/modal_worker.py", "training/modal_app.py",
     "training/requirements.txt", "backend/services/__init__.py",
     "backend/services/constraint_segments.py", "backend/services/label_snapshot.py",
+    "backend/services/model_artifacts.py",
 )
 
 

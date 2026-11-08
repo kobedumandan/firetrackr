@@ -55,8 +55,13 @@ def label_hash(features):
     rows.sort(key=lambda row: row["segment_uid"])
     if not rows or len({r["segment_uid"] for r in rows}) != len(rows):
         raise ValueError("Labels require unique segment identities and at least one row")
-    payload = json.dumps(rows, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    return hashlib.sha256(payload.encode()).hexdigest()
+    # Preserve the canonical JSON bytes without retaining the complete string
+    # and its encoded copy alongside every feature and label row.
+    digest = hashlib.sha256()
+    encoder = json.JSONEncoder(sort_keys=True, separators=(",", ":"), allow_nan=False)
+    for chunk in encoder.iterencode(rows):
+        digest.update(chunk.encode())
+    return digest.hexdigest()
 
 
 def baseline_edit_defaults(feature):
@@ -92,9 +97,14 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
         uids = row.get('segment_uids')
         if uids is not None and (not isinstance(uids, list) or any(not isinstance(uid, str) for uid in uids)):
             raise ValueError("Annotation segment_uids must be a list of strings")
-    data = Path(baseline_path).read_bytes()
-    original = json.loads(data)["features"]
-    index = SegmentIndex(original)
+    from .model_artifacts import sha256
+
+    baseline_digest = sha256(baseline_path)
+    with Path(baseline_path).open(encoding='utf-8') as source:
+        original = json.load(source)["features"]
+    # Only legacy drawings without saved IDs need metric snapping. Modern
+    # overrides and edge selections do not need a second projected road index.
+    index = SegmentIndex(original) if any(row.get('segment_uids') is None for row in annotations) else None
     baseline_hash = label_hash(original)
     features, by_uid = [], {}
     for feature in original:
@@ -112,7 +122,12 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
         props.update(flags)
         props.update(labels)
         props.update(segment_uid=uid, annotation_source="manual_verified" if labels["is_constrained"] else "normal_unconstrained")
-        out = {"type": "Feature", "geometry": feature["geometry"], "properties": props}
+        # The parsed baseline is private to this snapshot. Release prediction
+        # attributes as we go instead of keeping a second property dictionary.
+        original_geometry = feature['geometry']
+        feature.clear()
+        feature.update(type="Feature", geometry=original_geometry, properties=props)
+        out = feature
         features.append(out)
         by_uid[uid] = out
     # A selected junction-to-junction edge can be shorter than a training
@@ -127,7 +142,8 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
             coords = annotation['coordinates']
             group = (annotation['constraint_type'], annotation.get('narrow_severity'))
             selected_pairs.setdefault(group, set()).update(pairs(json.loads(coords) if isinstance(coords, str) else coords))
-    baseline_pairs = {uid: pairs(feature['geometry']['coordinates']) for uid, feature in by_uid.items()}
+    baseline_pairs = ({uid: pairs(feature['geometry']['coordinates']) for uid, feature in by_uid.items()}
+                      if selected_pairs else {})
     history, touched = [], set()
     partial_edge_rows = 0
     overridden = set()
@@ -203,7 +219,7 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
         feature["properties"]["primary_constraint"] = feature["properties"]["constraint_type"]
     manifest = {
         "schema_version": 1, "purpose": purpose, "label_hash": label_hash(features),
-        "baseline_label_hash": baseline_hash, "baseline_sha256": hashlib.sha256(data).hexdigest(),
+        "baseline_label_hash": baseline_hash, "baseline_sha256": baseline_digest,
         "created_at": datetime.now(timezone.utc).isoformat(), "created_by": created_by,
         "segments": len(features), "positive_segments": sum(f["properties"]["is_constrained"] for f in features),
         "counts_by_type": dict(Counter(f["properties"]["constraint_type"] for f in features)),
@@ -219,6 +235,7 @@ def build_snapshot(baseline_path, annotations, created_by=None, purpose="trainin
 def write_snapshot(directory, collection, history, manifest):
     import pandas as pd
     import pyarrow  # noqa: F401 -- fail before creating files if unavailable
+    from .model_artifacts import sha256
 
     directory = Path(directory)
     rows = [{"segment_uid": f["properties"]["segment_uid"],
@@ -228,10 +245,13 @@ def write_snapshot(directory, collection, history, manifest):
     directory.mkdir(parents=True, exist_ok=False)
     name = f"labels_{manifest['label_hash']}.parquet"
     pd.DataFrame(rows).sort_values("segment_uid").to_parquet(directory / name, index=False)
+    del rows
     for filename, data in (("features.geojson", collection), ("annotations.json", history)):
-        (directory / filename).write_text(json.dumps(data, allow_nan=False) + "\n", encoding="utf-8")
+        with (directory / filename).open('w', encoding='utf-8') as output:
+            json.dump(data, output, allow_nan=False)
+            output.write('\n')
     manifest = {**manifest, "labels_file": name,
-                "files": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(directory.iterdir())}}
+                "files": {p.name: sha256(p) for p in sorted(directory.iterdir())}}
     (directory / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest
 
