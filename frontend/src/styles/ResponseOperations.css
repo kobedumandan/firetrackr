@@ -66,7 +66,10 @@
 /* A single overview surface puts the two incident endpoints on the same baseline. */
 .rp-view .ro-overview { grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 24px; border: 1px solid var(--border-dim); border-radius: 12px; background: var(--bg-panel); overflow: hidden; }
 .rp-view .ro-overview.is-demo { grid-template-columns: 1fr; }
-.rp-view .ro-overview-card { padding: 22px 24px; min-width: 0; }
+.rp-view .ro-overview-card { position: relative; padding: 22px 24px; min-width: 0; }
+.ro-overview-tooltip-area:focus-visible, .ro-team-tooltip-area:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: 4px; border-radius: 4px; }
+.rp-scroll :is(th, tr)[aria-describedby]:focus-visible { outline: 2px solid var(--accent-fire); outline-offset: -3px; }
+.ro-kpi-tooltip { position: fixed; z-index: 1000; width: min(320px, calc(100vw - 24px)); box-sizing: border-box; pointer-events: none; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); color: var(--text-primary); box-shadow: 0 8px 24px #0003; font-size: 10px; line-height: 1.6; text-transform: none; }
 .ro-overview-card + .ro-overview-card { border-left: 1px solid var(--border-dim); }
 .ro-metric-heading { display: flex; align-items: center; gap: 9px; }
 .ro-metric-copy { flex: 1; min-width: 0; }

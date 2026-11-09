@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import useMetricTooltips from '../hooks/useMetricTooltips'
 import { duration } from '../utils/operationalTimes'
 import PerformanceIcon from './AnalysisIcon'
 import DurationTrendChart from './DurationTrendChart'
@@ -7,8 +8,20 @@ const METRICS = { response: 'Dispatch to arrival', turnout: 'Preparation', trave
 const SHIFTS = ['Shift A', 'Shift B']
 const SERIES = SHIFTS.map((name, index) => ({ key: name, label: name, color: index ? '#81a4e8' : 'var(--duration-green, #00b84a)' }))
 const STATISTICS = { median_seconds: 'Median', mean_seconds: 'Average', p90_seconds: 'p90' }
+const STATISTIC_EXPLANATIONS = {
+  median_seconds: 'The middle response time when valid times are sorted from shortest to longest. Half are at or below this time and half are at or above it.',
+  mean_seconds: 'All valid response times added together, then divided by the number of valid dispatches. A few very long responses can raise this value.',
+  p90_seconds: 'At least 90% of valid response times are at or below this time. It helps show how long slower responses take.',
+  counts: 'Valid is the number of dispatches with usable recorded times for this interval. Total includes all dispatches considered, even those with missing, pending, invalid or excluded times. Fewer than 10 valid times means the comparison is based on a small sample.',
+}
+const INTERVAL_EXPLANATIONS = {
+  response: 'Measured from dispatch until arrival at the scene.',
+  turnout: 'Measured from dispatch until departure, including getting ready.',
+  travel: 'Measured from departure until arrival at the scene.',
+}
 
 export default function ShiftComparison({ data, loading }) {
+  const { tooltipHandlers, renderTooltip } = useMetricTooltips()
   const [metric, setMetric] = useState('response')
   const [assignment, setAssignment] = useState('initial')
   const [statistic, setStatistic] = useState('median_seconds')
@@ -47,8 +60,8 @@ export default function ShiftComparison({ data, loading }) {
       <p>Statistics for {selectedPoint ? 'the selected period' : 'all dispatches in the analysis window'}.</p>
       <div className="ro-shift-result-box"><span className="ro-shift-result-badge" style={{ '--shift-result-color': resultShift?.color || 'var(--rp-muted)' }} aria-label={resultShift?.label || 'Both shifts'}>{resultShift ? resultShift.label.replace('Shift ', '') : 'A/B'}</span><p className="ro-shift-result">{difference == null ? 'Both shifts need valid observations to calculate a difference.' : Math.abs(difference) < 0.5 ? `Both shifts have the same ${STATISTICS[statistic].toLowerCase()} time to the nearest second.` : `${difference < 0 ? 'Shift A' : 'Shift B'} has a ${duration(Math.abs(difference))} shorter ${STATISTICS[statistic].toLowerCase()} time.`}</p></div>
       <div className="rp-scroll"><table><caption className="rp-sr-only">{METRICS[metric]} statistics by shift</caption><thead><tr><th scope="col">Metric</th>{shifts.map(shift => <th scope="col" key={shift.name}>{shift.name}</th>)}</tr></thead><tbody>
-        {Object.entries(STATISTICS).map(([key, label]) => <tr key={key}><th scope="row">{label}</th>{stats.map((stat, index) => <td key={SHIFTS[index]}>{duration(stat?.[key])}</td>)}</tr>)}
-        <tr><th scope="row">Valid / total</th>{stats.map((stat, index) => <td key={SHIFTS[index]}>{stat?.valid ?? 0} / {stat?.candidate ?? 0}{stat?.small_sample && <small className="ro-shift-sample">Fewer than 10 valid</small>}</td>)}</tr>
+        {Object.entries(STATISTICS).map(([key, label]) => <tr key={key} tabIndex={0} {...tooltipHandlers(`shift-${key}`)}><th scope="row">{label}{renderTooltip(`shift-${key}`, `${STATISTIC_EXPLANATIONS[key]} ${INTERVAL_EXPLANATIONS[metric]} Applies to the selected period and assignment filter.`, false)}</th>{stats.map((stat, index) => <td key={SHIFTS[index]}>{duration(stat?.[key])}</td>)}</tr>)}
+        <tr tabIndex={0} {...tooltipHandlers('shift-counts')}><th scope="row">Valid / total{renderTooltip('shift-counts', STATISTIC_EXPLANATIONS.counts, false)}</th>{stats.map((stat, index) => <td key={SHIFTS[index]}>{stat?.valid ?? 0} / {stat?.candidate ?? 0}{stat?.small_sample && <small className="ro-shift-sample">Fewer than 10 valid</small>}</td>)}</tr>
       </tbody></table></div>
       {!stats.some(stat => stat?.valid > 0) && <p className="ro-shift-note">No valid timings match this interval and assignment. Adjust the analysis window or filters.</p>}
       </section>

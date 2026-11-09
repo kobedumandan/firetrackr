@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import useMetricTooltips from '../hooks/useMetricTooltips'
 import CsvReviewModal from './CsvReviewModal'
 import KpiCard, { KPI_EMPTY } from './KpiCard'
 import PerformanceIcon from './AnalysisIcon'
@@ -15,6 +16,35 @@ import '../styles/MethodNote.css'
 
 const COLORS = ['var(--duration-green, #00b84a)', '#55b4ad', '#81a4e8', '#c49bd3', '#c7aa62', '#c98697']
 const MEASURES = { response: 'After dispatch', handling: 'Dispatch handling', acknowledgement: 'Acknowledgement', turnout: 'Turnout', travel: 'Travel' }
+const TEAM_EXPLANATIONS = {
+  response: 'How long it takes from dispatching a team until it arrives at the incident scene. This includes getting ready and travelling.',
+  handling: 'How long it takes from receiving the incident report until this team is dispatched. Teams sent later may have a longer time here.',
+  acknowledgement: 'How long it takes after dispatch for the team to confirm it has received the assignment. This time is already included in turnout.',
+  turnout: 'How long it takes after dispatch for the team to get ready and leave for the incident. This includes the time taken to acknowledge the assignment.',
+  travel: 'How long the team spends travelling, from departure until arrival at the incident scene.',
+}
+const INCIDENT_COLUMNS = {
+  Incident: 'The incident reference number and its current status.',
+  'Report received': 'When the incident report was received. If the receipt time is unknown, the occurrence date is shown and labelled instead.',
+  'Location / response': 'Where the incident happened and the type of response, such as a fire response.',
+  'Dispatches / trucks': 'How many team assignments and responding trucks are recorded for this incident.',
+  'Call-to-first-arrival': 'Time from receiving the report until the first responding crew or truck arrives at the scene.',
+  Suppression: 'Time from the recorded start of firefighting until the fire is declared out. This does not apply to non-fire responses.',
+  'Overall operation': 'Time from receiving the report until the operation is confirmed complete, including work after the fire is out.',
+  Actions: 'Open the incident analysis to review its timeline, responding units and route evidence.',
+}
+const DISPATCH_COLUMNS = {
+  'Dispatch / incident': 'The reference numbers for this team assignment and its incident.',
+  'Team / context': 'The assigned team and details about its assignment, such as whether it was sent initially or as reinforcement.',
+  Location: 'Where the team was sent to respond.',
+  Dispatched: 'When the team was assigned to respond to the incident.',
+  Acknowledged: 'When the team confirmed it had received the assignment.',
+  Departed: 'When the team left for the incident.',
+  Arrived: 'When the team arrived at the incident scene.',
+  'After dispatch': TEAM_EXPLANATIONS.response,
+  Quality: 'Whether the response time can be used. Pending means an endpoint is still awaited; missing means a required time is unavailable; invalid means the times need review; excluded means the assignment is left out of the calculation.',
+  Actions: 'Open this dispatch to review the response details and supporting evidence.',
+}
 function TeamFilter({ teams, selected, onChange }) {
   const [open, setOpen] = useState(false)
   const pickerRef = useRef(null)
@@ -121,9 +151,25 @@ function TeamTrend({ monthly, onMonth, selectedMonth, loading }) {
   </div>
 }
 
+function ExplainedTableHeading({ label, explanation, table, visuallyHidden = false }) {
+  const { tooltipHandlers, renderTooltip } = useMetricTooltips()
+  const key = `${table}-${label.replaceAll(/[^a-z0-9]+/gi, '-').toLowerCase()}`
+  return <th scope="col" tabIndex={0} {...tooltipHandlers(key)}>
+    {visuallyHidden ? <span className="rp-sr-only">{label}</span> : label}
+    {renderTooltip(key, explanation, false)}
+  </th>
+}
+
 function LifecyclePanel({ data, loading, demo, selectedTimeframe, onTimeframeChange }) {
   const [trendMetric, setTrendMetric] = useState('all')
   const [measurementMode, setMeasurementMode] = useState('all')
+  const { tooltipHandlers, renderTooltip } = useMetricTooltips()
+  const stageExplanations = {
+    processing: 'How long it takes from receiving an incident report until the first team is dispatched.',
+    preparation: 'How long it takes after dispatch for the crew to get ready and the truck to leave for the incident.',
+    travel: 'How long the truck spends travelling, from departure until it arrives at the incident scene.',
+    suppression: 'How long firefighters spend putting out the fire, from the recorded start of firefighting until the fire is declared out. Work at the scene may continue after this.',
+  }
   const allValid = measurementMode === 'all'
   const selectedPoint = data?.trends?.find(point => point.at === selectedTimeframe)
   const summary = selectedPoint ? selectedPoint.summary : data?.summary
@@ -140,17 +186,20 @@ function LifecyclePanel({ data, loading, demo, selectedTimeframe, onTimeframeCha
   }))
   const timeframeLabel = selectedPoint && (data.trend_period === '1d' ? dateTime(selectedPoint.at) : new Date(selectedPoint.at).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', ...(data.trend_period !== 'all' ? { day: 'numeric' } : {}) }))
   const metrics = [
-    { key: 'cta', label: 'Call-to-First-Arrival', description: 'Report Receipt → First Eligible Arrival' },
-    ...(!demo ? [{ key: 'operation', label: 'Overall Operation Time', description: 'Report Receipt → Confirmed Operation Completion' }] : []),
+    { key: 'cta', label: 'Call-to-First-Arrival', description: 'Report Receipt → First Eligible Arrival', explanation: 'How long it takes from receiving an incident report until the first responding crew or fire truck arrives at the scene. This includes processing the report, getting ready and travelling.' },
+    ...(!demo ? [{ key: 'operation', label: 'Overall Operation Time', description: 'Report Receipt → Confirmed Operation Completion', explanation: 'How long the whole operation takes, from receiving the incident report until the operation is confirmed complete. It includes the response and work at the scene, so it can continue after the fire is put out.' }] : []),
   ]
   const total = STAGES.reduce((sum, stage) => sum + (stageValues[stage.key] || 0), 0)
   const largest = Math.max(0, ...STAGES.map(stage => stageValues[stage.key] || 0))
   const hasMeasurements = STAGES.some(stage => Number.isFinite(stageValues[stage.key]))
   return <>
-    <div className={`ro-overview${demo ? ' is-demo' : ''}`}>{metrics.map(({ key, label, description }) => <section className="ro-overview-card" key={key} aria-label={label}>
+    <div className={`ro-overview${demo ? ' is-demo' : ''}`}>{metrics.map(({ key, label, description, explanation }) => <section className="ro-overview-card" key={key} aria-label={label}>
+      <div className="ro-overview-tooltip-area" tabIndex={0} aria-label={label} {...tooltipHandlers(key)}>
       <div className="ro-metric-heading"><span className="ro-metric-icon"><PerformanceIcon name={key === 'cta' ? 'response' : 'acknowledgement'} /></span><div className="ro-metric-copy"><h2>{label}</h2><p className="ro-metric-definition">{description}</p></div><span className="ro-unit-label">Per Incident</span></div>
+      {renderTooltip(key, explanation)}
       {loading ? <span className="rp-value-skeleton kpi-sk" /> : <strong className={`rp-overall${summary?.[key]?.mean_seconds == null ? ' is-empty' : ''}`}>{duration(summary?.[key]?.mean_seconds)}</strong>}
       <span className="ro-mean-caption">Average Duration<span>{loading ? 'Loading Measurements' : `${summary?.[key]?.valid || 0} Measured Incidents`}{timeframeLabel ? ` · ${timeframeLabel}` : ''}</span></span>
+      </div>
       <Quality stat={summary?.[key]} />
     </section>)}</div>
     <section className="ro-stages-panel" aria-label="Operation stages">
@@ -160,11 +209,14 @@ function LifecyclePanel({ data, loading, demo, selectedTimeframe, onTimeframeCha
       const unit = ['preparation', 'travel'].includes(stage.key) && !demo
       return <section className={`rp-metric-card${trendMetric === stage.key ? ' is-selected' : ''}`} key={stage.key}>
         <span className="ro-stage-number">0{index + 1}</span>
+        <div className="ro-stage-tooltip-area" {...tooltipHandlers(stage.key)}>
         <KpiCard label={stage.key === 'processing' ? 'Report processing' : stage.label} icon={<PerformanceIcon name={stage.key} />} accent="fire" loading={loading}
           value={stat?.mean_seconds == null ? KPI_EMPTY : duration(stat.mean_seconds)}
-          onClick={() => setTrendMetric(stage.key)} actionLabel={`View ${stage.label.toLowerCase()} trend`}
+          onClick={() => setTrendMetric(stage.key)} actionLabel={`View ${stage.label.toLowerCase()} trend`} showNativeTooltip={false}
           sub={<>{unit ? 'Per Truck' : stage.key === 'suppression' ? 'Per Fire Incident' : 'Per Incident'} <span className="ro-label-separator" aria-hidden="true">|</span> {stage.key === 'processing' ? 'Receipt → First Dispatch' : stage.key === 'preparation' ? 'Dispatch → Departure' : stage.key === 'travel' ? 'Departure → Arrival' : 'Suppression Start → Fire Out'}</>}
           trend={stat?.change_percent == null ? null : { dir: stat.change_percent > 0 ? 'up' : 'down', text: `${Math.abs(stat.change_percent).toFixed(1)}% vs Preceding Window` }} />
+        {renderTooltip(stage.key, stageExplanations[stage.key])}
+        </div>
         <Quality stat={stat} compact />
       </section>
     })}</div>
@@ -266,7 +318,7 @@ function IncidentRecords({ query, revision, onOpenAnalysis, demo, month, months,
       <button type="button" className="ro-reset-dispatch-filters" aria-label="Reset incident filters" title="Reset incident filters" disabled={!dirty} onClick={() => { setFilters({ team: '', quality: '', assignment: '' }); onMonthChange(''); setPage(1); setExportError(null) }}><PerformanceIcon name="refresh" /></button>
     </div>
     {(error || exportError) && <p role="alert" className="rp-error">{error || exportError}{error && <button onClick={() => setRetry(n => n + 1)}>Retry incidents</button>}</p>}
-    <div className="rp-scroll"><table><thead><tr>{['Incident', 'Report received', 'Location / response', 'Dispatches / trucks', 'Call-to-first-arrival', 'Suppression', 'Overall operation', 'Actions'].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead><tbody>
+    <div className="rp-scroll"><table><thead><tr>{Object.entries(INCIDENT_COLUMNS).map(([label, explanation]) => <ExplainedTableHeading key={label} label={label} explanation={explanation} table="incidents" />)}</tr></thead><tbody>
       {loading ? [0, 1, 2].map(n => <tr key={n} aria-hidden="true">{Array.from({ length: 8 }, (_, i) => <td key={i}><span className="rp-cell-skeleton kpi-sk" /></td>)}</tr>) : data?.records.map(record => <tr key={record.fire_id}>
         <td><div className="ro-record-incident">INC-{record.fire_id}{record.status ? <StatusPill status={record.status} incident={record} /> : <MissingValue />}</div></td>
         <td><ReceiptDateTime value={record.synthetic_timeline?.report_received_at || record.reported_at || record.occurred_at} />{!record.reported_at && (record.synthetic_timeline?.report_received_at || record.occurred_at) && <small>{demo ? 'Synthesized receipt' : <>Occurrence date <span className="ro-label-separator" aria-hidden="true">|</span> receipt unknown</>}</small>}</td>
@@ -292,6 +344,7 @@ function IncidentRecords({ query, revision, onOpenAnalysis, demo, month, months,
 }
 
 export default function ResponsePerformanceView({ onOpenAnalysis, onOpenDispatch }) {
+  const { tooltipHandlers, renderTooltip } = useMetricTooltips()
   const [filters, setFilters] = useState(() => ({ ...initialDates(), period: 'custom', source: 'recorded', kind: 'operational', teams: [], station: '', barangay: '', severity: '' }))
   const [page, setPage] = useState(1)
   const [month, setMonth] = useState('')
@@ -438,9 +491,13 @@ export default function ResponsePerformanceView({ onOpenAnalysis, onOpenDispatch
       <div className="rp-kpis">{Object.entries(MEASURES).map(([key, label]) => {
         const stat = data?.summary[key]
         return <section className="rp-card rp-metric-card" key={key}>
+          <div className="ro-team-tooltip-area" tabIndex={0} aria-label={label} {...tooltipHandlers(`team-${key}`)}>
           <KpiCard icon={<PerformanceIcon name={key} />} accent="fire" label={label} value={stat?.mean_seconds == null ? KPI_EMPTY : duration(stat.mean_seconds)} loading={loading}
+            showNativeTooltip={false}
             sub={key === 'response' ? 'Dispatch → arrival' : key === 'handling' ? 'Report receipt → dispatch' : key === 'acknowledgement' ? 'Dispatch → acknowledgement' : key === 'turnout' ? 'Dispatch → departure' : 'Departure → arrival'}
             trend={stat?.change_percent == null ? null : { dir: stat.change_percent > 0 ? 'up' : 'down', text: `${Math.abs(stat.change_percent).toFixed(1)}% vs preceding window` }} />
+          {renderTooltip(`team-${key}`, TEAM_EXPLANATIONS[key])}
+          </div>
           <Quality stat={stat} compact />
         </section>
       })}</div>
@@ -459,7 +516,7 @@ export default function ResponsePerformanceView({ onOpenAnalysis, onOpenDispatch
         </div>
         {dispatchError && <div className="rp-error" role="alert"><span>{dispatchError}</span><button onClick={() => setRevision(value => value + 1)}>Retry dispatches</button></div>}
         {exportError && <p className="rp-error" role="alert">{exportError}</p>}
-        <div className="rp-scroll"><table><thead><tr>{['Dispatch / incident', 'Team / context', 'Location', 'Dispatched', 'Acknowledged', 'Departed', 'Arrived', 'After dispatch', 'Quality'].map(h => <th key={h} scope="col">{h}</th>)}<th scope="col"><span className="rp-sr-only">Actions</span></th></tr></thead><tbody>
+        <div className="rp-scroll"><table><thead><tr>{Object.entries(DISPATCH_COLUMNS).map(([label, explanation]) => <ExplainedTableHeading key={label} label={label} explanation={explanation} table="dispatches" visuallyHidden={label === 'Actions'} />)}</tr></thead><tbody>
           {dispatchLoading ? [0, 1, 2].map(n => <tr key={n} aria-hidden="true">{Array.from({ length: 10 }, (_, i) => <td key={i}><span className="rp-cell-skeleton kpi-sk" /></td>)}</tr>) : rows?.records.map(r => <tr key={r.dispatch_id}>
             <td><div className="ro-record-incident"><span>DISP-{r.dispatch_id}</span><span className="ro-dispatch-incident">INC-{r.fire_id}</span></div></td>
             <td><span className="rp-team-name">{r.context.team_name || <MissingValue />}</span><small className="ro-dispatch-context">{r.context.station_name || <MissingValue />}<span className="ro-label-separator" aria-hidden="true">|</span>{r.context.shift_name?.trim() ? <span className="ro-shift-chip" title={r.context.shift_name} aria-label={r.context.shift_name}>{r.context.shift_name.replace('Shift ', '')}</span> : <MissingValue />}{r.reinforcement && <><span className="ro-label-separator" aria-hidden="true">|</span>Reinforcement</>}</small></td>

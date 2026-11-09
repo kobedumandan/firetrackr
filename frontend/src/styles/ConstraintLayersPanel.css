@@ -154,7 +154,7 @@
 .constraint-inspector-hint > svg { width: 10px; height: 10px; margin-top: 1px; }
 .constraint-layers .constraint-remove-btn { width: 100%; min-height: 30px; padding: 6px 7px; color: var(--constraint-muted); border-color: var(--border); background: transparent; font-size: 9px; }
 .constraint-layers .constraint-remove-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-raise); border-color: var(--constraint-muted); }
-.map-area--constraint-editing :is(.command-basemap, .command-basemap-float-btn) { left: 376px; }
+.map-area--constraint-editing .command-map-alert-controls { left: 376px; }
 .view-mode-btn:disabled { opacity: .4; cursor: not-allowed; }
 @media (max-width: 850px) {
   .constraint-layers { width: 300px; }
@@ -167,10 +167,10 @@
   .constraint-layer-recent { margin: 8px 12px; }
   .constraint-layers-filters { padding: 0 12px; }
   .constraint-layers-draft { margin: 8px 12px 0; }
-  .map-area--constraint-editing :is(.command-basemap, .command-basemap-float-btn) { left: 328px; }
+  .map-area--constraint-editing .command-map-alert-controls { left: 328px; }
 }
 @media (max-width: 520px) {
   .constraint-layers { inset: 10px auto 10px 10px; width: 290px; max-width: calc(100% - 20px); border-radius: 12px; }
-  .map-area--constraint-editing :is(.command-basemap, .command-basemap-float-btn) { left: auto; right: 10px; top: auto; bottom: 12px; }
+  .map-area--constraint-editing .command-map-alert-controls { left: auto; right: 10px; top: auto; bottom: 12px; max-width: calc(100% - 20px); justify-content: flex-end; }
 }
 @media (prefers-reduced-motion: reduce) { .constraint-layers button { transition: none; } }

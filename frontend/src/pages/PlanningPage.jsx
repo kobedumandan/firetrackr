@@ -8,6 +8,8 @@ import { useTheme } from "../hooks/useTheme";
 import KpiCard, { KPI_EMPTY } from "../components/KpiCard";
 import CsvReviewModal from "../components/CsvReviewModal";
 import AnalysisIcon from "../components/AnalysisIcon";
+import StationMapMarker from "../components/StationMapMarker";
+import { stationIcon } from "../utils/stationIcon";
 import useSplitPane from "../hooks/useSplitPane";
 import {
   fetchCoverageIsochrones,
@@ -369,6 +371,14 @@ export default function PlanningPage() {
   const gapsLoading = gaps === null && !gapError;
   const meta = iso?.meta || {};
   const features = useMemo(() => iso?.isochrones?.features || [], [iso]);
+  const stationMarkerIcon = useMemo(() => stationIcon(), []);
+  const mappedStations = useMemo(() => (stations || []).filter((station) => {
+    const lat = station.station_latitude;
+    const lng = station.station_longitude;
+    return lat != null && lng != null && String(lat).trim() !== "" && String(lng).trim() !== ""
+      && Number.isFinite(Number(lat)) && Math.abs(Number(lat)) <= 90
+      && Number.isFinite(Number(lng)) && Math.abs(Number(lng)) <= 180;
+  }), [stations]);
   const bands = useMemo(
     () =>
       [...features].sort(
@@ -637,6 +647,9 @@ export default function PlanningPage() {
                       onSelect={selectBarangay}
                     />
                   )}
+                  {mappedStations.map((station) => (
+                    <StationMapMarker key={station.station_id} station={station} icon={stationMarkerIcon} />
+                  ))}
                   <FitBounds geojson={iso?.isochrones} />
                   <FlyToSelection featureCollection={barangays} selected={selected} />
                 </MapContainer>

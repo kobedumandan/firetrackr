@@ -28,6 +28,7 @@ export default function KpiCard({
   loading = false,
   onClick,
   actionLabel,
+  showNativeTooltip = true,
 }) {
   // A figure that resolved to nothing should recede rather than read as a real
   // measurement — same size and position, just much lower contrast.
@@ -38,7 +39,7 @@ export default function KpiCard({
       className="kpi-card-action"
       onClick={onClick}
       aria-label={actionLabel || label}
-      title={actionLabel || label}
+      title={showNativeTooltip ? actionLabel || label : undefined}
     />
   ) : null;
 
