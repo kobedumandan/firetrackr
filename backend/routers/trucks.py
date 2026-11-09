@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db
+from services.resource_lifecycle import archive_resource, require_unarchived, active_reference, archive_dict
 from models import DispatchRecord, DispatchTruck, Station, Truck, Users
 from schemas import TruckCreate, TruckUpdate
 from security import get_current_user, require_admin
@@ -20,7 +21,7 @@ def get_trucks(
 ):
     pending_returns = selectinload(Truck.dispatch_trucks.and_(
         DispatchTruck.return_started_at.is_not(None), DispatchTruck.ready_at.is_(None)))
-    rows = (db.query(Truck).options(
+    rows = (db.query(Truck).filter(Truck.archived_at.is_(None)).options(
                 joinedload(Truck.station),
                 pending_returns.joinedload(DispatchTruck.return_station),
                 pending_returns.joinedload(DispatchTruck.dispatch_record).joinedload(DispatchRecord.team))
@@ -38,6 +39,8 @@ def create_truck(
         raise HTTPException(422, 'Create a truck with an availability state; dispatch actions establish response states.')
     if db.query(Truck).filter(Truck.truck_platenum == body.truck_platenum).first():
         raise HTTPException(status_code=409, detail="A truck with that plate number already exists.")
+    if body.station_id is not None:
+        active_reference(db, Station, body.station_id, "Station")
     if body.station_id and not db.get(Station, body.station_id):
         raise HTTPException(status_code=404, detail="Station not found.")
     truck = Truck(
@@ -61,6 +64,7 @@ def update_truck(
     truck = db.query(Truck).filter_by(truck_id=truck_id).populate_existing().with_for_update().first()
     if not truck:
         raise HTTPException(status_code=404, detail="Truck not found.")
+    require_unarchived(truck)
     if body.truck_platenum is not None:
         conflict = db.query(Truck).filter(
             Truck.truck_platenum == body.truck_platenum,
@@ -97,6 +101,8 @@ def update_truck(
              (DispatchTruck.return_started_at.is_not(None) & DispatchTruck.ready_at.is_(None))),
         ).first():
             raise HTTPException(409, 'Preserve the home station until the active response and return are complete.')
+        if body.station_id is not None:
+            active_reference(db, Station, body.station_id, "Station")
         if body.station_id is not None and not db.get(Station, body.station_id):
             raise HTTPException(status_code=404, detail="Station not found.")
         truck.station_id = body.station_id
@@ -111,8 +117,5 @@ def delete_truck(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    truck = db.get(Truck, truck_id)
-    if not truck:
-        raise HTTPException(status_code=404, detail="Truck not found.")
-    db.delete(truck)
+    archive_resource(db, "trucks", truck_id, _auth)
     db.commit()

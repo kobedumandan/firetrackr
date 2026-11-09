@@ -1006,6 +1006,10 @@
   border: 1px solid var(--border);
   border-radius: 9px;
 }
+.eim-seg[aria-label="Alarm level"] {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 .eim-seg-btn {
   padding: 8px 10px 6px;
   border: none;

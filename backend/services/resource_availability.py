@@ -144,6 +144,10 @@ def team_unavailability(db, team, *, members=None, truck=None, require_truck=Fal
     ability to send a team without either; every existing resource still has to
     be available. The write caller holds the team/personnel/truck locks.
     """
+    if team.archived_at:
+        return "not_active", "This team is archived."
+    if team.station and team.station.archived_at:
+        return "station_operational", "This station is archived."
     if team.station and (team.station.station_status or '').strip().lower() == 'inactive':
         return 'station_operational', 'This team belongs to an inactive station.'
     if (team.team_status or '').strip().lower() not in ('', 'standby'):
@@ -163,6 +167,8 @@ def team_unavailability(db, team, *, members=None, truck=None, require_truck=Fal
     if require_truck and truck is None:
         return 'has_truck', 'This team has no assigned truck.'
     if truck is not None:
+        if truck.archived_at:
+            return "has_truck", "This team's truck is archived."
         busy = truck.truck_id in availability['busy_trucks'] if availability is not None else db.query(DispatchTruck.dispatch_truck_id).join(DispatchRecord).filter(
             DispatchTruck.truck_id == truck.truck_id,
             or_(DispatchRecord.dispatch_status.in_(ACTIVE),
@@ -170,7 +176,9 @@ def team_unavailability(db, team, *, members=None, truck=None, require_truck=Fal
         ).first()
         if (truck.truck_status or '').strip().lower() != 'available' or busy:
             return 'has_truck', 'This team\'s truck is unavailable or already dispatched.'
-    members = list(team.members if members is None else members)
+    members = [m for m in (team.members if members is None else members) if not m.personnel.archived_at]
+    if any(m.personnel.user and m.personnel.user.disabled_at for m in members):
+        return "members_standby", "This team has personnel with disabled accounts."
     if require_members and not members:
         return 'members_standby', 'This team has no assigned personnel.'
     if any((member.member_status or '').strip().lower() not in ('', 'standby') for member in members):

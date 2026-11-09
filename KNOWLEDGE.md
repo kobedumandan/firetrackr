@@ -2,6 +2,25 @@
 
 ## Basis and maintenance
 
+### Resource retirement and retention (2026-11-09)
+
+Teams, trucks, personnel and stations now archive instead of being permanently
+deleted. Personnel archiving disables account access without deleting identity,
+reports or tracking evidence. Account access controls also cover administrators.
+Administrator accounts are protected from disable actions, including attempts by
+other administrators. Personnel disable actions require confirmation.
+Archive browsing is centralized under Settings → Data → Archive, below Preferences,
+with category tabs; account controls are under Settings → Account → Account access.
+Completed/cancelled incidents archive while retaining dispatches, reports, photos
+and historical analytics; resolved obstructions remain in history. New migrations
+are `0036` and `0037`, after the existing workflow/model-name revisions. Validation
+used a separate loopback PostGIS database. Hosted Supabase was subsequently
+upgraded from `0035` to `0037` on 2026-11-09, with affected row counts unchanged;
+the local application database setting was preserved.
+See [resource archiving](documentation/resource-archiving.md) for contracts,
+restrictions, migration steps and local checks. This supersedes older deletion
+descriptions below.
+
 This document began with source inspected on 2026-10-12 at commit `deb09e1`,
 with implementation updates through 2026-10-20. It records code capabilities, not proof of a
 live deployment, trained-model quality or successful field trials. Recheck source
@@ -16,6 +35,45 @@ the [coverage audit](documentation/response-coverage-algorithm-audit.md) and
 Plans and docstrings are cross-checked against handlers and callers.
 
 ## Purpose and system overview
+
+### Alarm escalation (2026-11-09)
+
+Fire alarms progress through First to Fifth Alarm, Task Force Alpha through Echo,
+with escalation toasts recognizing every upward transition. Both incident and
+workflow WebSocket snapshots compare alarm ranks before replacing the previous
+snapshot, so a workflow event arriving first cannot consume the alarm change.
+Repeated snapshots of the same level do not produce duplicate escalation toasts.
+Notification summaries also use the full shared alarm list.
+The progression ends at General Alarm.
+Intake, editing, filters, timeline and live notification ranks
+share the dashboard progression. The escalation modal retains its three-step
+`.eam-track`, showing a moving window of levels. Escalation proceeds only
+after a separate confirmation summarizes the incident, alarm transition and selected
+additional teams. Back or Escape returns to the selection without changing the alarm
+or dispatching units. A warning appears before escalating
+to Third Alarm. Persistent fire-colored cards beside the map-style control show
+every active incident at Third Alarm and above, independently of incident-tab
+selection, with the location name, incident ID and address. Cards clear when the
+warning count falls to zero. Two or more warnings default to compact accordion
+rows showing the name, ID and alarm; opening one closes the others. Expanded
+rows hide their summary and provide a collapse button. A single warning stays expanded.
+Cards also clear when the
+incident leaves the active list or no longer meets the alarm threshold:
+the dispatcher must request assistance from neighboring cities' fire stations.
+This is guidance only; no external assistance request is sent automatically.
+The supplied alarm table provides truck ranges and control guidance. Recommendation
+targets use each range's minimum (4, 6, 8, 10, 15, 24, 28, 32, 36, 40, 44).
+General Alarm selects all returned eligible teams, with a minimum target of 44;
+recommendations are limited to 100 teams per request. External units outside the
+resource roster are not counted or dispatched by this flow.
+
+### Response Lab station return (2026-11-09)
+
+Truck return payloads include the recorded return station's latitude and longitude.
+Response Lab starts synthetic driver return travel after actual scene clearance,
+retracing the approach and connecting to that station. The schematic path is not
+road routing. Arrival opens driver Ready / Not ready controls; a not-ready truck
+requires a reason and can be confirmed ready later through the existing workflow.
 
 ### Model-processing memory budget (2026-11-09)
 

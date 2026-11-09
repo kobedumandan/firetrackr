@@ -15,9 +15,9 @@ export default function StationMapMarker({ station, icon, onViewStation }) {
         <div className="station-popup-meta">{station.station_type === 'sub' ? 'Sub-station' : 'Main station'}</div>
         {station.station_address && <div>{station.station_address}</div>}
         {station.station_contact && <div>Contact: {station.station_contact}</div>}
-        <div className="station-popup-footer">
+        {onViewStation && <div className="station-popup-footer">
           <button type="button" className="station-popup-view" onClick={() => onViewStation(station.station_id)}>View station</button>
-        </div>
+        </div>}
       </div>
     </Popup>
   </Marker>

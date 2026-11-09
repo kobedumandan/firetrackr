@@ -407,7 +407,7 @@ export default function RightSidebar({
   const respondingDispatches = incidentDispatches.filter(dispatch => !['cancelled', 'canceled', 'recalled'].includes(dispatch.dispatch_status));
   const allTeamsCleared = respondingDispatches.length > 0 && respondingDispatches.every(isClearedDispatch);
   const noActiveTeams = activeDispatches.length === 0 && incidentDispatches.length > 0;
-  const highestAlarm = ["3rd Alarm", "General Alarm"].includes(incident?.alarm);
+  const highestAlarm = incident?.alarm === "General Alarm";
   const headerTime = incident?.report_received_at || incident?.reported_at;
   const showAlarm = isFireOperation(incident) && !['not applicable', 'n/a'].includes((incident?.alarm || '').trim().toLowerCase());
   const [showDispatch, setShowDispatch] = useState(false);

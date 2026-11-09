@@ -1,0 +1,40 @@
+.archive-pane { min-width: 0; }
+.archive-tabs { display: flex; gap: 4px; overflow-x: auto; padding: 10px 14px 0; border-bottom: 1px solid var(--border-dim); }
+.archive-tabs [role="tab"] { flex-shrink: 0; padding: 10px 12px 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--settings-muted); font: 500 10.8px/1.5 var(--font-ui); cursor: pointer; }
+.archive-tabs [role="tab"]:hover { color: var(--text-primary); background: var(--settings-soft); }
+.archive-tabs [role="tab"][aria-selected="true"] { border-bottom-color: var(--accent-fire); color: var(--text-primary); }
+.archive-tabs [role="tab"]:focus-visible, .archive-records:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+.archive-tabs [role="tab"]:disabled { opacity: .5; cursor: wait; }
+.archive-records { padding: 18px; min-width: 0; }
+.archive-description { margin: 0 0 18px; color: var(--settings-muted); font: 10.8px/1.7 var(--font-ui); }
+.archive-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
+.archive-search-wrap { position: relative; flex: 1; max-width: 280px; min-width: 0; }
+.archive-search-wrap .archive-search { width: 100%; min-width: 0; box-sizing: border-box; padding: 6px 10px 4px 28px; border: 1px solid var(--border); border-radius: 7px; background: var(--page-default-base); color: var(--text-primary); font: 10.8px var(--font-condensed); outline: none; transition: border-color .15s; }
+.archive-search-wrap .archive-search:focus { border-color: var(--accent-fire-focus); }
+.archive-search-wrap .archive-search::placeholder { color: var(--text-secondary); }
+.archive-search-wrap .archive-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-secondary); pointer-events: none; }
+.archive-search-wrap:has(input:not(:placeholder-shown)) .archive-search-icon { color: var(--text-primary); }
+.archive-count { flex-shrink: 0; margin-left: auto; color: var(--settings-muted); font: 10px/1.5 var(--font-ui); text-transform: capitalize; }
+.archive-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 17px 0; border-bottom: 1px solid var(--border-dim); }
+.archive-row:last-child { border-bottom: 0; }
+.archive-row-info { min-width: 0; overflow-wrap: anywhere; }
+.archive-row-main { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.archive-row .archive-row-avatar { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 11px; background: var(--bg-hover); color: var(--text-secondary); }
+.archive-row-avatar svg { width: 18px; height: 18px; }
+.archive-row-avatar .material-symbols-outlined { font-size: 20px; }
+.archive-row .archive-obstruction-avatar { color: var(--accent-red); }
+.archive-row .archive-obstruction-repair { color: var(--accent-amber); }
+.archive-row .archive-obstruction-flood { color: var(--accent-cyan); }
+.archive-row .archive-obstruction-accident { color: var(--accent-fire); }
+.archive-row .archive-dispatcher, .archive-row .archive-obstruction-status { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.archive-account-role { margin-bottom: 5px; }
+.archive-row-avatar { font: 700 10.8px var(--font-span); letter-spacing: .2px; }
+.val-badge.archive-personnel-badge { background: var(--chip-muted-bg); color: var(--text-secondary); }
+.archive-row .archive-account-contact { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 7px; }
+.archive-pipe { color: var(--text-dim, var(--text-muted)); opacity: .55; }
+.inc-pagination.archive-pagination { flex-wrap: wrap; gap: 10px; border-top: 1px solid var(--border-dim); margin-top: 8px; padding-inline: 0; padding-bottom: 0; }
+.archive-row strong { color: var(--text-primary); font: 600 11.8px/1.5 var(--font-ui); }
+.archive-row small { display: block; margin-top: 5px; color: var(--settings-muted); font: 9.8px/1.7 var(--font-ui); }
+.archive-empty { margin: 0; padding: 30px 0; color: var(--settings-muted); font: 10.8px/1.7 var(--font-ui); text-align: center; }
+.archive-error { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 16px; padding: 12px; border: 1px solid var(--accent-red); border-radius: 7px; color: var(--accent-red); font: 10.8px/1.7 var(--font-ui); }
+@media (max-width: 520px) { .archive-tabs { padding-inline: 8px; } .archive-records { padding: 14px; } .archive-row { gap: 12px; } .archive-count { font-size: 9px; } }

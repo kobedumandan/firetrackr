@@ -271,7 +271,7 @@ function TruckDetail({ t, onEdit, onDelete, onShowOnMap, onReturnRecorded }) {
         <button type="button" className="act-icon-btn" onClick={onEdit} title="Edit truck" aria-label="Edit truck">
           <EditIcon />
         </button>
-        <button type="button" className="act-icon-btn danger" onClick={onDelete} title="Delete truck" aria-label="Delete truck">
+        <button type="button" className="act-icon-btn danger" onClick={onDelete} title="Archive truck" aria-label="Archive truck">
           <RemoveIcon />
         </button>
       </div>
@@ -810,16 +810,15 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
       )}
       {deleting && (
         <ConfirmModal
-          eyebrow="DELETE TRUCK"
-          title={`Delete ${deleting.truck_platenum}?`}
+          eyebrow="ARCHIVE TRUCK"
+          title={`Archive ${deleting.truck_platenum}?`}
           message={
             <>
-              This will permanently remove truck{" "}
-              <strong>{deleting.truck_platenum}</strong> from the fleet. This
-              action cannot be undone.
+              Archive truck{" "}
+              <strong>{deleting.truck_platenum}</strong> from active fleet selection. Past dispatches and location evidence are preserved. You can restore it in Settings → Data → Archive.
             </>
           }
-          confirmLabel="Delete Truck"
+          confirmLabel="Archive Truck"
           onConfirm={confirmDelete}
           onClose={() => setDeleting(null)}
         />

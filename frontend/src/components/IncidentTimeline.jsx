@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { fetchDispatches, fetchIncidentEvents } from "../api";
 import { incidentControl, incidentStatusLabel } from '../utils/incidentOperations';
+import { ALARM_ORDER as ALARM_RANK } from "../utils/alarmLevels";
 
 function clock(iso) {
   if (!iso) return null;
@@ -20,7 +21,6 @@ function span(fromIso, toMs) {
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
-const ALARM_RANK = { "1st Alarm": 1, "2nd Alarm": 2, "3rd Alarm": 3, "General Alarm": 4 };
 const SEV_RANK = { Minor: 1, Moderate: 2, Critical: 3 };
 
 const by = (actor) => (actor ? `by ${actor}` : null);

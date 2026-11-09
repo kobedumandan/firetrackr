@@ -10,6 +10,7 @@ from starlette.concurrency import run_in_threadpool
 import state
 from auto_dispatch import select_best_team
 from database import get_db
+from services.resource_lifecycle import archive_resource, require_unarchived
 from models import (
     DispatchRecord, DispatchTruck, FireIncident, HeatmapData, IncidentEvent,
     IncidentReport, ReportPhoto, Route, Users,
@@ -53,7 +54,7 @@ def get_incidents(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    q = db.query(FireIncident)
+    q = db.query(FireIncident).filter(FireIncident.archived_at.is_(None))
 
     # period filter
     if period == "custom" or date_from is not None or date_to is not None:
@@ -139,7 +140,7 @@ def get_active_incidents(
     """Plain array of non-closed incidents for the dashboard map/sidebar."""
     rows = (
         db.query(FireIncident)
-        .filter(FireIncident.fire_status != "closed")
+        .filter(FireIncident.fire_status != "closed", FireIncident.archived_at.is_(None))
         .order_by(FireIncident.fire_incident_datetime.desc())
         .all()
     )
@@ -275,6 +276,7 @@ async def update_incident(
     inc = db.get(FireIncident, fire_id)
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found.")
+    require_unarchived(inc, "Incident")
     was_closed = inc.fire_status == "closed"
     if body.fire_status == 'closed' and not was_closed:
         raise HTTPException(409, 'Use Review & Close after operation completion and consolidated reporting.')
@@ -324,66 +326,9 @@ async def delete_incident(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    # Match dispatch assignment/clearance and report submission's incident lock
-    # so the eligibility check and deletion see one consistent response state.
-    inc = (db.query(FireIncident).filter_by(fire_id=fire_id)
-           .populate_existing().with_for_update().first())
-    if not inc:
-        raise HTTPException(status_code=404, detail="Incident not found.")
-
-    if db.query(DispatchRecord.dispatch_id).filter(
-        DispatchRecord.fire_id == fire_id,
-        DispatchRecord.dispatch_status.in_(ACTIVE),
-    ).first():
-        raise HTTPException(409, 'Cannot delete an incident with an ongoing dispatch. Clear all responding teams first.')
-    if db.query(DispatchTruck.dispatch_truck_id).join(DispatchRecord).filter(
-        DispatchRecord.fire_id == fire_id,
-        DispatchTruck.return_started_at.is_not(None),
-        DispatchTruck.ready_at.is_(None),
-    ).first():
-        raise HTTPException(409, 'Cannot delete an incident while a truck return or readiness confirmation is pending.')
-
-    photo_names = [name for (name,) in db.query(ReportPhoto.file_name)
-                   .join(IncidentReport).filter(IncidentReport.fire_id == fire_id).all()]
-    dispatch_ids = [
-        d.dispatch_id
-        for d in db.query(DispatchRecord).filter(DispatchRecord.fire_id == fire_id).all()
-    ]
-
-    # Break the dispatch -> route FK so routes can be removed freely.
-    db.query(DispatchRecord).filter(DispatchRecord.fire_id == fire_id).update(
-        {"route_id": None}, synchronize_session=False
-    )
-    if dispatch_ids:
-        from models import TruckLog
-        unit_ids = [u.dispatch_truck_id for u in db.query(DispatchTruck).filter(DispatchTruck.dispatch_id.in_(dispatch_ids))]
-        if unit_ids:
-            db.query(TruckLog).filter(TruckLog.dispatch_truck_id.in_(unit_ids)).delete(synchronize_session=False)
-        db.query(DispatchTruck).filter(
-            DispatchTruck.dispatch_id.in_(dispatch_ids)
-        ).delete(synchronize_session=False)
-
-    # Remove all child rows tied to this incident, then the incident itself.
-    # Reports reference both the incident and its dispatch. Remove them before
-    # the dispatches; their photo rows cascade, and object cleanup follows commit.
-    db.query(IncidentReport).filter(IncidentReport.fire_id == fire_id).delete(
-        synchronize_session="fetch"
-    )
-    db.query(Route).filter(Route.fire_id == fire_id).delete(synchronize_session=False)
-    db.query(DispatchRecord).filter(DispatchRecord.fire_id == fire_id).delete(
-        synchronize_session=False
-    )
-    db.query(HeatmapData).filter(HeatmapData.fire_id == fire_id).delete(
-        synchronize_session=False
-    )
-    db.query(IncidentEvent).filter(IncidentEvent.fire_id == fire_id).delete(
-        synchronize_session=False
-    )
-
-    db.delete(inc)
+    archive_resource(db, 'incidents', fire_id, _auth)
     db.commit()
-    await run_in_threadpool(cleanup_report_photos, photo_names)
-
+    # Existing clients remove the archived incident from their operational map/list.
     await manager.broadcast({"type": "incident_deleted", "data": {"fire_id": fire_id}})
 
 

@@ -141,7 +141,10 @@ DOCX and CSV agree on the incident register.
 
 Change ORM models and add a reviewed Alembic migration together; do not edit applied
 historical migrations or replace them with `create_all()`. The checked-in chain
-is `0001` through `0033`. Revisions `0025`/`0026` preserve the original constraint
+is `0001` through `0037`. Revisions `0034`/`0035` add response workflow and model
+display names; `0036`/`0037` add resource/account archiving and incident/obstruction
+retention. See [resource archiving](documentation/resource-archiving.md).
+Revisions `0025`/`0026` preserve the original constraint
 and model registry history; `0027`/`0028` add operational timing and response
 performance; `0029` adds optional narrow severity and traffic schedules; `0030`
 adds nullable baseline override targets and their active uniqueness guard.

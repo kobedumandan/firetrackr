@@ -58,6 +58,8 @@ async def _perform_dispatch(
     incident = db.query(FireIncident).filter_by(fire_id=fire_id).populate_existing().with_for_update().first()
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found.")
+    if incident.archived_at:
+        raise HTTPException(409, 'This incident is archived. Restore it before taking new actions.')
     team = db.query(ResponseTeam).filter_by(team_id=team_id).populate_existing().with_for_update().first()
     if not team:
         raise HTTPException(status_code=404, detail="Team not found.")
@@ -67,6 +69,8 @@ async def _perform_dispatch(
         raise HTTPException(409, 'This incident no longer accepts dispatches.')
     members = db.query(ResponseTeamMember).filter_by(team_id=team_id).populate_existing().all()
     lock_personnel_assignments(db, [member.per_id for member in members])
+    db.expire_all()  # Re-read archive/account state after waiting for crew assignment locks.
+    members = [m for m in members if not m.personnel.archived_at]
     truck = None
     if team.truck_id:
         truck = db.query(Truck).filter_by(truck_id=team.truck_id).populate_existing().with_for_update().one()

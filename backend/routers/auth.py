@@ -12,7 +12,7 @@ from models import LoginHistory, TokenBlacklist, Users
 from schemas import LoginRequest, PasswordChange, ProfileUpdate
 from security import (
     _bearer, _create_token, _hash_password, _home_station, _user_profile,
-    _verify_password, get_current_user,
+    _verify_password, get_current_user, ensure_account_enabled, require_admin,
 )
 
 
@@ -73,6 +73,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     # their token would 403 on nearly every dashboard route anyway.
     if user.user_role != "admin":
         raise HTTPException(status_code=403, detail="This account can't sign in to the dashboard.")
+    ensure_account_enabled(user)
     _record_login(db, user, request)
     return {
         "access_token": _create_token(user),
@@ -88,6 +89,7 @@ def login_user(req: LoginRequest, request: Request, db: Session = Depends(get_db
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if user.user_role != "personnel":
         raise HTTPException(status_code=403, detail="Access denied")
+    ensure_account_enabled(user)
     _record_login(db, user, request)
     return {
         "access_token": _create_token(user),

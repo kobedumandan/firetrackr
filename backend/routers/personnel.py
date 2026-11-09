@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from config import STALE_MINUTES
 from database import get_db
+from services.resource_lifecycle import archive_resource, require_unarchived, active_reference, archive_dict
 from models import (
     CurrentLocation, Device, DispatchRecord, DispatchTruck, LocationLog,
     Personnel, ResponseTeamMember, Shift, Station, Users,
@@ -24,7 +25,7 @@ router = APIRouter(tags=["personnel"])
 def _member_readiness(person, return_context=None):
     """Prefer an existing response over a second idle membership."""
     normalize = lambda value: (value or '').strip().lower().replace('_', '')
-    memberships = list(person.team_memberships)
+    memberships = [m for m in person.team_memberships if not m.team.archived_at]
     def member_status(member):
         status = normalize(member.member_status)
         progress = (return_context or {}).get('teams', {}).get(member.team_id)
@@ -44,7 +45,7 @@ def get_personnel(
     _auth: Users = Depends(require_admin),
 ):
     # Keep the base roster query intact; batch relationships without reordering it.
-    rows = db.query(Personnel).options(
+    rows = db.query(Personnel).filter(Personnel.archived_at.is_(None)).options(
         selectinload(Personnel.user),
         selectinload(Personnel.station),
         selectinload(Personnel.shift),
@@ -116,6 +117,9 @@ def get_personnel(
         result.append({
             "id":          f"FU-{p.per_id:03d}",
             "per_id":      p.per_id,
+            "user_id": p.user_id,
+            "account_disabled": bool(p.user and p.user.disabled_at),
+            **archive_dict(p),
             "name":        f"{first} {last}".strip(),
             "initials":    initials or "??",
             "rank":        p.per_rank        or "—",
@@ -148,7 +152,7 @@ def get_personnel_locations(
     """Dashboard polls this every 10 seconds to refresh personnel markers on the map."""
     now = datetime.now(timezone.utc)
 
-    rows = db.query(CurrentLocation).options(
+    rows = db.query(CurrentLocation).join(Personnel).filter(Personnel.archived_at.is_(None)).options(
         selectinload(CurrentLocation.personnel).joinedload(Personnel.shift),
         selectinload(CurrentLocation.personnel).selectinload(Personnel.team_memberships),
     ).all()
@@ -224,6 +228,7 @@ def update_personnel(
     p = db.get(Personnel, per_id)
     if not p:
         raise HTTPException(status_code=404, detail="Personnel not found.")
+    require_unarchived(p)
 
     if body.per_firstname   is not None: p.per_firstname   = body.per_firstname
     if body.per_lastname    is not None: p.per_lastname    = body.per_lastname
@@ -231,6 +236,8 @@ def update_personnel(
     if body.per_rank        is not None: p.per_rank        = body.per_rank
     if body.per_designation is not None: p.per_designation = body.per_designation
     if "station_id" in body.model_fields_set:
+        if body.station_id is not None:
+            active_reference(db, Station, body.station_id, "Station")
         if body.station_id is not None and not db.get(Station, body.station_id):
             raise HTTPException(status_code=404, detail="Station not found.")
         p.station_id = body.station_id
@@ -260,6 +267,9 @@ def update_personnel(
     return {
         "id":          f"FU-{p.per_id:03d}",
         "per_id":      p.per_id,
+            "user_id": p.user_id,
+            "account_disabled": bool(p.user and p.user.disabled_at),
+            **archive_dict(p),
         "name":        f"{first} {last}".strip(),
         "rank":        p.per_rank        or "—",
         "designation": p.per_designation or "",
@@ -282,6 +292,8 @@ def create_personnel(
     if conflict:
         raise HTTPException(status_code=409, detail="Email already in use.")
 
+    if body.station_id is not None:
+        active_reference(db, Station, body.station_id, "Station")
     if body.station_id is not None and not db.get(Station, body.station_id):
         raise HTTPException(status_code=404, detail="Station not found.")
 
@@ -312,6 +324,9 @@ def create_personnel(
     return {
         "id":          f"FU-{p.per_id:03d}",
         "per_id":      p.per_id,
+            "user_id": p.user_id,
+            "account_disabled": bool(p.user and p.user.disabled_at),
+            **archive_dict(p),
         "name":        f"{first} {last}".strip(),
         "initials":    initials or "??",
         "rank":        p.per_rank        or "—",
@@ -337,49 +352,5 @@ def delete_personnel(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    p = db.get(Personnel, per_id)
-    if not p:
-        raise HTTPException(status_code=404, detail="Personnel not found.")
-
-    user_id = p.user_id
-    previous_teams = [m.team_id for m in p.team_memberships]
-
-    # Detach optional references that would otherwise block the delete.
-    db.query(Station).filter(Station.station_commander_id == per_id).update(
-        {"station_commander_id": None}, synchronize_session=False
-    )
-    db.query(DispatchTruck).filter(DispatchTruck.manned_by_per_id == per_id).update(
-        {"manned_by_per_id": None}, synchronize_session=False
-    )
-
-    # Remove owned child rows: team memberships, live location, devices + logs.
-    db.query(ResponseTeamMember).filter(ResponseTeamMember.per_id == per_id).delete(
-        synchronize_session=False
-    )
-    from services.personnel_deployment import sync_rosters
-    for team_id in previous_teams:
-        sync_rosters(db, team_id, _auth)
-    db.query(CurrentLocation).filter(CurrentLocation.per_id == per_id).delete(
-        synchronize_session=False
-    )
-    device_ids = [
-        d.device_id for d in db.query(Device).filter(Device.per_id == per_id).all()
-    ]
-    if device_ids:
-        db.query(LocationLog).filter(LocationLog.device_id.in_(device_ids)).delete(
-            synchronize_session=False
-        )
-        db.query(Device).filter(Device.per_id == per_id).delete(
-            synchronize_session=False
-        )
-
-    db.delete(p)
-    db.flush()
-
-    # The login account is created alongside the personnel record — remove it too.
-    if user_id is not None:
-        user = db.get(Users, user_id)
-        if user:
-            db.delete(user)
-
+    archive_resource(db, "personnel", per_id, _auth)
     db.commit()

@@ -141,6 +141,8 @@ def return_payload(unit):
         'reason': unit.not_ready_reason,
         'station_id': unit.return_station_id,
         'station_name': station.station_name if station else None,
+        'station_latitude': station.station_latitude if station else None,
+        'station_longitude': station.station_longitude if station else None,
     }
 
 

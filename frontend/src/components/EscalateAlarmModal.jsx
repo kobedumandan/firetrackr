@@ -11,12 +11,9 @@ import "../styles/ConfirmModal.css";
 import "../styles/DispatchModal.css";
 import "../styles/EscalateAlarmModal.css";
 import { ICON_CLOSE, ICON_CHECK, ICON_WARN } from "./incidentFormOptions";
-import { Icon, SectionHead, Callout, LockedNote } from "./incidentForm";
-
-// Alarm levels the dashboard exposes (mirrors Log/Edit incident modals). The
-// backend also knows "General Alarm", but the rest of the UI caps at 3rd, so
-// escalation does too — a dispatcher never escalates past what they can log.
-const ALARM_LEVELS = ["1st Alarm", "2nd Alarm", "3rd Alarm"];
+import { Icon, SectionHead, LockedNote } from "./incidentForm";
+import { ALARMS, ALARM_LEVELS, needsNeighboringSupport } from "../utils/alarmLevels";
+import ConfirmModal from "./ConfirmModal";
 
 // Human copy for the diagnostic `reason` codes when nothing eligible remains.
 const REASON_COPY = {
@@ -36,11 +33,13 @@ function formatEta(minutes) {
   return `${Math.round(minutes)} min`;
 }
 
-/* 1st → 2nd → 3rd, read-only: where the incident is, and where it's going. */
+/* Keep the three-step track focused on the current and upcoming levels. */
 function AlarmTrack({ currentIdx, targetIdx }) {
+  const start = Math.min(currentIdx, ALARMS.length - 3);
   return (
     <ol className="eam-track" aria-label="Alarm level">
-      {ALARM_LEVELS.map((lvl, i) => {
+      {ALARMS.slice(start, start + 3).map((lvl, offset) => {
+        const i = start + offset;
         const state = i === targetIdx ? "target" : i === currentIdx ? "current" : i < currentIdx ? "past" : "todo";
         return (
           <li key={lvl} className={`eam-level ${state}`}>
@@ -72,8 +71,9 @@ function AlarmTrack({ currentIdx, targetIdx }) {
  */
 export default function EscalateAlarmModal({ incident, onClose, onDispatched }) {
   const currentLevel = incident?.alarm || "1st Alarm";
-  const currentIdx = Math.max(0, ALARM_LEVELS.indexOf(currentLevel));
-  const nextLevel = ALARM_LEVELS[currentIdx + 1] || null;
+  const currentIdx = Math.max(0, ALARMS.indexOf(currentLevel));
+  const nextLevel = ALARMS[currentIdx + 1] || null;
+  const targetGuidance = ALARM_LEVELS[currentIdx + 1];
   const atMax = !nextLevel;
 
   // Only fetch (and thus start in a loading state) when there's a level to
@@ -90,13 +90,14 @@ export default function EscalateAlarmModal({ incident, onClose, onDispatched }) 
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   useEffect(() => {
     if (!willFetch) return;
     let cancelled = false;
     Promise.all([
       fetchDispatchRecommendations(incident.fire_id, {
-        limit: 8,
+        limit: nextLevel === "General Alarm" ? 100 : Math.max(8, targetGuidance.target),
         targetLevel: nextLevel,
       }),
       fetchTeams().catch(() => []),
@@ -105,7 +106,7 @@ export default function EscalateAlarmModal({ incident, onClose, onDispatched }) 
         if (cancelled) return;
         const recommended = data.recommended || [];
         const active = data.already_active || 0;
-        const target = data.target_units ?? currentIdx + 2;
+        const target = data.target_units ?? targetGuidance.target;
         setRecs(recommended);
         setTeams(teamList || []);
         setAlreadyActive(active);
@@ -126,19 +127,18 @@ export default function EscalateAlarmModal({ incident, onClose, onDispatched }) 
     return () => {
       cancelled = true;
     };
-  }, [willFetch, incident?.fire_id, nextLevel, currentIdx]);
+  }, [willFetch, incident?.fire_id, nextLevel, targetGuidance]);
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape" && !submitting) onClose(); };
+    const onKey = (e) => { if (e.key === "Escape" && !submitting && !showConfirmation) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, submitting]);
+  }, [onClose, submitting, showConfirmation]);
 
   const recommendedCount = useMemo(
     () => Math.max((targetUnits ?? 0) - alreadyActive, 0),
     [targetUnits, alreadyActive]
   );
-  const shortfall = Math.max(recommendedCount - recs.length, 0);
   const maxEta = Math.max(1, ...recs.map((r) => r.eta_minutes || 0));
 
   function toggle(teamId) {
@@ -188,6 +188,31 @@ export default function EscalateAlarmModal({ incident, onClose, onDispatched }) 
   const selectedCount = selected.size;
   const ready = !atMax && !loading && !loadError;
 
+  if (showConfirmation) {
+    return (
+      <ConfirmModal
+        eyebrow="CONFIRM ESCALATION"
+        title={`Escalate to ${nextLevel}?`}
+        icon="warning"
+        details={[
+          { label: "Incident", value: incident?.id || `INC-${incident?.fire_id}` },
+          { label: "Location", value: incident?.loc },
+          { label: "Alarm level", value: `${currentLevel} → ${nextLevel}` },
+          { label: "Additional units", value: selectedCount ? recs.filter(rec => selected.has(rec.team_id)).map(rec => rec.team_name).join(", ") : "None selected" },
+        ]}
+        message={<>
+          This will raise the alarm level{selectedCount > 0 ? ` and dispatch ${selectedCount} additional ${selectedCount === 1 ? "unit" : "units"}` : " without dispatching additional units"}.
+          {needsNeighboringSupport(nextLevel) && " Request assistance from neighboring cities' fire stations."}
+        </>}
+        confirmLabel={selectedCount > 0 ? `Escalate & dispatch ${selectedCount}` : "Escalate alarm"}
+        cancelLabel="Back"
+        confirmDisabled={!ready || submitting}
+        onConfirm={handleConfirm}
+        onClose={() => setShowConfirmation(false)}
+      />
+    );
+  }
+
   return createPortal(
     <div className="apm-overlay adm-overlay" onMouseDown={(e) => e.target === e.currentTarget && !submitting && onClose()}>
       <div className="apm-panel eim-panel adm-panel eam-panel" role="dialog" aria-modal="true" aria-labelledby="eam-title">
@@ -213,6 +238,19 @@ export default function EscalateAlarmModal({ incident, onClose, onDispatched }) 
 
         <div className="eim-body">
           <AlarmTrack currentIdx={currentIdx} targetIdx={atMax ? -1 : currentIdx + 1} />
+
+          {(needsNeighboringSupport(currentLevel) || needsNeighboringSupport(nextLevel)) && (
+            <div className="adm-result warn" role="alert">
+              <span className="adm-result-icon"><Icon d={ICON_WARN} /></span>
+              <span className="adm-result-text">
+                <span className="adm-result-title">Request neighboring-city support</span>
+                <span className="adm-result-desc">
+                  Third Alarm and above: request assistance from neighboring cities' fire stations.
+                  Coordinate their response with the dispatcher. This escalation does not send an external assistance request.
+                </span>
+              </span>
+            </div>
+          )}
 
           {atMax ? (
             <div className="adm-result warn" role="status">
@@ -266,11 +304,6 @@ export default function EscalateAlarmModal({ incident, onClose, onDispatched }) 
                   </LockedNote>
                 ) : (
                   <>
-                    {shortfall > 0 && (
-                      <Callout>
-                        Only {recs.length} of the {recommendedCount} units this level calls for are available.
-                      </Callout>
-                    )}
                     <ul className="adm-cands">
                       {recs.map((c, i) => {
                         const isSel = selected.has(c.team_id);
@@ -327,7 +360,7 @@ export default function EscalateAlarmModal({ incident, onClose, onDispatched }) 
             ) : (
               <>
                 <button className="apm-btn-cancel" onClick={onClose} disabled={submitting}>Cancel</button>
-                <button className="apm-btn-submit" onClick={handleConfirm} disabled={!ready || submitting}>
+                <button className="apm-btn-submit" onClick={() => setShowConfirmation(true)} disabled={!ready || submitting}>
                   {submitting ? (
                     <span className="apm-spinner" />
                   ) : selectedCount > 0 ? (

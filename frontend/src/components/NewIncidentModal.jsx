@@ -160,12 +160,9 @@ export default function NewIncidentModal({ location, initial, onSubmit, onCancel
             </Field>
             <div className="eim-row">
               {showFireAlarm && <Field label="Alarm level">
-                <Segmented
-                  label="Alarm level"
-                  options={ALARMS.map(a => ({ value: a, label: a.replace(' Alarm', '') }))}
-                  value={form.alarm}
-                  onChange={v => set('alarm', v)}
-                />
+                <select aria-label="Alarm level" value={form.alarm} onChange={e => set('alarm', e.target.value)}>
+                  {ALARMS.map(alarm => <option key={alarm} value={alarm}>{alarm}</option>)}
+                </select>
               </Field>}
               {showFireAlarm && <StructureTypeField value={form.structure} onChange={value => set('structure', value)} />}
             </div>

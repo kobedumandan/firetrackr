@@ -72,7 +72,9 @@ Operational response measurements live in
 [ResponsePerformanceView.jsx](frontend/src/components/ResponsePerformanceView.jsx),
 with incident lifecycle cohorts in `backend/services/response_operations.py` and
 shared timing quality rules in `backend/services/timing_metrics.py`. Apply migrations
-through `0033` before starting this revision. The Analysis sidebar page groups
+through `0037` before starting this revision. See
+[resource archiving](documentation/resource-archiving.md) for lifecycle changes and
+local validation. The Analysis sidebar page groups
 Response & Operations, Coverage Planning and Operational Reports under shared tabs;
 Metrics contains the overview only. See `frontend/src/pages/AnalysisPage.jsx`;
 Response Performance's service is `backend/services/response_performance.py`. Mobile acknowledgement
@@ -172,7 +174,7 @@ login. Restart the backend for the new administrator-only
 
 ## Database and migration work
 
-The current chain ends at `0033_preserve_legacy_dispatch_attribution.py`. Original constraint/model
+The current chain ends at `0037_incident_obstruction_retention.py`. Original constraint/model
 revisions `0025`/`0026` are retained; new `0027` adds operational timing. Do not use
 the earlier response-only review database, whose numeric revision IDs represent
 different migrations. Add a new migration for

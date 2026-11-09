@@ -413,6 +413,7 @@ export default function IncidentDetailsPage({
               type="button"
               className="act-icon-btn"
               onClick={() => onEdit?.(incident)}
+              disabled={!!incident.archived_at}
               title="Edit incident"
               aria-label="Edit incident"
             >
@@ -422,8 +423,9 @@ export default function IncidentDetailsPage({
               type="button"
               className="act-icon-btn danger"
               onClick={() => onDelete?.(incident)}
-              title="Delete incident"
-              aria-label="Delete incident"
+              disabled={!!incident.archived_at}
+              title="Archive incident"
+              aria-label="Archive incident"
             >
               <RemoveIcon />
             </button>

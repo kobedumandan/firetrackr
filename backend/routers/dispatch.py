@@ -116,11 +116,13 @@ def get_dispatch_recommendations(
     recommended, reason, _meta = recommend_teams(
         db, incident,
         routing_engine=state.routing_engine,
-        limit=max(1, min(limit, 25)),
+        limit=max(1, min(limit, 100)),
         exclude_team_ids=exclude_ids,
     )
 
     target_units = ALARM_UNIT_TARGETS.get(target_level) if target_level else None
+    if target_level == "General Alarm":
+        target_units = max(target_units, len(active) + len(recommended))
 
     return {
         "fire_id":          fire_id,

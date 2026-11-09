@@ -19,11 +19,13 @@ def duty_window(now):
 def duty(person, now=None):
     now = now or datetime.now(timezone.utc)
     start, end = duty_window(now)
+    if getattr(person, 'archived_at', None) or getattr(getattr(person, 'user', None), 'disabled_at', None):
+        return False, 'account_inactive', start, end
     name = (person.shift.shift_name if person.shift else '').strip().lower().replace('_', ' ')
     if name not in (current_shift_name(now).lower(), f'shift {current_shift_name(now).lower()}'):
         return False, 'off_duty' if name else 'shift_unassigned', start, end
     if any((m.member_status or '').lower().replace('_', '') in ('offduty', 'inactive')
-           for m in person.team_memberships):
+           for m in person.team_memberships if not getattr(getattr(m, 'team', None), 'archived_at', None)):
         return False, 'marked_off_duty', start, end
     return True, None, start, end
 

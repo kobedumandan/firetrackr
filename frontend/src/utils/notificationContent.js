@@ -1,7 +1,8 @@
 import { isFireOperation } from './incidentOperations'
+import { ALARMS } from './alarmLevels'
 
 const severityLabel = value => value ? `${value.replace(/\s+severity$/i, '').trim()} Severity` : ''
-const alarmLabel = value => /^(1st|2nd|3rd|General) Alarm$/.test(value?.trim()) ? value.trim() : ''
+const alarmLabel = value => ALARMS.includes(value?.trim()) ? value.trim() : ''
 const titleCase = value => value.toLowerCase().replace(/\b[a-z]/g, letter => letter.toUpperCase())
 
 export function offlineAlertContent(tracker) {

@@ -274,7 +274,9 @@ export default function LogIncidentModal({ onClose, onSubmit }) {
             </Field>
             <div className="eim-row">
               {showFireAlarm && <Field label="Alarm level">
-                <Segmented label="Alarm level" options={ALARMS.map(a => ({ value: a, label: a.replace(' Alarm', '') }))} value={form.fire_alarm_level} onChange={v => set('fire_alarm_level', v)} />
+                <select aria-label="Alarm level" value={form.fire_alarm_level} onChange={e => set('fire_alarm_level', e.target.value)}>
+                  {ALARMS.map(alarm => <option key={alarm} value={alarm}>{alarm}</option>)}
+                </select>
               </Field>}
               {showFireAlarm && <StructureTypeField value={form.fire_structure_type} onChange={value => set('fire_structure_type', value)} />}
             </div>

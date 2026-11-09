@@ -28,7 +28,7 @@ export const SEVERITIES = [
   { value: 'Moderate', tone: 'amber' },
   { value: 'Critical', tone: 'fire' },
 ]
-export const ALARMS     = ['1st Alarm', '2nd Alarm', '3rd Alarm']
+export { ALARMS } from '../utils/alarmLevels';
 export const supportsFireAlarm = dispatchType => !dispatchType || dispatchType === 'Firefighting Operations'
 export const defaultResponseKind = dispatchType => ({
   'Firefighting Operations': 'fire',

@@ -6,6 +6,7 @@ import EditIncidentModal from "../components/EditIncidentModal";
 import ConfirmModal from "../components/ConfirmModal";
 import ExportRegisterModal from "../components/ExportRegisterModal";
 import IncidentDetailsPage from "./IncidentDetailsPage";
+import { ALARMS } from "../utils/alarmLevels";
 import { SeverityBadge, StatusPill, formatReported } from "../components/incidentUi";
 import { fetchIncident, fetchIncidents, fetchIncidentWorkflow, createIncident, deleteIncident } from "../api";
 
@@ -107,10 +108,11 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, inc
       try {
         const { dispatches } = await fetchIncidentWorkflow(deletingIncident.fire_id);
         const blocker = dispatches.some(d => ['dispatched', 'en_route', 'on_scene'].includes(d.dispatch_status))
-          ? 'Cannot delete an incident with an ongoing dispatch. Clear all responding teams first.'
+          ? 'Cannot archive an incident with an ongoing dispatch. Clear all responding teams first.'
           : dispatches.some(d => d.returns?.some(unit => !unit.ready_at))
-            ? 'Cannot delete an incident while a truck return or readiness confirmation is pending.'
-            : null;
+            ? 'Cannot archive an incident while a truck return or readiness confirmation is pending.'
+            : !['closed', 'cancelled', 'canceled', 'recalled'].includes(deletingIncident.status) && !deletingIncident.operation_completed_at
+              ? 'Complete or cancel this incident before archiving it.' : null;
         if (alive && current === request) setDeleteCheck({ incident: deletingIncident, blocker });
       } catch {
         if (alive && current === request) setDeleteCheck({ incident: deletingIncident,
@@ -367,8 +369,8 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, inc
         )}
         {deletingIncident && (
           <ConfirmModal
-            eyebrow="DELETE INCIDENT"
-            title={deletionReady && deletionBlocker ? 'Cannot delete incident' : 'Delete this incident?'}
+            eyebrow="ARCHIVE INCIDENT"
+            title={deletionReady && deletionBlocker ? 'Cannot archive incident' : 'Archive this incident?'}
             details={[
               { label: "Incident", value: deletingIncident.id },
               { label: "Location", value: deletingIncident.loc },
@@ -377,12 +379,12 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, inc
             ]}
             message={deletionBlocker || (
               <>
-                Its dispatch records, routes, reports and photos are removed with it.
+                Its dispatches, routes, reports, photos and response analysis are preserved. It will be hidden from the active register.
                 {" "}
-                <strong>This can't be undone.</strong>
+                <strong>You can restore it in Settings → Data → Archive.</strong>
               </>
             )}
-            confirmLabel="Delete incident"
+            confirmLabel="Archive incident"
             confirmDisabled={!deletionReady || !!deletionBlocker}
             onConfirm={confirmDelete}
             onClose={() => setDeletingIncident(null)}
@@ -433,7 +435,7 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, inc
             <UnfoldIcon />
           </div>
           <div className="inc-header-actions">
-            <button
+              <button
               className="inc-btn-secondary table-export-btn"
               // The live search box, not the debounced query.search, so text
               // typed a moment before clicking is still in scope.
@@ -556,9 +558,7 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, inc
           onChange={(e) => setFilter("alarm", e.target.value)}
         >
           <option value="">All Alarm Levels</option>
-          <option value="1st Alarm">1st Alarm</option>
-          <option value="2nd Alarm">2nd Alarm</option>
-          <option value="3rd Alarm">3rd Alarm</option>
+          {ALARMS.map(level => <option key={level} value={level}>{level}</option>)}
         </select>
 
         {/* PERIOD FILTER */}

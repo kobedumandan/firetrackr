@@ -27,6 +27,7 @@ import "../styles/CommandViewPanel.css";
 import "../styles/ConstraintPopup.css";
 import ConfirmModal from "./ConfirmModal";
 import CommandBasemapSelector from "./CommandBasemapSelector";
+import CommandIncidentWarnings from "./CommandIncidentWarnings";
 import GooglePhotorealisticMap from "./GooglePhotorealisticMap";
 import RasterCommandMap from "./RasterCommandMap";
 import HeatmapPanel from "./HeatmapPanel";
@@ -378,7 +379,7 @@ function ObstructionPopup({ obstruction: obs, onDelete }) {
         </div>
         {obs.description && <div className="obstruction-popup-desc">{obs.description}</div>}
         <button type="button" className="obstruction-remove-btn" onClick={() => onDelete(obs.id)}>
-          Remove obstruction
+          Mark resolved
         </button>
       </div>
     </Popup>
@@ -782,8 +783,8 @@ function ObstructionPanel({
                       type="button"
                       className="obstruction-item-remove"
                       onClick={() => onDelete(o.id)}
-                      title="Remove obstruction"
-                      aria-label={`Remove ${o.description || `${info.label} ${o.id}`}`}
+                      title="Mark resolved"
+                      aria-label={`Mark resolved: ${o.description || `${info.label} ${o.id}`}`}
                     >
                       <CloseIcon />
                     </button>
@@ -1253,7 +1254,10 @@ export default function MapArea({
       <div ref={setGoogleHost} className="command-renderer-host" hidden={!isGoogle3D} />
       <div ref={setRasterHost} className="command-renderer-host" hidden={isGoogle3D || rasterFallback} />
       {/* Outside Leaflet so choosing a style never places a marker/drawing point. */}
-      <CommandBasemapSelector value={tileMode} onChange={changeBasemap} editing={constraintEditing} />
+      <div className="command-map-alert-controls">
+        <CommandIncidentWarnings incidents={activeIncidents} />
+        <CommandBasemapSelector value={tileMode} onChange={changeBasemap} editing={constraintEditing} />
+      </div>
       {/* Picking-mode banner */}
       {pickingMode && (
         <div className="map-pick-banner location-pick-banner">
@@ -1804,16 +1808,16 @@ export default function MapArea({
         const info = obsInfo(o.type);
         return (
           <ConfirmModal
-            eyebrow="REMOVE OBSTRUCTION"
-            title={`Remove this ${info.label.toLowerCase()}?`}
+            eyebrow="RESOLVE OBSTRUCTION"
+            title={`Mark this ${info.label.toLowerCase()} resolved?`}
             details={[
               { label: "Type", value: info.label },
               { label: "Effect", value: info.effect },
               ...(o.description ? [{ label: "Note", value: o.description }] : []),
               { label: "Location", value: `${o.latitude.toFixed(5)}, ${o.longitude.toFixed(5)}` },
             ]}
-            message="New routes and reroutes will stop avoiding this spot. Routes already sent to crews don't change."
-            confirmLabel="Remove"
+            message="New routes and reroutes will stop avoiding this spot. The obstruction and its resolution remain in history. Routes already sent to crews don't change."
+            confirmLabel="Mark resolved"
             onConfirm={() => confirmDeleteObstruction(o.id)}
             onClose={() => setPendingDelete(null)}
           />

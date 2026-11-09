@@ -106,7 +106,7 @@ def collect_team_recipients(db: Session, team) -> list[dict]:
     out = []
     for m in team.members or []:
         p = m.personnel
-        if not p:
+        if not p or getattr(p, 'archived_at', None) or getattr(getattr(p, 'user', None), 'disabled_at', None):
             continue
         out.append({
             "per_id":  p.per_id,

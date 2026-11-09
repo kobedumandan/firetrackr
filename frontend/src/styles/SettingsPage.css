@@ -31,7 +31,7 @@
 .settings-content::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
 .settings-section { max-width: 1080px; min-width: 0; margin-inline: auto; }
 .settings-page-heading { margin-bottom: 28px; }
-.settings-section-title { margin: 0; color: var(--text-primary); font: 400 16.8px/1.5 var(--font-ui); }
+.settings-section-title { margin: 0; color: var(--text-primary); font: 400 16.8px/1.5 var(--font-ui); text-transform: capitalize; }
 .settings-page .section-desc { margin: 6px 0 0; color: var(--settings-muted); font: 10.8px/1.7 var(--font-ui); }
 
 .settings-block, .danger-block { margin-bottom: 20px; border: 1px solid var(--border-dim); border-radius: 14px; background: var(--bg-panel); overflow: hidden; }
@@ -66,6 +66,7 @@
   background: transparent; color: var(--settings-muted); font: 600 10px/1.3 var(--font-span);
   cursor: pointer; transition: background .15s, border-color .15s;
 }
+.btn-edit { text-transform: capitalize; }
 .btn-edit:hover { background: var(--bg-hover); color: var(--text-primary); }
 .btn-save { background: var(--accent-fire-dim); border-color: transparent; border-radius: 3px; color: var(--accent-fire); font-weight: 500; }
 .btn-save:hover { background: rgba(var(--accent-fire-rgb), .2); }

@@ -5,3 +5,8 @@
 .eam-panel .eim-changes {
   font-size: 9px;
 }
+
+.eam-panel .eam-level-label {
+  text-align: center;
+  padding-inline: 4px;
+}

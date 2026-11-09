@@ -1,3 +1,5 @@
+@import "./TablePagination.css";
+
 .action_icons {
   color: var(--text-secondary);
   width: 12.8px;
@@ -554,71 +556,6 @@
 .inc-btn-map:hover {
   color: var(--text-primary);
   background-color: var(--bg-hover);
-}
-
-/* Pagination */
-.inc-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  flex-shrink: 0;
-}
-
-.inc-page-info {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-primary);
-}
-
-.inc-page-controls {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.next-prev-btn {
-  min-width: 25px !important;
-}
-
-.inc-page-btn {
-  min-width: 22px;
-  height: 26px;
-  padding: 3px 6px 0;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  color: var(--text-secondary);
-  font-family: var(--font-condensed);
-  font-size: 10.8px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.inc-page-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-.inc-page-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-.inc-page-btn.active {
-  background: var(--accent-fire-dim);
-  color: var(--accent-fire);
-  border-color: rgba(var(--accent-fire-rgb), 0.4);
-}
-
-.inc-page-ellipsis {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
-  padding: 0 4px;
-  user-select: none;
 }
 
 /* Empty state */

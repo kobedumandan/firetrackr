@@ -184,9 +184,10 @@ export async function apiFetch(path, options = {}) {
     window.location.reload()
   }
 
-  if (res.ok && options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase()) && /^\/api\/(incidents|dispatch|workflow)(\/|$)/.test(path)) {
+  if (res.ok && options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase()) && /^\/api\/(incidents|dispatch|workflow|teams|trucks|personnel|stations|archive|accounts)(\/|$)/.test(path)) {
     invalidateResponseResources()
     invalidateOperationalTimes()
+    if (/^\/api\/(teams|trucks|personnel|stations|archive|accounts)(\/|$)/.test(path)) window.dispatchEvent(new Event('resources-updated'))
   }
 
   return res
@@ -195,7 +196,13 @@ export async function apiFetch(path, options = {}) {
 // ── Simple in-memory cache ────────────────────────────────────────────────────
 const _cache = {}
 export function invalidateResponseResources() {
-  for (const key of ['teams', 'trucks', 'personnel']) delete _cache[key]
+  for (const key of ['teams', 'trucks', 'personnel', 'stations']) delete _cache[key]
+}
+
+export async function lifecycleRequest(path, options) {
+  const response = await apiFetch(path, options)
+  if (!response.ok) throw new Error(await _detail(response, 'Could not update lifecycle records'))
+  return response.status === 204 ? null : response.json()
 }
 const CACHE_TTL_MS = 2 * 60 * 1000  // 2 minutes
 
@@ -499,7 +506,7 @@ export async function saveIncidentReport(fireId, body, photos = []) {
     throw new Error(detail || `Failed to save incident report (${res.status})`)
   }
   const result = { ...data, report: dashboardIncidentReport(data.report) }
-  for (const key of ['teams', 'trucks', 'personnel']) delete _cache[key]
+  for (const key of ['teams', 'trucks', 'personnel', 'stations']) delete _cache[key]
   invalidateOperationalTimes()
   notifyIncidentReportUpdated(fireId, result.incident)
   return result

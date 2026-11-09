@@ -5,6 +5,8 @@ in one place rather than being duplicated per router.
 """
 import json
 
+from services.resource_lifecycle import archive_dict
+
 from services.report_photos import report_photo_urls
 from models import (
     FireIncident, GnnConstraint, IncidentReport, ResponseTeam, Station, Truck,
@@ -33,6 +35,7 @@ def _constraint_to_dict(c: GnnConstraint) -> dict:
 def _station_dict(r: Station) -> dict:
     cmd = r.commander
     return {
+        **archive_dict(r),
         "station_id":          r.station_id,
         "station_name":        r.station_name,
         "station_type":        r.station_type or "main",
@@ -75,7 +78,7 @@ def _team_dict(t: ResponseTeam, *, return_locks=None, return_context=None) -> di
     members = []
     for m in t.members:
         p = m.personnel
-        if not p:
+        if not p or p.archived_at:
             continue
         first = p.per_firstname or ""
         last  = p.per_lastname  or ""
@@ -86,13 +89,14 @@ def _team_dict(t: ResponseTeam, *, return_locks=None, return_context=None) -> di
             "rank":          p.per_rank        or "—",
             "designation":   p.per_designation or "—",
             "member_role":   m.member_role     or "",
-            "member_status": progress['status'] if progress and (m.member_status or '').lower().replace('_', '') not in ('offduty', 'inactive') else m.member_status or "",
+            "member_status": 'inactive' if p.user and p.user.disabled_at else progress['status'] if progress and (m.member_status or '').lower().replace('_', '') not in ('offduty', 'inactive') else m.member_status or "",
             "shift_id":      p.shift_id,
             "shift_name":    p.shift.shift_name if p.shift else "—",
             "return_assignment_locked": p.per_id in return_locks,
             "return_assignment_reason": return_locks.get(p.per_id, ''),
         })
     return {
+        **archive_dict(t),
         "team_id":           t.team_id,
         "team_name":         t.team_name   or "",
         "team_code":         t.team_code   or "",
@@ -107,9 +111,9 @@ def _team_dict(t: ResponseTeam, *, return_locks=None, return_context=None) -> di
         "shift_name":        t.shift.shift_name if t.shift else "—",
         "truck_id":          t.truck_id,
         "truck_platenum":    t.truck.truck_platenum if t.truck else None,
-        "truck_status":      t.truck.truck_status if t.truck else None,
+        "truck_status":      ('unavailable' if t.truck.archived_at else t.truck.truck_status) if t.truck else None,
         "has_active_dispatch": active,
-        "member_count": len(t.members),
+        "member_count": len(members),
         "members":      members,
         "created_at":   t.team_created_at.isoformat() if t.team_created_at else None,
     }
@@ -119,6 +123,7 @@ def _incident_dict(r: FireIncident) -> dict:
     from services.response_workflow import stage, WORKFLOW_VERSION
     from services.incident_scope import effective_response_kind
     return {
+        **archive_dict(r),
         "id":             f"INC-{r.fire_incident_datetime.year}-{r.fire_id:03d}" if r.fire_incident_datetime else f"INC-{r.fire_id:03d}",
         "fire_id":        r.fire_id,
         "loc":            r.fire_location_name  or f"{r.fire_latitude:.4f}, {r.fire_longitude:.4f}",
@@ -200,6 +205,7 @@ def _truck_dict(t: Truck) -> dict:
         dispatch = pending_return.dispatch_record
         return_details['team'] = (dispatch.context_snapshot or {}).get('team_name') or (dispatch.team.team_name if dispatch.team else 'Team')
     return {
+        **archive_dict(t),
         "truck_id":           t.truck_id,
         "truck_platenum":     t.truck_platenum,
         "truck_status":       t.truck_status or "available",

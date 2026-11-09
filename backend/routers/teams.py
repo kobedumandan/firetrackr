@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db
+from services.resource_lifecycle import archive_resource, require_unarchived, active_reference, archive_dict
 from models import (
     DispatchRecord, DispatchTruck, Personnel, ResponseTeam, ResponseTeamMember, Shift, Station, Truck, Users,
 )
@@ -26,6 +27,7 @@ def get_teams(
     # Load everything the serializer reads without one query per team/member.
     rows = (
         db.query(ResponseTeam)
+        .filter(ResponseTeam.archived_at.is_(None))
         .options(
             joinedload(ResponseTeam.station),
             joinedload(ResponseTeam.shift),
@@ -33,6 +35,9 @@ def get_teams(
             selectinload(ResponseTeam.members)
             .joinedload(ResponseTeamMember.personnel)
             .joinedload(Personnel.shift),
+            selectinload(ResponseTeam.members)
+            .joinedload(ResponseTeamMember.personnel)
+            .joinedload(Personnel.user),
             selectinload(ResponseTeam.dispatches),
         )
         .order_by(ResponseTeam.team_id)
@@ -52,10 +57,14 @@ def create_team(
 ):
     if body.team_status in ('dispatched', 'on_scene', 'returning'):
         raise HTTPException(422, 'Create a standby or inactive team; dispatch actions establish response states.')
+    if body.station_id is not None:
+        active_reference(db, Station, body.station_id, "Station")
     if body.station_id and not db.get(Station, body.station_id):
         raise HTTPException(status_code=404, detail="Station not found.")
     if body.shift_id is not None and not db.get(Shift, body.shift_id):
         raise HTTPException(status_code=404, detail="Shift not found.")
+    if body.truck_id is not None:
+        active_reference(db, Truck, body.truck_id, "Truck")
     if body.truck_id is not None and not db.get(Truck, body.truck_id):
         raise HTTPException(status_code=404, detail="Truck not found.")
     team = ResponseTeam(
@@ -84,6 +93,7 @@ def update_team(
     team = db.query(ResponseTeam).filter_by(team_id=team_id).populate_existing().with_for_update().first()
     if not team:
         raise HTTPException(status_code=404, detail="Team not found.")
+    require_unarchived(team)
     active_or_returning = db.query(DispatchRecord.dispatch_id).outerjoin(DispatchTruck).filter(
         DispatchRecord.team_id == team_id,
         (DispatchRecord.dispatch_status.in_(('dispatched', 'en_route', 'on_scene')) |
@@ -112,6 +122,8 @@ def update_team(
         for m in team.members or []:
             m.member_status = body.team_status
     if "station_id" in body.model_fields_set:
+        if body.station_id is not None:
+            active_reference(db, Station, body.station_id, "Station")
         if body.station_id is not None and not db.get(Station, body.station_id):
             raise HTTPException(status_code=404, detail="Station not found.")
         team.station_id = body.station_id
@@ -126,6 +138,8 @@ def update_team(
                 raise HTTPException(status_code=404, detail="Shift not found.")
         team.shift_id = body.shift_id
     if "truck_id" in body.model_fields_set:
+        if body.truck_id is not None:
+            active_reference(db, Truck, body.truck_id, "Truck")
         if body.truck_id is not None and not db.get(Truck, body.truck_id):
             raise HTTPException(status_code=404, detail="Truck not found.")
         team.truck_id = body.truck_id
@@ -140,20 +154,7 @@ def delete_team(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    team = db.get(ResponseTeam, team_id)
-    if not team:
-        raise HTTPException(status_code=404, detail="Team not found.")
-    # Dispatch records keep the incident history intact, so a team that has
-    # ever been sent can't be removed; retiring it is the way out.
-    if team.dispatches:
-        raise HTTPException(
-            status_code=409,
-            detail="This team has dispatch history, so it can't be deleted. Set its status to inactive instead.",
-        )
-    # Memberships have a NOT NULL team_id, so they go first; the personnel stay.
-    for m in list(team.members):
-        db.delete(m)
-    db.delete(team)
+    archive_resource(db, "teams", team_id, _auth)
     db.commit()
 
 
@@ -167,10 +168,14 @@ def add_team_member(
     team = lock_membership_team(db, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found.")
+    require_unarchived(team, "Team")
     lock_personnel_assignments(db, [body.per_id])
     person = db.get(Personnel, body.per_id)
     if not person:
         raise HTTPException(status_code=404, detail="Personnel not found.")
+    require_unarchived(person, "Personnel")
+    if person.user and person.user.disabled_at:
+        raise HTTPException(409, "This personnel account is disabled.")
     if team.shift_id is not None and person.shift_id != team.shift_id:
         raise HTTPException(
             status_code=400,
@@ -212,7 +217,7 @@ def update_team_member(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    lock_membership_team(db, team_id)
+    require_unarchived(lock_membership_team(db, team_id), "Team")
     lock_personnel_assignments(db, [per_id])
     m = db.query(ResponseTeamMember).filter(
         ResponseTeamMember.team_id == team_id,
@@ -243,7 +248,7 @@ def remove_team_member(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    lock_membership_team(db, team_id)
+    require_unarchived(lock_membership_team(db, team_id), "Team")
     lock_personnel_assignments(db, [per_id])
     m = db.query(ResponseTeamMember).filter(
         ResponseTeamMember.team_id == team_id,

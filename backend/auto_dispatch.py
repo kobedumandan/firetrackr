@@ -18,7 +18,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from models import DispatchRecord, FireIncident, ResponseTeam, Station
+from models import DispatchRecord, FireIncident, Personnel, ResponseTeam, ResponseTeamMember, Station
 from services.routing import _load_active_obstructions
 from services.resource_availability import availability_snapshot, team_unavailability
 from shift_utils import current_shift_id
@@ -71,8 +71,10 @@ def _eligible_teams(
     """Stage A: hard filters. Returns (eligible, stage_counts) for diagnostics."""
     all_teams = (
         db.query(ResponseTeam)
-        .options(joinedload(ResponseTeam.station), joinedload(ResponseTeam.truck), selectinload(ResponseTeam.members))
+        .options(joinedload(ResponseTeam.station), joinedload(ResponseTeam.truck),
+                 selectinload(ResponseTeam.members).joinedload(ResponseTeamMember.personnel).joinedload(Personnel.user))
         .join(Station, ResponseTeam.station_id == Station.station_id)
+        .filter(ResponseTeam.archived_at.is_(None), Station.archived_at.is_(None))
         .filter(Station.station_latitude != None, Station.station_longitude != None)  # noqa: E711
         .all()
     )
@@ -150,13 +152,21 @@ def _route_eta_seconds(routing_engine, origin_lat: float, origin_lng: float,
 # BFP alarm levels map to how many responding units the incident warrants. Used
 # by the "escalate alarm" flow to decide how many teams to recommend. Ordered so
 # the frontend/backend agree on what "the next level up" means.
-ALARM_LEVELS = ["1st Alarm", "2nd Alarm", "3rd Alarm", "General Alarm"]
+# Minimum truck counts from the dashboard's alarm planning reference.
 ALARM_UNIT_TARGETS: dict[str, int] = {
-    "1st Alarm":     1,
-    "2nd Alarm":     2,
-    "3rd Alarm":     3,
-    "General Alarm": 99,   # effectively "all available units"
+    "1st Alarm": 4,
+    "2nd Alarm": 6,
+    "3rd Alarm": 8,
+    "4th Alarm": 10,
+    "5th Alarm": 15,
+    "Task Force Alpha": 24,
+    "Task Force Bravo": 28,
+    "Task Force Charlie": 32,
+    "Task Force Delta": 36,
+    "Task Force Echo": 40,
+    "General Alarm": 44,
 }
+ALARM_LEVELS = list(ALARM_UNIT_TARGETS)
 
 
 def _rank_teams(

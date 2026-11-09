@@ -22,6 +22,9 @@ class Users(Base):
     __tablename__ = "users"
 
     user_id      = Column(Integer, primary_key=True, autoincrement=True)
+    disabled_at = Column(DateTime(timezone=True))
+    disabled_by = Column(Integer, ForeignKey('users.user_id', ondelete='SET NULL'))
+    sessions_revoked_at = Column(DateTime(timezone=True))
     user_email   = Column(String(255), unique=True, nullable=False)
     user_password = Column(String(255), nullable=False)
     user_role    = Column(String(50))          # "admin" | "personnel" | ...
@@ -32,8 +35,8 @@ class Users(Base):
     password_changed_at = Column(DateTime(timezone=True))
 
     admin                = relationship("Admin",        back_populates="user", uselist=False)
-    personnel            = relationship("Personnel",    back_populates="user", uselist=False)
-    confirmed_incidents  = relationship("FireIncident", back_populates="confirmed_by")
+    personnel            = relationship("Personnel", foreign_keys="Personnel.user_id", back_populates="user", uselist=False)
+    confirmed_incidents  = relationship("FireIncident", foreign_keys="FireIncident.confirmed_user_id", back_populates="confirmed_by")
     login_history        = relationship(
         "LoginHistory", back_populates="user",
         cascade="all, delete-orphan", passive_deletes=True,
@@ -69,7 +72,12 @@ class Shift(Base):
 # Personnel & devices
 # ---------------------------------------------------------------------------
 
-class Personnel(Base):
+class Archivable:
+    archived_at = Column(DateTime(timezone=True), index=True)
+    archived_by = Column(Integer, ForeignKey('users.user_id', ondelete='SET NULL'))
+
+
+class Personnel(Archivable, Base):
     __tablename__ = "personnel"
 
     per_id          = Column(Integer, primary_key=True, autoincrement=True)
@@ -82,7 +90,7 @@ class Personnel(Base):
     station_id      = Column(Integer, ForeignKey("stations.station_id"),  nullable=True)
     shift_id        = Column(Integer, ForeignKey("shifts.shift_id"),      nullable=True)
 
-    user             = relationship("Users",              back_populates="personnel")
+    user             = relationship("Users", foreign_keys=[user_id], back_populates="personnel")
     station          = relationship("Station",            back_populates="personnel", foreign_keys="Personnel.station_id")
     devices          = relationship("Device",             back_populates="personnel")
     team_memberships = relationship("ResponseTeamMember", back_populates="personnel")
@@ -167,7 +175,7 @@ class CurrentLocation(Base):
 # Response teams
 # ---------------------------------------------------------------------------
 
-class ResponseTeam(Base):
+class ResponseTeam(Archivable, Base):
     __tablename__ = "response_teams"
 
     team_id         = Column(Integer, primary_key=True, autoincrement=True)
@@ -206,7 +214,7 @@ class ResponseTeamMember(Base):
 # Trucks
 # ---------------------------------------------------------------------------
 
-class Truck(Base):
+class Truck(Archivable, Base):
     __tablename__ = "truck"
 
     truck_id           = Column(Integer, primary_key=True, autoincrement=True)
@@ -248,7 +256,7 @@ class TruckLog(Base):
 # Stations
 # ---------------------------------------------------------------------------
 
-class Station(Base):
+class Station(Archivable, Base):
     __tablename__ = "stations"
 
     station_id         = Column(Integer, primary_key=True, autoincrement=True)
@@ -276,7 +284,7 @@ class Station(Base):
 # Fire incidents
 # ---------------------------------------------------------------------------
 
-class FireIncident(Base):
+class FireIncident(Archivable, Base):
     __tablename__ = "fire_incidents"
 
     fire_id                = Column(Integer, primary_key=True, autoincrement=True)
@@ -307,7 +315,7 @@ class FireIncident(Base):
     response_kind          = Column(String(20))  # fire | medical | rescue | other; NULL = unknown
     brgy_id                = Column(Integer, ForeignKey("barangay_boundaries.brgy_id"), nullable=True)
 
-    confirmed_by  = relationship("Users",              back_populates="confirmed_incidents")
+    confirmed_by  = relationship("Users", foreign_keys=[confirmed_user_id], back_populates="confirmed_incidents")
     routes        = relationship("Route",              back_populates="fire_incident")
     heatmap_data  = relationship("HeatmapData",        back_populates="fire_incident")
     dispatches    = relationship("DispatchRecord",     back_populates="fire_incident")
@@ -570,6 +578,9 @@ class RoadObstruction(Base):
     created_at     = Column(DateTime(timezone=True), default=_now)
     expires_at     = Column(DateTime(timezone=True), nullable=True)
     created_by     = Column(Integer, ForeignKey("users.user_id"), nullable=True)
+    resolved_at = Column(DateTime(timezone=True))
+    resolved_by = Column(Integer, ForeignKey('users.user_id', ondelete='SET NULL'))
+    resolution_note = Column(String(500))
 
 
 # ---------------------------------------------------------------------------

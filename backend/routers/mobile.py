@@ -165,7 +165,7 @@ def mobile_me_status(
 
     for membership in p.team_memberships:
         team = membership.team
-        if not team:
+        if not team or team.archived_at:
             continue
 
         # Look for an active dispatch for this team (anything not completed/cancelled)

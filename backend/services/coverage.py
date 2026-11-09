@@ -19,7 +19,7 @@ def _station_source_nodes(db: Session, engine=None) -> list[int]:
     node. Inactive stations don't respond, so they don't count as coverage."""
     engine = engine if engine is not None else state.routing_engine
     nodes: list[int] = []
-    for s in db.query(Station).all():
+    for s in db.query(Station).filter(Station.archived_at.is_(None)).all():
         if s.station_latitude is None or s.station_longitude is None:
             continue
         if (s.station_status or "operational") == "inactive":

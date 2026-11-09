@@ -20,7 +20,8 @@ def sync_rosters(db, team_id, user):
     """Call after membership mutations, in the same transaction. Never backfill legacy."""
     db.flush()
     members = [m for m in db.query(ResponseTeamMember).filter_by(team_id=team_id).all()
-               if (m.member_status or '').lower().replace('_', '') not in ('offduty', 'inactive')]
+               if not m.personnel.archived_at and not (m.personnel.user and m.personnel.user.disabled_at)
+               and (m.member_status or '').lower().replace('_', '') not in ('offduty', 'inactive')]
     now = datetime.now(timezone.utc)
     for dispatch in db.query(DispatchRecord).filter(
         DispatchRecord.team_id == team_id, DispatchRecord.dispatch_status.in_(['dispatched', 'en_route', 'on_scene']),

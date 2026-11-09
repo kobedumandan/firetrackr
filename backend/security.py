@@ -43,7 +43,7 @@ def _create_token(user: Users) -> str:
         "email": user.user_email,
         "role": user.user_role,
         "jti": secrets.token_hex(16),
-        "iat": issued_at,
+        "iat": issued_at.timestamp(),
         "exp": issued_at + timedelta(hours=JWT_EXPIRE_HOURS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -64,7 +64,15 @@ def get_current_user(
     user = db.get(Users, user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    ensure_account_enabled(user)
+    if user.sessions_revoked_at and float(payload.get('iat') or 0) <= user.sessions_revoked_at.timestamp():
+        raise HTTPException(401, 'Session ended. Sign in again.')
     return user
+
+
+def ensure_account_enabled(user):
+    if user.disabled_at is not None or (user.personnel and user.personnel.archived_at is not None):
+        raise HTTPException(401, 'This account is disabled. Contact an administrator.')
 
 
 def require_admin(user: Users = Depends(get_current_user)) -> Users:

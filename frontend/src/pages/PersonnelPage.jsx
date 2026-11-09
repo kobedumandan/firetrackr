@@ -209,7 +209,7 @@ function PersonnelDetail({ p, loc, tracking, onShowOnMap, onEdit, onDelete }) {
           <button type="button" className="act-icon-btn" onClick={onEdit} title="Edit personnel" aria-label="Edit personnel">
             <EditIcon />
           </button>
-          <button type="button" className="act-icon-btn danger" onClick={onDelete} title="Delete personnel" aria-label="Delete personnel">
+          <button type="button" className="act-icon-btn danger" onClick={onDelete} title="Archive personnel" aria-label="Archive personnel">
             <RemoveIcon />
           </button>
         </div>
@@ -867,16 +867,15 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
 
       {deleting && (
         <ConfirmModal
-          eyebrow="DELETE PERSONNEL"
-          title={`Delete ${deleting.name}?`}
+          eyebrow="ARCHIVE PERSONNEL"
+          title={`Archive ${deleting.name}?`}
           message={
             <>
-              This will permanently remove personnel{" "}
-              <strong>{deleting.name}</strong>, their login account, devices,
-              and team assignments. This action cannot be undone.
+              Archive personnel{" "}
+              <strong>{deleting.name}</strong>. Their login will be disabled. Past reports, dispatches and location evidence are preserved. Restoring the record requires separately enabling its account.
             </>
           }
-          confirmLabel="Delete Personnel"
+          confirmLabel="Archive Personnel"
           onConfirm={confirmDelete}
           onClose={() => setDeleting(null)}
         />

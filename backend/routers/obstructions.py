@@ -1,5 +1,5 @@
 """Dispatcher-placed road obstructions."""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -27,6 +27,10 @@ def _serialise(r: RoadObstruction) -> dict:
         "is_active":   r.is_active,
         "created_at":  r.created_at.isoformat() if r.created_at else None,
         "expires_at":  r.expires_at.isoformat() if r.expires_at else None,
+        'resolved_at': r.resolved_at.isoformat() if r.resolved_at else None,
+        'resolved_by': r.resolved_by,
+        'resolution_note': r.resolution_note,
+        'name': f'{r.type}: {r.description or "Road obstruction"}',
     }
 
 
@@ -47,6 +51,7 @@ def get_obstructions(
     rows = (
         db.query(RoadObstruction)
         .filter(RoadObstruction.is_active == True)
+        .filter((RoadObstruction.expires_at.is_(None)) | (RoadObstruction.expires_at > datetime.now(timezone.utc)))
         .order_by(RoadObstruction.created_at.desc())
         .all()
     )
@@ -118,10 +123,15 @@ async def delete_obstruction(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    obs = db.get(RoadObstruction, obstruction_id)
+    obs = db.query(RoadObstruction).filter_by(obstruction_id=obstruction_id).with_for_update().first()
     if not obs:
         raise HTTPException(status_code=404, detail="Obstruction not found.")
-    db.delete(obs)
+    if not obs.is_active:
+        return
+    obs.is_active = False
+    obs.resolved_at = datetime.now(timezone.utc)
+    obs.resolved_by = _auth.user_id if _auth else None
+    obs.resolution_note = 'Marked resolved by dispatcher.'
     db.commit()
     await manager.broadcast({
         "type": "obstruction_deleted",

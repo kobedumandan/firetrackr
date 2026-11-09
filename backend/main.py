@@ -22,7 +22,7 @@ from services.location_routing import location_routing
 from services.route_alternatives import route_alternatives
 from config import BLACKLIST_REAPER_INTERVAL_SECONDS, WATCHDOG_INTERVAL_SECONDS
 from routers import (
-    capstone_reports,
+    archive, capstone_reports,
     auth, constraints, coverage, dispatch, geodata, incidents, metrics, mobile,
     obstructions, personnel, reporting, routing, shifts, stations, system, teams,
     trucks, models, operational_times, response_workflow,
@@ -128,6 +128,7 @@ if REPORT_PHOTO_STORAGE == "local":
 app.include_router(system.router)
 app.include_router(routing.router)
 app.include_router(auth.router)
+app.include_router(archive.router)
 app.include_router(coverage.router)
 app.include_router(personnel.router)
 app.include_router(stations.router)

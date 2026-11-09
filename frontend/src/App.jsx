@@ -48,7 +48,7 @@ function _isActiveMapIncident(incident) {
 // question, not a string comparison. Mirrors ALARM_UNIT_TARGETS in
 // backend/auto_dispatch.py; an unrecognised level ranks 0 and never trips an
 // escalation alert on its own.
-const ALARM_ORDER = { '1st Alarm': 1, '2nd Alarm': 2, '3rd Alarm': 3, 'General Alarm': 4 }
+import { ALARM_ORDER } from './utils/alarmLevels'
 function _alarmRank(level) { return ALARM_ORDER[level] ?? 0 }
 
 function _parseWkt(wkt) {
@@ -432,6 +432,18 @@ export default function App() {
     return () => { cancelled = true }
   }, [route.view]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (route.view !== 'dashboard') return;
+    let alive = true;
+    const refreshResources = () => {
+      fetchPersonnel().then(rows => { if (alive) setPersonnel(rows); }).catch(() => {});
+      fetchStations().then(rows => { if (alive) setStations(rows); }).catch(() => {});
+      setRosterNonce(value => value + 1);
+    };
+    window.addEventListener('resources-updated', refreshResources);
+    return () => { alive = false; window.removeEventListener('resources-updated', refreshResources); };
+  }, [route.view]);
+
   // ── Persistent WebSocket — connects on login, closes only on logout ───────
   useEffect(() => {
     if (route.view !== 'dashboard') return
@@ -454,6 +466,17 @@ export default function App() {
     let connectedOnce = false
     let dataRevision = 0
     const notificationCursor = new NotificationCursor()
+
+    function notifyAlarmEscalation(incident, previous) {
+      if (previous && _alarmRank(incident.alarm) > _alarmRank(previous.alarm)) {
+        pushNotif('escalation', {
+          title: incident.loc,
+          body: `Escalated ${previous.alarm} → ${incident.alarm}`,
+          fireId: incident.fire_id,
+          severity: 'critical',
+        })
+      }
+    }
 
     async function recoverDashboard(ws, attempt = 0) {
       const revision = dataRevision
@@ -588,14 +611,7 @@ export default function App() {
               alarm: inc.alarm, status: inc.status, loc: inc.loc,
             })
             if (prevSnap) {
-              if (_alarmRank(inc.alarm) > _alarmRank(prevSnap.alarm)) {
-                pushNotif('escalation', {
-                  title: inc.loc,
-                  body: `Escalated ${prevSnap.alarm} → ${inc.alarm}`,
-                  fireId: inc.fire_id,
-                  severity: 'critical',
-                })
-              }
+              notifyAlarmEscalation(inc, prevSnap)
               // 'contained' is still an active status, so it needs its own edge
               // check — the resolution one below only sees the later close.
               if (inc.status === 'contained' && prevSnap.status !== 'contained') {
@@ -658,6 +674,7 @@ export default function App() {
             })
           } else if (msg.type === 'workflow_updated') {
             const { kind, incident: inc, dispatch_id } = msg.data
+            if (inc) notifyAlarmEscalation(inc, incidentSnapRef.current.get(inc.fire_id))
             if (inc) incidentSnapRef.current.set(inc.fire_id, { alarm: inc.alarm, status: inc.status, loc: inc.loc })
             if (inc) setActiveIncidents(prev => {
               const rest = prev.filter(row => row.fire_id !== inc.fire_id)

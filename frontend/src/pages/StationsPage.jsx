@@ -313,7 +313,7 @@ function StationDetail({ s, stations, onSelectStation, onEdit, onDelete, onViewO
             <button type="button" className="act-icon-btn" onClick={onEdit} title="Edit station" aria-label="Edit station">
               <EditIcon />
             </button>
-            <button type="button" className="act-icon-btn danger" onClick={onDelete} title="Delete station" aria-label="Delete station">
+            <button type="button" className="act-icon-btn danger" onClick={onDelete} title="Archive station" aria-label="Archive station">
               <RemoveIcon />
             </button>
           </div>
@@ -588,7 +588,7 @@ export default function StationsPage({ onShowOnMap, initialStationId = null, onS
             <UnfoldIcon />
           </div>
           <div className="sta-header-actions">
-            <button type="button" className="sta-btn-secondary table-export-btn" onClick={() => setExportPreview(buildStationsExport(filtered, stations, {
+              <button type="button" className="sta-btn-secondary table-export-btn" onClick={() => setExportPreview(buildStationsExport(filtered, stations, {
               filters: [["Type", TAB_LABELS[activeTab]], ["Status", statusFilter || "All"], ...(search.trim() ? [["Search", search.trim()]] : [])],
               sort: "Current page order",
             }))} disabled={loading || filtered.length === 0}>
@@ -738,15 +738,15 @@ export default function StationsPage({ onShowOnMap, initialStationId = null, onS
 
       {deleting && (
         <ConfirmModal
-          eyebrow="DELETE STATION"
-          title={`Delete ${deleting.name}?`}
+          eyebrow="ARCHIVE STATION"
+          title={`Archive ${deleting.name}?`}
           details={[
             { label: "Station", value: `${deleting.code} · ${deleting.type === "main" ? "Main" : "Sub-station"}` },
             { label: "Barangay", value: clean(deleting.district) },
             { label: "Assigned", value: `${deleting.personnel} personnel · ${deleting.teamsList.length} teams · ${deleting.trucksList.length} trucks` },
           ]}
-          message="Personnel, teams and trucks assigned to it must be moved first. This can't be undone."
-          confirmLabel="Delete station"
+          message="Reassign or archive its personnel, teams, trucks and sub-stations first. Historical records are preserved. You can restore it in Settings → Data → Archive."
+          confirmLabel="Archive station"
           onConfirm={confirmDelete}
           onClose={() => setDeleting(null)}
         />

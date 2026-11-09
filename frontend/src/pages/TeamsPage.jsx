@@ -267,7 +267,7 @@ function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
           <button type="button" className="act-icon-btn" onClick={onEdit} title="Edit team" aria-label="Edit team">
             <EditIcon />
           </button>
-          <button type="button" className="act-icon-btn danger" onClick={onDelete} title="Delete team" aria-label="Delete team">
+          <button type="button" className="act-icon-btn danger" onClick={onDelete} title="Archive team" aria-label="Archive team">
             <RemoveIcon />
           </button>
         </div>
@@ -817,15 +817,15 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
       )}
       {deleting && (
         <ConfirmModal
-          eyebrow="DELETE TEAM"
-          title={`Delete ${deleting.team_name}?`}
+          eyebrow="ARCHIVE TEAM"
+          title={`Archive ${deleting.team_name}?`}
           details={[
             { label: "Team", value: <SeparatedText values={[deleting.team_code, deleting.station_name]} /> },
             { label: "Crew", value: `${deleting.member_count} ${deleting.member_count === 1 ? "member" : "members"}` },
             { label: "Truck", value: deleting.truck_platenum },
           ]}
-          message="Its member assignments are removed with it. The personnel themselves stay on record. This can't be undone."
-          confirmLabel="Delete team"
+          message="Retire this team from new assignments. Past dispatches and crew history are preserved. Its personnel and truck stay active. You can restore it in Settings → Data → Archive."
+          confirmLabel="Archive team"
           onConfirm={confirmDelete}
           onClose={() => setDeleting(null)}
         />

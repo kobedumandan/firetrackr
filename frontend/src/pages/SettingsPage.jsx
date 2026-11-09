@@ -3,6 +3,7 @@ import "../styles/SettingsPage.css";
 import { useSessionTimer } from "../hooks/useSessionTimer";
 import SignOutModal from "../components/SignOutModal";
 import SettingsLoading from "../components/SettingsLoading";
+import ResourceArchive from "../components/ResourceArchive";
 import {
   changePassword,
   fetchCurrentUser,
@@ -103,6 +104,21 @@ function IcoAbout({ className }) {
   );
 }
 
+function IcoAccountAccess({ className }) {
+  return <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="8" cy="7" r="3" /><path d="M2 20v-2a6 6 0 0 1 9-5.2" />
+    <rect x="13" y="13" width="8" height="8" rx="2" /><path d="M15 13v-2a2 2 0 0 1 4 0v2m-2 3v2" />
+  </svg>;
+}
+
+function IcoArchive({ className }) {
+  return (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M4 8h16v12H4zM3 4h18v4H3zM9 12h6" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const SIDEBAR_ITEMS = [
   {
     section: "account",
@@ -111,6 +127,7 @@ const SIDEBAR_ITEMS = [
       { id: "profile", Icon: IcoAccount, label: "Profile" },
       { id: "security", Icon: IcoSecurity, label: "Security" },
       { id: "session", Icon: IcoSession, label: "Session" },
+      { id: "account-access", Icon: IcoAccountAccess, label: "Account Access", adminOnly: true },
     ],
   },
   {
@@ -120,6 +137,13 @@ const SIDEBAR_ITEMS = [
       { id: "appearance", Icon: IcoAppearance, label: "Appearance" },
       { id: "notifications", Icon: IcoNotifications, label: "Notifications" },
       { id: "display", Icon: IcoMapDisplay, label: "Map Display" },
+    ],
+  },
+  {
+    section: "data",
+    label: "Data",
+    items: [
+      { id: "archive", Icon: IcoArchive, label: "Archive", adminOnly: true },
     ],
   },
   {
@@ -1211,6 +1235,20 @@ export default function SettingsPage({
         );
       case "about":
         return <SectionAbout />;
+      case "archive":
+        return user?.role === "admin" ? (
+          <>
+            <SettingsHeading title="Archive">Browse and restore archived records by category.</SettingsHeading>
+            <ResourceArchive key="archive" />
+          </>
+        ) : null;
+      case "account-access":
+        return user?.role === "admin" ? (
+          <>
+            <SettingsHeading title="Account Access">Manage access for personnel accounts. Administrator accounts are protected.</SettingsHeading>
+            <ResourceArchive key="accounts" view="accounts" currentUserId={user?.user_id} />
+          </>
+        ) : null;
       case "model":
         return user?.role === "admin" ? <Suspense fallback={<SettingsLoading message="Loading model settings…" description="Getting the latest model status and version history." />}><ModelSettings theme={theme} /></Suspense> : null;
       default:
@@ -1222,7 +1260,7 @@ export default function SettingsPage({
     <div className="settings-page">
       <div className="settings-body">
         <nav className="settings-sidebar" aria-label="Settings sections">
-          {SIDEBAR_ITEMS.map(({ section, label, items }) => (
+          {SIDEBAR_ITEMS.filter(({ items }) => items.some(item => !item.adminOnly || user?.role === "admin")).map(({ section, label, items }) => (
             <div key={section}>
               <div className="sidebar-section-label">{label}</div>
               {items.filter((item) => !item.adminOnly || user?.role === "admin").map((item) => (

@@ -1,4 +1,5 @@
 """Liveness endpoints and the dashboard WebSocket."""
+import asyncio
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.security import HTTPAuthorizationCredentials
@@ -23,24 +24,33 @@ async def ws_endpoint(websocket: WebSocket, token: str = Query(...),
         await websocket.close(code=4001)
         return
 
-    if notifications:
-        # Replay is administrator-only and checks current role and revocation,
-        # using the same checks as dashboard HTTP operations.
-        def authorize_replay():
-            with SessionLocal() as db:
-                require_admin(get_current_user(HTTPAuthorizationCredentials(scheme='Bearer', credentials=token), db))
-        try:
-            await run_in_threadpool(authorize_replay)
-        except HTTPException as error:
-            await websocket.close(code=4001 if error.status_code == 401 else 4003)
-            return
+    def authorize():
+        with SessionLocal() as db:
+            user = get_current_user(HTTPAuthorizationCredentials(scheme='Bearer', credentials=token), db)
+            if notifications:
+                require_admin(user)
+    try:
+        await run_in_threadpool(authorize)
+    except HTTPException as error:
+        await websocket.close(code=4001 if error.status_code == 401 else 4003)
+        return
     await manager.connect(websocket, notifications=notifications, cursor=notification_cursor)
     try:
         while True:
-            data = await websocket.receive_text()
+            try:
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=15)
+            except asyncio.TimeoutError:
+                data = None
+            try:
+                await run_in_threadpool(authorize)
+            except HTTPException as error:
+                await websocket.close(code=4001 if error.status_code == 401 else 4003)
+                break
             if data == "ping":
                 await websocket.send_text("pong")
     except WebSocketDisconnect:
+        pass
+    finally:
         manager.disconnect(websocket)
 
 
