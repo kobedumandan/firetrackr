@@ -157,25 +157,25 @@ const FEATURES = [
   {
     cls: "fi-fire",
     Icon: FeatureFireIcon,
-    title: "Incident management",
+    title: "Incident Management",
     desc: "Track active fires across every barangay, with live severity and alarm escalation.",
   },
   {
     cls: "fi-blue",
     Icon: FeatureRoutingIcon,
-    title: "GNN-RL routing",
+    title: "GNN-Weighted Routing",
     desc: "Response routes computed by a graph neural network over the city road network.",
   },
   {
     cls: "fi-green",
     Icon: FeatureTrackingIcon,
-    title: "Personnel tracking",
+    title: "Personnel Tracking",
     desc: "Field units reported in real time through the FireTrackr mobile app.",
   },
   {
     cls: "fi-amber",
     Icon: FeatureTruckIcon,
-    title: "Multi-station dispatch",
+    title: "Multi-Station Dispatch",
     desc: "Coordinate main and sub-station teams from one command dashboard.",
   },
 ];
