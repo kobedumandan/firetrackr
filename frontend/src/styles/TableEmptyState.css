@@ -1,0 +1,31 @@
+.table-empty-state.table-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 56px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 10.8px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.table-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  color: var(--text-muted);
+  background: var(--chip-muted-bg);
+}
+.table-empty-state .table-empty-icon .material-symbols-outlined { font-size: 24px; color: inherit; }
+.table-empty-title { font-family: var(--font-condensed); font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.table-empty-sub { max-width: 240px; font-size: 10.8px; color: var(--text-secondary); text-wrap: balance; overflow-wrap: anywhere; }
+.table-empty-clear { padding: 0; border: none; background: none; color: var(--accent-fire); font: inherit; font-weight: 500; cursor: pointer; }
+.table-empty-clear:hover { text-decoration: underline; }

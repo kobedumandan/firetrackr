@@ -67,9 +67,11 @@ function ArchiveRecords({ kind, busy, onBusyChange, onChanged, currentUserId }) 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [accessFilter, setAccessFilter] = useState('');
   const [page, setPage] = useState(1);
   const [attempt, setAttempt] = useState(0);
   const [disabling, setDisabling] = useState(null);
+  const [enabling, setEnabling] = useState(null);
   const [restoring, setRestoring] = useState(null);
   const accounts = kind === 'accounts';
   const obstructions = kind === 'obstructions';
@@ -113,10 +115,12 @@ function ArchiveRecords({ kind, busy, onBusyChange, onChanged, currentUserId }) 
     if (isProtected(row)) return;
     if (accounts && !row.disabled_at) setDisabling(row);
     else if (!accounts) setRestoring(row);
-    else act(row).catch(err => setError(err.message));
+    else setEnabling(row);
   }
 
-  const filtered = rows.filter(row => `${row.name} ${row.type || ''} ${row.description || ''} ${row.created_by_name || ''} ${row.resolved_by_name || ''} ${row.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const filtered = rows.filter(row =>
+    (!accounts || !accessFilter || (row.disabled_at ? 'disabled' : 'enabled') === accessFilter)
+    && `${row.name} ${row.type || ''} ${row.description || ''} ${row.created_by_name || ''} ${row.resolved_by_name || ''} ${row.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()));
   const totalPages = Math.max(1, Math.ceil(filtered.length / ACCOUNTS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * ACCOUNTS_PER_PAGE;
@@ -138,6 +142,11 @@ function ArchiveRecords({ kind, busy, onBusyChange, onChanged, currentUserId }) 
         <svg className="inc-search-icon archive-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>
         <input className="archive-search" type="search" aria-label="Search records" placeholder={accounts ? 'Search accounts' : `Search archived ${kind}`} value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} />
       </div>
+      {accounts && <select className="archive-access-filter" aria-label="Filter by account access" value={accessFilter} onChange={event => { setAccessFilter(event.target.value); setPage(1); }}>
+        <option value="">All Accounts</option>
+        <option value="enabled">Enabled</option>
+        <option value="disabled">Disabled</option>
+      </select>}
       {!loading && !error && <span className="archive-count">{filtered.length} {filtered.length === 1 ? 'Record' : 'Records'}</span>}
     </div>
     {error && <div role="alert" className="archive-error">
@@ -165,7 +174,7 @@ function ArchiveRecords({ kind, busy, onBusyChange, onChanged, currentUserId }) 
           {accounts ? (row.disabled_at ? 'Enable Account' : 'Disable Account') : 'Restore'}
         </button>}
       </div>)}
-      {!filtered.length && !error && <p className="archive-empty">{search.trim() ? 'No records match your search.' : accounts ? 'No accounts to display.' : `No archived ${kind}.`}</p>}
+      {!filtered.length && !error && <p className="archive-empty">{accounts && accessFilter ? 'No accounts match your filters.' : search.trim() ? 'No records match your search.' : accounts ? 'No accounts to display.' : `No archived ${kind}.`}</p>}
     </div>}
     {accounts && !loading && !error && filtered.length > 0 && <nav className="inc-pagination archive-pagination" aria-label="Account pagination">
       <span className="inc-page-info" aria-live="polite">{pageStart + 1}–{Math.min(pageStart + ACCOUNTS_PER_PAGE, filtered.length)} of {filtered.length}</span>
@@ -190,6 +199,16 @@ function ArchiveRecords({ kind, busy, onBusyChange, onChanged, currentUserId }) 
       confirmLabel="Restore"
       onConfirm={() => act(restoring)}
       onClose={() => setRestoring(null)}
+    />}
+    {enabling && <ConfirmModal
+      eyebrow="ACCOUNT ACCESS"
+      title="Enable Account?"
+      icon="release"
+      details={[{ label: 'Name', value: enabling.name }, { label: 'Email', value: enabling.email }]}
+      message="This personnel account will regain access to the system. The personnel can sign in again, and their availability will follow their assigned shift and response status."
+      confirmLabel="Enable Account"
+      onConfirm={() => act(enabling)}
+      onClose={() => setEnabling(null)}
     />}
     {disabling && <ConfirmModal
       eyebrow="ACCOUNT ACCESS"

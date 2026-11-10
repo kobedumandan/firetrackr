@@ -577,8 +577,10 @@
   color: var(--text-primary);
 }
 .sta-empty-sub {
+  max-width: 240px;
   font-size: 10.8px;
   color: var(--text-secondary);
+  text-wrap: balance;
 }
 
 /* Hero */
@@ -855,11 +857,11 @@
 .sta-line + .sta-line {
   border-top: 1px solid var(--border-dim);
 }
-.sta-line.clickable {
+.sta-line.clickable:not(:disabled) {
   cursor: pointer;
   transition: background 0.12s;
 }
-.sta-line.clickable:hover {
+.sta-line.clickable:not(:disabled):hover {
   background: var(--bg-hover);
 }
 .sta-line-icon {

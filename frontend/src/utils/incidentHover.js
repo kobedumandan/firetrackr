@@ -36,7 +36,7 @@ export function attachIncidentHover(element, layer, enabled) {
   const events = [['pointerenter', show], ['pointermove', show], ['pointerleave', hide],
     ['focusin', show], ['focusout', hide], ['click', hide], ['gmp-click', hide], ['gmp-pointerover', show], ['gmp-pointermove', show], ['gmp-pointerout', hide]]
   element.removeAttribute('title')
-  element.setAttribute('aria-label', layer.options.title || 'Map marker')
+  element.setAttribute('aria-label', layer.options.title || layer.options.alt || 'Map marker')
   element.tabIndex = 0
   element.style.cursor = 'pointer'
   events.forEach(([name, handler]) => element.addEventListener(name, handler))

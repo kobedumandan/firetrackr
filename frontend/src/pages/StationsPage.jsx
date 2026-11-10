@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import "../styles/StationsPage.css";
 import KpiCard from "../components/KpiCard";
+import TableEmptyState from "../components/TableEmptyState";
 import { fetchStations, createStation, deleteStation, fetchPersonnel, fetchTeams, fetchTrucks } from "../api";
 import AddStationModal from "../components/AddStationModal";
 import EditStationModal from "../components/EditStationModal";
@@ -256,7 +257,7 @@ function CopyValue({ text, mono }) {
   );
 }
 
-function StationDetail({ s, stations, onSelectStation, onEdit, onDelete, onViewOnMap }) {
+function StationDetail({ s, stations, onSelectStation, onEdit, onDelete, onViewOnMap, onViewTeam, onViewTruck, onViewPersonnel }) {
   if (!s) {
     return (
       <div className="sta-empty-detail">
@@ -389,7 +390,8 @@ function StationDetail({ s, stations, onSelectStation, onEdit, onDelete, onViewO
       <Section title="Response teams" count={s.teamsList.length} empty={s.teamsList.length === 0 && "No teams are based here."}>
         <div className="sta-list-rows">
           {s.teamsList.map((t) => (
-            <div key={t.team_id} className="sta-line">
+            <button key={t.team_id} type="button" className="sta-line clickable"
+              disabled={t.team_id == null || !onViewTeam} onClick={() => onViewTeam(t.team_id)}>
               <span className="sta-line-icon"><Sym name="groups" /></span>
               <span className="sta-line-text">
                 <span className="sta-line-name">{t.name}</span>
@@ -397,7 +399,7 @@ function StationDetail({ s, stations, onSelectStation, onEdit, onDelete, onViewO
               </span>
               <span className="sta-line-meta">{t.members} {t.members === 1 ? "member" : "members"}</span>
               <Pill kind="team" status={t.status} />
-            </div>
+            </button>
           ))}
         </div>
       </Section>
@@ -406,13 +408,14 @@ function StationDetail({ s, stations, onSelectStation, onEdit, onDelete, onViewO
       <Section title="Fire trucks" count={s.trucksList.length} empty={s.trucksList.length === 0 && "No trucks are assigned here."}>
         <div className="sta-list-rows">
           {s.trucksList.map((t) => (
-            <div key={t.truck_id} className="sta-line">
+            <button key={t.truck_id} type="button" className="sta-line clickable"
+              disabled={t.truck_id == null || !onViewTruck} onClick={() => onViewTruck(t.truck_id)}>
               <span className="sta-line-icon"><Sym name="fire_truck" /></span>
               <span className="sta-line-text">
                 <span className="sta-line-name sta-mono">{t.plate}</span>
               </span>
               <Pill kind="truck" status={t.status} />
-            </div>
+            </button>
           ))}
         </div>
       </Section>
@@ -421,7 +424,8 @@ function StationDetail({ s, stations, onSelectStation, onEdit, onDelete, onViewO
       <Section title="Personnel" count={s.personnelList.length} empty={s.personnelList.length === 0 && "No one is assigned to this station yet."}>
         <div className="sta-list-rows">
           {s.personnelList.map((p) => (
-            <div key={p.per_id} className="sta-line">
+            <button key={p.per_id} type="button" className="sta-line clickable"
+              disabled={p.per_id == null || !onViewPersonnel} onClick={() => onViewPersonnel(p.per_id)}>
               <span className="sta-av">{p.initials}</span>
               <span className="sta-line-text">
                 <span className="sta-line-name">
@@ -431,7 +435,7 @@ function StationDetail({ s, stations, onSelectStation, onEdit, onDelete, onViewO
                 <span className="sta-line-sub">{clean(p.rank) || "—"}</span>
               </span>
               <Pill kind="personnel" status={p.status} />
-            </div>
+            </button>
           ))}
         </div>
       </Section>
@@ -453,7 +457,7 @@ function buildStationsExport(rows, stations, scope) {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-export default function StationsPage({ onShowOnMap, initialStationId = null, onStationChange }) {
+export default function StationsPage({ onShowOnMap, initialStationId = null, onStationChange, onViewTeam, onViewTruck, onViewPersonnel }) {
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
@@ -680,25 +684,19 @@ export default function StationsPage({ onShowOnMap, initialStationId = null, onS
               </div>
             ))
           ) : fetchError ? (
-            <div className="sta-list-state error">
-              <Sym name="error" />
-              <span>{fetchError}</span>
+            <TableEmptyState className="sta-list-state error" icon="error" title="Unable to load stations" message={fetchError}>
               <button type="button" className="sta-link" onClick={loadStations}>Try again</button>
-            </div>
+            </TableEmptyState>
           ) : stations.length === 0 ? (
-            <div className="sta-list-state">
-              <Sym name="apartment" />
-              <span>No stations yet.</span>
+            <TableEmptyState className="sta-list-state" icon="apartment" title="No stations yet." message="Add a station to organize its teams, trucks and personnel.">
               <button type="button" className="sta-link" onClick={() => setShowAddModal(true)}>Add the first station</button>
-            </div>
+            </TableEmptyState>
           ) : filtered.length === 0 ? (
-            <div className="sta-list-state">
-              <Sym name="search_off" />
-              <span>No stations match these filters.</span>
+            <TableEmptyState className="sta-list-state" icon="search_off" title="No stations match these filters." message="Try adjusting your search or clear the filters to see more stations.">
               <button type="button" className="sta-link" data-compact-action="reset-filter" onClick={() => { setSearch(""); setStatusFilter(""); setActiveTab("all"); }}>
                 Clear filters
               </button>
-            </div>
+            </TableEmptyState>
           ) : (
             <StationTree list={filtered} stations={stations} selectedId={selectedId} onSelect={selectStation} flat={flat} />
           )}
@@ -714,6 +712,9 @@ export default function StationsPage({ onShowOnMap, initialStationId = null, onS
             onEdit={() => setShowEditModal(true)}
             onDelete={() => setDeleting(selected)}
             onViewOnMap={() => onShowOnMap?.(selected)}
+            onViewTeam={onViewTeam}
+            onViewTruck={onViewTruck}
+            onViewPersonnel={onViewPersonnel}
           />
         </div>
       </div>

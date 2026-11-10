@@ -356,15 +356,6 @@
 }
 
 /* Reporter location pin */
-.reporter-pin {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
 .reporter-pin-ring {
   position: absolute;
   inset: 0;
@@ -374,19 +365,8 @@
 }
 
 .reporter-pin-core {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
   background: var(--accent-blue);
-  box-shadow: 0 0 12px rgba(var(--accent-blue-rgb),0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-condensed);
-  font-size: 11px;
-  font-weight: 700;
-  color: white;
-  z-index: 1;
+  box-shadow: 0 0 16px rgba(var(--accent-blue-rgb),0.6);
 }
 
 /* Leaflet overrides */
@@ -591,6 +571,7 @@
 .obstruction-popup .leaflet-popup-content-wrapper,
 .personnel-popup .leaflet-popup-content-wrapper,
 .route-popup .leaflet-popup-content-wrapper,
+.reporter-popup .leaflet-popup-content-wrapper,
 .station-popup .leaflet-popup-content-wrapper {
   background: var(--bg-panel);
   border: 1px solid var(--border-subtle);
@@ -602,14 +583,17 @@
 .obstruction-popup .leaflet-popup-content,
 .personnel-popup .leaflet-popup-content,
 .route-popup .leaflet-popup-content,
+.reporter-popup .leaflet-popup-content,
 .station-popup .leaflet-popup-content { margin: 12px; font-family: var(--font-span); font-size: 11px; line-height: 1.45; }
 .obstruction-popup .leaflet-popup-tip-container,
 .personnel-popup .leaflet-popup-tip-container,
 .route-popup .leaflet-popup-tip-container,
+.reporter-popup .leaflet-popup-tip-container,
 .station-popup .leaflet-popup-tip-container { display: none; }
 .obstruction-popup .leaflet-popup-close-button,
 .personnel-popup .leaflet-popup-close-button,
 .route-popup .leaflet-popup-close-button,
+.reporter-popup .leaflet-popup-close-button,
 .station-popup .leaflet-popup-close-button { color: var(--text-secondary); border-radius: 4px; }
 .obstruction-popup-inner { min-width: 210px; }
 .obstruction-popup-header { display: flex; align-items: center; gap: 7px; padding-right: 16px; font-size: 11px; margin-bottom: 3px; }
@@ -627,8 +611,8 @@
 }
 
 .reporter-popup-inner {
-  padding: 2px 0;
-  min-width: 150px;
+  min-width: 210px;
+  color: var(--text-secondary);
 }
 
 .station-popup-inner { min-width: 210px; color: var(--text-secondary); }
@@ -653,48 +637,48 @@
 .reporter-popup-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11.8px;
+  gap: 7px;
+  padding-right: 16px;
+  font-size: 11px;
   margin-bottom: 3px;
-  font-weight: 500;
   color: var(--text-primary);
 }
+
+.reporter-popup-header strong { font-weight: 600; }
+.reporter-popup-icon { flex-shrink: 0; color: var(--accent-blue); }
+.reporter-popup-status { margin: 4px 0 2px; }
+.reporter-popup-footer { margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--border-subtle); }
 
 .reporter-popup-coords {
   font-family: var(--font-mono);
-  font-size: 9.8px;
-  color: var(--text-primary);
-  margin-bottom: 4px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 7px;
 }
 
 .reporter-popup-phone {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--accent-amber);
-  margin-bottom: 8px;
+  margin-top: 4px;
 }
 
 .reporter-log-btn {
   width: 100%;
-  padding: 4.8px 10px 3.8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-secondary);
+  padding: 7px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
   font-family: var(--font-span);
-  font-size: 9.8px;
-  font-weight: 600;
-  letter-spacing: -0.1px;
-  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background .15s, border-color .15s;
 }
 
 .reporter-log-btn:hover {
   background: var(--bg-hover);
-  border-color: transparent;
-  color: var(--text-primary);
+  border-color: var(--text-secondary);
 }
+.reporter-log-btn:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 
 /* ── GNN legend ──────────────────────────────────────────────────────────────── */
 .gnn-legend { min-width: 0; padding-bottom: 7px; border-bottom: 1px solid var(--border); }

@@ -1120,6 +1120,7 @@ export default function App() {
       ) : activeNav === 'Personnel' ? (
         <PersonnelPage
           initialPersonnelId={page.personnelId || null}
+          onViewTeam={teamId => navigate(`/teams?team=${teamId}`)}
           livePersonnelLocations={livePersonnelLocations}
           onShowOnMap={(perId) => {
             navigateToPage('Command')
@@ -1128,15 +1129,19 @@ export default function App() {
         />
       ) : activeNav === 'Teams' ? (
         <TeamsPage
+          key={page.teamId || 'all'}
+          initialTeamId={page.teamId || null}
+          onViewStation={stationId => navigate(`/stations?station=${stationId}`)}
+          onViewTruck={truckId => navigate(`/trucks?truck=${truckId}`)}
+          onViewPersonnel={personnelId => navigate(`/personnel?personnel=${personnelId}`)}
           refreshKey={rosterNonce}
-          onShowOnMap={(t) => {
-            navigateToPage('Command')
-            setMapFocus({ lat: t.station_latitude, lng: t.station_longitude, nonce: Date.now() })
-          }}
         />
       ) : activeNav === 'Stations' ? (
         <StationsPage
           initialStationId={page.stationId || null}
+          onViewTeam={teamId => navigate(`/teams?team=${teamId}`)}
+          onViewTruck={truckId => navigate(`/trucks?truck=${truckId}`)}
+          onViewPersonnel={personnelId => navigate(`/personnel?personnel=${personnelId}`)}
           onStationChange={stationId => navigate(stationId ? `/stations?station=${stationId}` : PAGE_PATHS.Stations)}
           onShowOnMap={(s) => {
             navigateToPage('Command')
@@ -1145,6 +1150,8 @@ export default function App() {
         />
       ) : activeNav === 'Trucks' ? (
         <TrucksPage
+          key={page.truckId || 'all'}
+          initialTruckId={page.truckId || null}
           refreshKey={rosterNonce}
           onShowOnMap={(t) => {
             navigateToPage('Command')

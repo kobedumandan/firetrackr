@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import "../styles/TeamsPage.css";
 import KpiCard from "../components/KpiCard";
+import TableEmptyState from "../components/TableEmptyState";
 import { fetchTeams, fetchTrucks, deleteTeam } from "../api";
 import { getCurrentShift, isOnCurrentShift } from "../utils/shift";
 import AddTeamModal from "../components/AddTeamModal";
@@ -220,7 +221,7 @@ function StatTile({ label, value, sub }) {
   );
 }
 
-function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
+function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewPersonnel, onViewStation, onViewTruck }) {
   if (!t) {
     return (
       <div className="tea-empty-detail">
@@ -235,7 +236,6 @@ function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
   const members = [...(t.members || [])].sort((a, b) => crewRoleOrder(a) - crewRoleOrder(b));
   const checks = readiness(t, trucksByStation);
   const failing = checks.find((c) => !c.ok);
-  const hasCoords = t.station_latitude != null && t.station_longitude != null;
   const onShift = clean(t.shift_name) && isOnCurrentShift(t.shift_name);
   const leader = members.find(isCrewLeader);
 
@@ -259,11 +259,6 @@ function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
           {t.station_status === "inactive" && <span className="tea-pill tea-pill-muted">Station inactive</span>}
         </div>
         <div className="tea-hero-actions">
-          <button type="button" className="act-btn" onClick={onViewOnMap} disabled={!hasCoords}
-            title={hasCoords ? "Show this team's station on the Command map" : "Its station has no location on record"}>
-            <Sym name="map" />
-            View on map
-          </button>
           <button type="button" className="act-icon-btn" onClick={onEdit} title="Edit team" aria-label="Edit team">
             <EditIcon />
           </button>
@@ -303,20 +298,27 @@ function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
       {/* ── Details ── */}
       <Section title="Details">
         <div className="tea-fields">
-          <div className="tea-field">
+          <button type="button" className="tea-field tea-field-link"
+            disabled={t.station_id == null || !onViewStation} onClick={() => onViewStation(t.station_id)}>
             <span className="tea-field-label">Station</span>
             <span className="tea-field-value">{clean(t.station_name) || <span className="tea-dim">—</span>}</span>
-          </div>
+          </button>
           <div className="tea-field">
             <span className="tea-field-label">Code</span>
             <span className="tea-field-value tea-mono">{clean(t.team_code) || <span className="tea-dim">—</span>}</span>
           </div>
-          <div className="tea-field">
-            <span className="tea-field-label">Truck</span>
-            {t.truck_platenum
-              ? <span className="tea-field-value tea-mono">{t.truck_platenum}</span>
-              : <button type="button" className="tea-link" onClick={onEdit}>Assign a truck</button>}
-          </div>
+          {t.truck_id != null ? (
+            <button type="button" className="tea-field tea-field-link"
+              disabled={!onViewTruck} onClick={() => onViewTruck(t.truck_id)}>
+              <span className="tea-field-label">Truck</span>
+              <span className="tea-field-value tea-mono">{t.truck_platenum || "—"}</span>
+            </button>
+          ) : (
+            <div className="tea-field">
+              <span className="tea-field-label">Truck</span>
+              <button type="button" className="tea-link" onClick={onEdit}>Assign a truck</button>
+            </div>
+          )}
           <div className="tea-field">
             <span className="tea-field-label">Created</span>
             <span className="tea-field-value">
@@ -338,7 +340,14 @@ function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
       >
         <div className="tea-list-rows">
           {members.map((m) => (
-            <div key={m.per_id} className="tea-line">
+            <button
+              type="button"
+              key={m.per_id}
+              className="tea-line"
+              disabled={m.per_id == null || !onViewPersonnel}
+              onClick={() => onViewPersonnel(m.per_id)}
+              title={`View ${m.name} in Personnel`}
+            >
               <span className={`tea-av tone-${crewTone(m)}`}>{m.initials}</span>
               <span className="tea-line-text">
                 <span className="tea-line-name">
@@ -353,7 +362,7 @@ function TeamDetail({ t, trucksByStation, onEdit, onDelete, onViewOnMap }) {
                   {isCrewLeader(m) ? "Team Leader" : m.member_role}
                 </span>
               )}
-            </div>
+            </button>
           ))}
         </div>
       </Section>
@@ -373,7 +382,7 @@ function buildTeamsExport(rows, scope) {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
+export default function TeamsPage({ refreshKey = 0, onViewPersonnel, onViewStation, onViewTruck, initialTeamId = null }) {
   const [teams, setTeams] = useState([]);
   const [trucks, setTrucks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -387,7 +396,7 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
   const [exportPreview, setExportPreview] = useState(null);
   const [sortCol, setSortCol] = useState("team_name");
   const [sortDir, setSortDir] = useState(1);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(initialTeamId);
   const [view, setView] = useState("list");
   const { width: detailWidth, handleProps: resizeHandle } = useSplitPane({ storageKey: "teams.detailWidth", minMain: 692 });
 
@@ -501,23 +510,17 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
   const selected = teams.find((t) => t.team_id === selectedId) || null;
 
   const emptyState = fetchError ? (
-    <div className="tea-state error">
-      <Sym name="error" />
-      <span>{fetchError}</span>
+    <TableEmptyState className="tea-state error" icon="error" title="Unable to load teams" message={fetchError}>
       <button type="button" className="tea-link" onClick={retry}>Try again</button>
-    </div>
+    </TableEmptyState>
   ) : teams.length === 0 ? (
-    <div className="tea-state">
-      <Sym name="groups" />
-      <span>No response teams yet.</span>
+    <TableEmptyState className="tea-state" icon="groups" title="No response teams yet." message="Add a response team to organize its crew and assigned truck.">
       <button type="button" className="tea-link" onClick={() => setShowAdd(true)}>Add the first team</button>
-    </div>
+    </TableEmptyState>
   ) : filtered.length === 0 ? (
-    <div className="tea-state">
-      <Sym name="search_off" />
-      <span>No teams match these filters.</span>
+    <TableEmptyState className="tea-state" icon="search_off" title="No teams match these filters." message="Try adjusting your search or clear the filters to see more teams.">
       <button type="button" className="tea-link" data-compact-action="reset-filter" onClick={clearFilters}>Clear filters</button>
-    </div>
+    </TableEmptyState>
   ) : null;
 
   return (
@@ -795,7 +798,9 @@ export default function TeamsPage({ refreshKey = 0, onShowOnMap }) {
               trucksByStation={trucksByStation}
               onEdit={() => setEditing(selected)}
               onDelete={() => setDeleting(selected)}
-              onViewOnMap={() => onShowOnMap?.(selected)}
+              onViewPersonnel={onViewPersonnel}
+              onViewStation={onViewStation}
+              onViewTruck={onViewTruck}
             />
           </aside>
         </div>

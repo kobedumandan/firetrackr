@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import "../styles/TrucksPage.css";
 import KpiCard from "../components/KpiCard";
+import TableEmptyState from "../components/TableEmptyState";
 import AddTruckModal from "../components/AddTruckModal";
 import EditTruckModal from "../components/EditTruckModal";
 import ConfirmModal from "../components/ConfirmModal";
@@ -166,7 +167,8 @@ function TruckDetail({ t, onEdit, onDelete, onShowOnMap, onReturnRecorded }) {
         <div className="trk-no-sel-icon">
           <span className="material-symbols-outlined">fire_truck</span>
         </div>
-        <div className="trk-no-sel-text">Select a truck to view details</div>
+        <div className="trk-no-sel-text">No truck selected</div>
+        <div className="trk-no-sel-sub">Pick a truck to see its assignment, equipment and readiness.</div>
       </div>
     );
   }
@@ -279,7 +281,7 @@ function TruckDetail({ t, onEdit, onDelete, onShowOnMap, onReturnRecorded }) {
   );
 }
 
-export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
+export default function TrucksPage({ refreshKey = 0, onShowOnMap, initialTruckId = null }) {
   const [trucks, setTrucks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
@@ -288,7 +290,7 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
   const [stationFilter, setStationFilter] = useState("");
   const [sortCol, setSortCol] = useState("truck_platenum");
   const [sortDir, setSortDir] = useState(1);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(initialTruckId);
   const [view, setView] = useState("list");
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -404,6 +406,12 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
     names.sort();
     return names;
   }, [trucks]);
+
+  function clearFilters() {
+    setSearch("");
+    setFilter("all");
+    setStationFilter("");
+  }
 
   const emptyMessage = fetchError
     ? `Failed to load trucks: ${fetchError}`
@@ -677,9 +685,7 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
                   </tbody>
                 </table>
                 {!loading && filtered.length === 0 && (
-                  <div className={`trk-empty${fetchError ? " is-error" : ""}`}>
-                    {emptyMessage}
-                  </div>
+                  <TableEmptyState className={`trk-empty${fetchError ? " is-error" : ""}`} icon={fetchError ? "error" : "fire_truck"} title={fetchError ? "Unable to load trucks" : emptyMessage} message={fetchError ? emptyMessage : "Try adjusting your search or filters to find trucks."} onClearFilters={fetchError ? undefined : clearFilters} />
                 )}
               </div>
             )}
@@ -710,9 +716,7 @@ export default function TrucksPage({ refreshKey = 0, onShowOnMap }) {
                     ))}
                   </div>
                 ) : filtered.length === 0 ? (
-                  <div className={`trk-empty${fetchError ? " is-error" : ""}`}>
-                    {emptyMessage}
-                  </div>
+                  <TableEmptyState className={`trk-empty${fetchError ? " is-error" : ""}`} icon={fetchError ? "error" : "fire_truck"} title={fetchError ? "Unable to load trucks" : emptyMessage} message={fetchError ? emptyMessage : "Try adjusting your search or filters to find trucks."} onClearFilters={fetchError ? undefined : clearFilters} />
                 ) : (
                   <div className="trk-grid">
                     {filtered.map((t) => (

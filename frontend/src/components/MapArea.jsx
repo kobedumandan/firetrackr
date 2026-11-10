@@ -6,6 +6,7 @@ import { stationIcon } from "../utils/stationIcon";
 import RoutePopup from "./RoutePopup";
 import PersonnelMapMarker from "./PersonnelMapMarker";
 import PersonnelMapFocus from "./PersonnelMapFocus";
+import MapFocus from "./MapFocus";
 import { personnelMapPins } from "../utils/personnelMapData";
 import {
   MapContainer,
@@ -181,33 +182,14 @@ function MapResizeWatcher() {
   return null;
 }
 
-// Flies to an arbitrary point (an incident or station opened from a details
-// page). `mapFocus` is { lat, lng, zoom?, nonce }; a new nonce re-fires it.
-function MapFocuser({ mapFocus }) {
-  const map = useMap();
-  useEffect(() => {
-    if (mapFocus?.lat == null || mapFocus?.lng == null) return;
-    const animate = document.documentElement.dataset.motion !== "off";
-    if (mapFocus.bounds?.length) {
-      map.fitBounds(mapFocus.bounds, { paddingTopLeft: [340, 80], paddingBottomRight: [50, 70], maxZoom: 18, animate });
-      return;
-    }
-    map.flyTo([mapFocus.lat, mapFocus.lng], mapFocus.zoom ?? 17, {
-      animate,
-      duration: animate ? 0.9 : 0,
-    });
-  }, [mapFocus?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
-  return null;
-}
-
 function reporterIcon() {
   return L.divIcon({
     className: "",
     iconSize: [36, 36],
     iconAnchor: [18, 18],
-    html: `<div class="reporter-pin">
+    html: `<div class="fire-marker reporter-pin">
              <div class="reporter-pin-ring"></div>
-             <div class="reporter-pin-core"></div>
+             <div class="fire-marker-inner reporter-pin-core"></div>
            </div>`,
   });
 }
@@ -1333,7 +1315,7 @@ export default function MapArea({
           focusedPersonnel={focusedPersonnel}
           livePersonnelLocations={livePersonnelLocations}
         />
-        <MapFocuser mapFocus={constraintEditing && selectedConstraint ? selectedConstraint.focus : mapFocus} />
+        <MapFocus mapFocus={constraintEditing && selectedConstraint ? selectedConstraint.focus : mapFocus} />
 
         {constraintEditing && roadCatalog && <RoadEdgeSelector key={`${selectionType}:${isSelecting}`} catalog={roadCatalog} selected={selectedEdges}
           active={isSelecting} color={selectionColor} onToggle={handleEdgeToggle} onMiss={setConstraintNotice} />}
@@ -1644,33 +1626,42 @@ export default function MapArea({
 
         {/* Reporter location markers */}
         {!constraintsView && reporterLocations.map((r) => (
-          <Marker key={r.token} position={r.coords} icon={reporterIcon()}>
-            <Tooltip direction="top" className="leaflet-dark-tooltip">
-              <div className="tooltip-id request-token">{r.token}</div>
-              <div className="tooltip-name">Reporter Location</div>
-              <div className="tooltip-sub">
+          <Marker key={r.token} position={r.coords} icon={reporterIcon()}
+            title="Reporter location · Unlogged incident"
+            eventHandlers={{ click: event => event.target.closeTooltip() }}>
+            <Tooltip direction="top" className="command-map-tooltip" opacity={1}>
+              <div className="command-tooltip-header">
+                <span className="command-tooltip-id request-token">{r.token}</span>
+                <span className="command-tooltip-status">Unlogged</span>
+              </div>
+              <div className="command-tooltip-heading">Reporter Location</div>
+              <div className="command-tooltip-location">
                 {r.coords[0].toFixed(5)}, {r.coords[1].toFixed(5)}
               </div>
-              <div className="tooltip-sub">Click to log incident</div>
+              <div className="command-tooltip-location">Click to log incident</div>
             </Tooltip>
-            <Popup className="reporter-popup">
+            <Popup className="reporter-popup" minWidth={230} maxWidth={290}>
               <div className="reporter-popup-inner">
                 <div className="reporter-popup-header">
-                  {/* <span>📱</span> */}
+                  <svg className="reporter-popup-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M20 10c0 6-8 11-8 11S4 16 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
                   <strong>Reporter Location</strong>
                 </div>
+                <div className="reporter-popup-status">Unlogged incident</div>
                 <div className="reporter-popup-coords">
                   {r.coords[0].toFixed(5)}, {r.coords[1].toFixed(5)}
                 </div>
                 {r.mobile && (
-                  <div className="reporter-popup-phone">{r.mobile}</div>
+                  <div className="reporter-popup-phone">Contact: {r.mobile}</div>
                 )}
-                <button
-                  className="reporter-log-btn"
-                  onClick={() => onLogIncidentHere?.(r.coords, r.mobile, r.token)}
-                >
-                  Log Incident
-                </button>
+                <div className="reporter-popup-footer">
+                  <button
+                    type="button"
+                    className="reporter-log-btn"
+                    onClick={() => onLogIncidentHere?.(r.coords, r.mobile, r.token)}
+                  >
+                    Log Incident
+                  </button>
+                </div>
               </div>
             </Popup>
           </Marker>

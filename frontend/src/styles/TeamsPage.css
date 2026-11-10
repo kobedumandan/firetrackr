@@ -973,6 +973,19 @@
   padding: 10px 12px 9px;
   background: var(--page-default-base);
 }
+.tea-field-link {
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: background 150ms ease;
+}
+.tea-field-link:not(:disabled) { cursor: pointer; }
+.tea-field-link:not(:disabled):hover { background: var(--bg-hover); }
+.tea-field-link:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: -2px;
+}
 .tea-field-label {
   font-family: var(--font-condensed);
   font-size: 9.8px;
@@ -1002,9 +1015,22 @@
 }
 .tea-line {
   display: flex;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
   align-items: center;
   gap: 10px;
   padding: 9px 12px 7px;
+  transition: background 150ms ease;
+}
+.tea-line:not(:disabled) { cursor: pointer; }
+.tea-line:not(:disabled):hover { background: var(--bg-hover); }
+.tea-line:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: -2px;
 }
 .tea-line + .tea-line { border-top: 1px solid var(--border-dim); }
 .tea-line-text {

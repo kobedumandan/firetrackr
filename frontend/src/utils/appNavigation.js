@@ -25,8 +25,12 @@ export function parseAppPath(value) {
     if (nav === 'Analysis') return { path, nav, tab: 'response' }
     const stationId = nav === 'Stations' ? positiveId(url.searchParams.get('station')) : null
     const personnelId = nav === 'Personnel' ? positiveId(url.searchParams.get('personnel')) : null
-    return { path: path + (stationId ? `?station=${stationId}` : personnelId ? `?personnel=${personnelId}` : ''), nav, stationId,
-      ...(nav === 'Personnel' ? { personnelId } : {}) }
+    const teamId = nav === 'Teams' ? positiveId(url.searchParams.get('team')) : null
+    const truckId = nav === 'Trucks' ? positiveId(url.searchParams.get('truck')) : null
+    return { path: path + (stationId ? `?station=${stationId}` : personnelId ? `?personnel=${personnelId}` : teamId ? `?team=${teamId}` : truckId ? `?truck=${truckId}` : ''), nav, stationId,
+      ...(nav === 'Personnel' ? { personnelId } : {}),
+      ...(nav === 'Teams' ? { teamId } : {}),
+      ...(nav === 'Trucks' ? { truckId } : {}) }
   }
   if (path === '/analysis' || path === '/analysis/operational') return { path: PAGE_PATHS.Analysis, nav: 'Analysis', tab: 'response' }
   if (path === '/analysis/coverage' || path === '/analysis/reports') return { path, nav: 'Analysis', tab: path.split('/')[2] }

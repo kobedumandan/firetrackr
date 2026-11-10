@@ -2,6 +2,23 @@
 
 ## Basis and maintenance
 
+### Team details navigation (2026-11-11)
+
+Team details link to their station, assigned truck and personnel records.
+The former View on map action was removed because it targeted the station's
+coordinates while teams have no separate map pin.
+
+### Personnel map focus (2026-11-11)
+
+Personnel's Track on map applies the latest valid GPS position immediately,
+including positions outside Panabo. This avoids a flight animation being
+interrupted by raster/3D renderer startup camera synchronization. If GPS is
+not yet available, the request waits for a valid location and centers once;
+subsequent GPS updates move the pin without following it with the camera.
+Incident View on map and other Command map destinations also apply their
+camera position immediately, retaining repeated focus requests and constraint
+bounds fitting without a startup-interrupted animation.
+
 ### Assignment history protection (2026-11-10)
 
 Dispatch lists, response analysis, vehicle evidence and return-station displays
@@ -28,7 +45,11 @@ Teams, trucks, personnel and stations now archive instead of being permanently
 deleted. Personnel archiving disables account access without deleting identity,
 reports or tracking evidence. Account access controls also cover administrators.
 Administrator accounts are protected from disable actions, including attempts by
-other administrators. Personnel disable actions require confirmation.
+other administrators. Personnel enable and disable actions require confirmation.
+Account Access filters enabled/disabled accounts alongside search and pagination.
+Personnel tracking shows ACCOUNT DISABLED for disabled accounts in the table,
+cards, details and exports, taking precedence over device/location signals;
+these accounts are excluded from the Live Tracking count.
 Archive browsing is centralized under Settings → Data → Archive, below Preferences,
 with category tabs; account controls are under Settings → Account → Account access.
 Completed/cancelled incidents archive while retaining dispatches, reports, photos
@@ -577,6 +598,17 @@ records the targeted test/build results and remaining actual-phone acceptance.
   `/analysis/response/dispatches/{dispatch_id}?incident={fire_id}`. Analysis keeps
   its underlying workspace mounted while viewing details, preserving table state
   and focus on return. Station selection uses `/stations?station={station_id}`.
+- Personnel assignment cards open `/teams?team={team_id}` with the assigned
+  team selected and its details visible. Assigned cards support hover and keyboard
+  activation; unassigned cards are disabled. Team selection links survive refresh
+  and login redirects.
+- Crew rows in team details open `/personnel?personnel={per_id}` with that
+  person's details selected, using mouse or keyboard activation.
+- Station and assigned-truck fields in team details open the corresponding
+  station or truck details. Unassigned trucks retain the assignment action.
+- Station detail team, truck and personnel rows open the corresponding resource
+  details. Truck selection uses `/trucks?truck={truck_id}` and survives refresh
+  and login redirects, like team and personnel links.
 - Administrator-only `GET /api/incidents/{fire_id}` returns the existing incident
   JSON shape (404 when absent), allowing bookmarks outside the register's current
   page/filters. `/api/incidents/active` retains its earlier static route ordering.

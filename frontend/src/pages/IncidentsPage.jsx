@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import "../styles/IncidentsPage.css";
 import KpiCard from "../components/KpiCard";
+import TableEmptyState from "../components/TableEmptyState";
 import LogIncidentModal from "../components/LogIncidentModal";
 import EditIncidentModal from "../components/EditIncidentModal";
 import ConfirmModal from "../components/ConfirmModal";
@@ -163,6 +164,15 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, inc
   // update a filter key and reset to page 1 atomically
   function setFilter(key, value) {
     setQuery((prev) => ({ ...prev, [key]: value, page: 1 }));
+  }
+
+  function clearFilters() {
+    clearTimeout(searchTimerRef.current);
+    setSearch("");
+    setShowRange(false);
+    setRangeDraft({ from: "", to: "" });
+    setRangeError("");
+    setQuery(prev => ({ ...prev, page: 1, period: "all", dateFrom: "", dateTo: "", status: "all", search: "", sev: "", alarm: "" }));
   }
 
   function goToPage(p) {
@@ -773,11 +783,10 @@ export default function IncidentsPage({ onShowOnMap, initialIncident = null, inc
               </tbody>
             </table>
             {!loading && paginated.length === 0 && (
-              <div className="inc-empty-state">
-                {error
-                  ? `Failed to load incidents: ${error}`
-                  : "No incidents match your filters"}
-              </div>
+              <TableEmptyState className="inc-empty-state" icon={error ? "error" : "search_off"}
+                onClearFilters={error ? undefined : clearFilters}
+                title={error ? "Unable to load incidents" : "No incidents match your filters"}
+                message={error ? `Failed to load incidents: ${error}` : "Try adjusting your search, filters or date range to find incidents."} />
             )}
           </div>
           {/* PAGINATION */}

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import "../styles/PersonnelPage.css";
 import KpiCard from "../components/KpiCard";
+import TableEmptyState from "../components/TableEmptyState";
 import AddPersonnelModal from "../components/AddPersonnelModal";
 import EditPersonnelModal from "../components/EditPersonnelModal";
 import ConfirmModal from "../components/ConfirmModal";
@@ -108,6 +109,7 @@ const STATUS_TONE = {
 const toneOf = (s) => STATUS_TONE[s] ?? "muted";
 
 const TRACKING = {
+  disabled: { label: "ACCOUNT DISABLED", tone: "muted", live: false },
   online: { label: "Live", tone: "green", live: true },
   active: { label: "IoT", tone: "green", live: true },
   sms: { label: "SMS", tone: "blue", live: false },
@@ -115,6 +117,7 @@ const TRACKING = {
 };
 
 function trackingOf(p, onlineSet) {
+  if (p.account_disabled) return "disabled";
   if (onlineSet.has(p.per_id)) return "online";
   return TRACKING[p.iot] ? p.iot : "offline";
 }
@@ -134,7 +137,7 @@ function TrackingChip({ type }) {
   const t = TRACKING[type] ?? TRACKING.offline;
   return (
     <span className={`per-track per-track-${t.tone}`}>
-      <BoltIcon />
+      {type !== "disabled" && <BoltIcon />}
       {t.label}
     </span>
   );
@@ -157,14 +160,15 @@ function ageLabel(mins) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function PersonnelDetail({ p, loc, tracking, onShowOnMap, onEdit, onDelete }) {
+function PersonnelDetail({ p, loc, tracking, onShowOnMap, onViewTeam, onEdit, onDelete }) {
   if (!p) {
     return (
       <div className="per-no-selection">
         <div className="per-no-sel-icon">
           <span className="material-symbols-outlined">badge</span>
         </div>
-        <div className="per-no-sel-text">Select a person to view details</div>
+        <div className="per-no-sel-text">No personnel selected</div>
+        <div className="per-no-sel-sub">Pick a person to see their assignment, shift and tracking status.</div>
       </div>
     );
   }
@@ -218,7 +222,7 @@ function PersonnelDetail({ p, loc, tracking, onShowOnMap, onEdit, onDelete }) {
           <div className="per-detail-stat">
             <div className="per-ds-label">Tracking</div>
             <div className={`per-ds-value per-text-${t.tone === "muted" ? "plain" : t.tone}`}>
-              {t.label}
+              {tracking === "disabled" ? "Account Disabled" : t.label}
             </div>
             <div className="per-ds-sub">{ageLabel(loc?.age_minutes).toUpperCase()}</div>
           </div>
@@ -238,7 +242,7 @@ function PersonnelDetail({ p, loc, tracking, onShowOnMap, onEdit, onDelete }) {
         </div>
       </div>
 
-      {tracking !== "offline" && loc?.is_deviated && (
+      {tracking !== "offline" && tracking !== "disabled" && loc?.is_deviated && (
         <div className="per-alert">
           <span className="material-symbols-outlined">wrong_location</span>
           <div>
@@ -257,7 +261,13 @@ function PersonnelDetail({ p, loc, tracking, onShowOnMap, onEdit, onDelete }) {
       {/* Assignment */}
       <div className="per-info-section">
         <div className="per-info-title">Assignment</div>
-        <div className="per-assign">
+        <button
+          type="button"
+          className="per-assign"
+          disabled={p.team_id == null || !onViewTeam}
+          onClick={() => onViewTeam(p.team_id)}
+          title={p.team_id != null ? `View ${p.team_name || "team"} in Response Teams` : undefined}
+        >
           <div className={`per-assign-icon ${deployed ? "per-tile-fire" : "per-tile-muted"}`}>
             <span className="material-symbols-outlined">
               {deployed ? "local_fire_department" : "groups"}
@@ -271,7 +281,7 @@ function PersonnelDetail({ p, loc, tracking, onShowOnMap, onEdit, onDelete }) {
               {deployed ? `Responding to ${p.incident}` : "Not on an active incident"}
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Info */}
@@ -335,7 +345,7 @@ function PersonnelDetail({ p, loc, tracking, onShowOnMap, onEdit, onDelete }) {
   );
 }
 
-export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = [], initialPersonnelId = null }) {
+export default function PersonnelPage({ onShowOnMap, onViewTeam, livePersonnelLocations = [], initialPersonnelId = null }) {
   const [personnel, setPersonnel] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -389,7 +399,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
     return s;
   }, [livePersonnelLocations]);
 
-  // Resolve the tracking badge type for a row: "online" wins, else IoT status.
+  // Disabled accounts take precedence over location and device signals.
   const trackingType = (p) => trackingOf(p, onlineSet);
 
   // Personnel whose assigned shift isn't the currently active A/B shift are
@@ -410,7 +420,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
       standby: shiftedPersonnel.filter((p) => p.status === "standby").length,
       offduty: shiftedPersonnel.filter((p) => p.status === "offduty").length,
       iot: shiftedPersonnel.filter(
-        (p) => p.iot === "active" || onlineSet.has(p.per_id)
+        (p) => !p.account_disabled && (p.iot === "active" || onlineSet.has(p.per_id))
       ).length,
     }),
     [shiftedPersonnel, onlineSet]
@@ -501,6 +511,15 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
         sort: `${({ id: "Code", name: "Name", rank: "Rank", status: "Status", station: "Station" })[sortCol] ?? sortCol} (${sortDir === 1 ? "ascending" : "descending"})`,
       },
     ));
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setActiveStatus("all");
+    setStationFilter("");
+    setRankFilter("");
+    setTeamFilter("");
+    setTrackingFilter("");
   }
 
   const emptyMessage = error
@@ -621,7 +640,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
           </select>
           <select className={`per-filter-select${trackingFilter ? " is-active" : ""}`} value={trackingFilter} onChange={(e) => setTrackingFilter(e.target.value)} aria-label="Filter by tracking status">
             <option value="">All Tracking Statuses</option>
-            {["online", "offline"].map((value) => <option key={value} value={value}>{TRACKING[value].label}</option>)}
+            {["online", "offline", "disabled"].map((value) => <option key={value} value={value}>{TRACKING[value].label}</option>)}
           </select>
           <span className="per-result-count">
             {loading
@@ -748,7 +767,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
                   </tbody>
                 </table>
                 {!loading && filtered.length === 0 && (
-                  <div className={`per-empty${error ? " is-error" : ""}`}>{emptyMessage}</div>
+                  <TableEmptyState className={`per-empty${error ? " is-error" : ""}`} icon={error ? "error" : "badge"} title={error ? "Unable to load personnel" : emptyMessage} message={error ? emptyMessage : "Try adjusting your search or filters to find personnel."} onClearFilters={error ? undefined : clearFilters} />
                 )}
               </div>
             )}
@@ -779,7 +798,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
                     ))}
                   </div>
                 ) : filtered.length === 0 ? (
-                  <div className={`per-empty${error ? " is-error" : ""}`}>{emptyMessage}</div>
+                  <TableEmptyState className={`per-empty${error ? " is-error" : ""}`} icon={error ? "error" : "badge"} title={error ? "Unable to load personnel" : emptyMessage} message={error ? emptyMessage : "Try adjusting your search or filters to find personnel."} onClearFilters={error ? undefined : clearFilters} />
                 ) : (
                   <div className="per-grid">
                     {filtered.map((p) => (
@@ -832,6 +851,7 @@ export default function PersonnelPage({ onShowOnMap, livePersonnelLocations = []
               loc={selected ? locByPerId.get(selected.per_id) : null}
               tracking={selected ? trackingType(selected) : null}
               onShowOnMap={() => onShowOnMap?.(selected.per_id)}
+              onViewTeam={onViewTeam}
               onEdit={() => setEditTarget(selected)}
               onDelete={() => setDeleting(selected)}
             />

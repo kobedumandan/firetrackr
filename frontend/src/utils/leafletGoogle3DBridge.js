@@ -24,6 +24,7 @@ export function polygonPaths(points) {
 }
 
 function labelFor(layer) {
+  if (layer.options?.heatmapIncident) return ''
   const content = layer.getTooltip?.()?.getContent()
   if (!content) return ''
   if (typeof content !== 'string') return content.textContent?.trim() || ''
