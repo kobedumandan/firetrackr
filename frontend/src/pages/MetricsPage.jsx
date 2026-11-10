@@ -132,7 +132,6 @@ function DonutChart({ data, total }) {
   if (!total) return <div className="m-empty">No incidents in this period</div>;
   const radius = 52;
   const stroke = 10;
-  const gap = 3.2;
   const circ = 2 * Math.PI * radius;
   const outer = radius + stroke / 2;
   const viewExtent = outer + 8;
@@ -154,7 +153,6 @@ function DonutChart({ data, total }) {
           if (!d.value) return null;
           const slice = (d.value / total) * circ;
           const offset = data.slice(0, i).reduce((sum, item) => sum + item.value / total * circ, 0);
-          const len = Math.max(slice - gap, 0);
           const seg = (
             <circle
               key={i}
@@ -173,7 +171,7 @@ function DonutChart({ data, total }) {
               fill="none"
               stroke={d.color}
               strokeWidth={stroke}
-              strokeDasharray={`${len} ${circ - len}`}
+              strokeDasharray={`${slice} ${circ - slice}`}
               strokeDashoffset={-offset}
             />
           );

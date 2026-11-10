@@ -1,3 +1,5 @@
+import { navigateApp } from './appNavigation'
+
 export function heatmapIncidentId(point) {
   return point.incident?.id || `Incident #${point.fire_id ?? 'unknown'}`
 }
@@ -11,7 +13,7 @@ function add(parent, tag, className, text) {
 }
 
 // Build DOM with textContent: names and addresses are user-entered text.
-export function heatmapIncidentDetails(points, limit = points.length) {
+export function heatmapIncidentDetails(points, limit = points.length, showView = false) {
   const content = document.createElement('div')
   content.className = 'heatmap-incident-details'
   if (points.length > 1) add(content, 'div', 'heatmap-incident-group', `${points.length} incidents at this location`)
@@ -31,11 +33,21 @@ export function heatmapIncidentDetails(points, limit = points.length) {
     if (point.occurred_at && Number.isFinite(date.getTime())) {
       add(card, 'div', 'heatmap-incident-date', `${date.toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', ...(point.occurrence_precision === 'date_only' ? {} : { hour: 'numeric', minute: '2-digit' }) })} (PH)${point.occurrence_precision === 'date_only' ? ' · time not recorded' : ''}`)
     }
-    const fields = [['Severity', incident.sev], ['Alarm', point.alarm_basis === 'synthetic_demo' ? `${incident.alarm} (showcase assumption)` : incident.alarm], ['Status', incident.status], ['Structure', incident.structure], ['Casualties', incident.casualties]]
+    const alarm = point.alarm_basis === 'user_annotation' ? `${incident.alarm} (annotated)` : point.alarm_basis === 'synthetic_demo' ? `${incident.alarm} (showcase assumption)` : incident.alarm
+    const fields = [['Severity', incident.sev], ['Alarm', alarm], ['Status', incident.status], ['Structure', incident.structure], ['Casualties', incident.casualties]]
     const list = add(card, 'dl', 'heatmap-incident-fields', '')
     for (const [label, value] of fields) if (value) {
       add(list, 'dt', '', label)
       add(list, 'dd', '', label === 'Status' ? value.charAt(0).toUpperCase() + value.slice(1) : value)
+    }
+    if (showView && incident.status === 'closed' && Number.isSafeInteger(point.fire_id) && point.fire_id > 0) {
+      const view = add(card, 'button', 'heatmap-incident-view', 'View')
+      view.type = 'button'
+      view.setAttribute('aria-label', `View ${heatmapIncidentId(point)}`)
+      view.addEventListener('click', event => {
+        event.stopPropagation()
+        navigateApp(`/incidents/${point.fire_id}`)
+      })
     }
   }
   if (points.length > limit) add(content, 'div', 'heatmap-incident-more', `Click to view all ${points.length} incidents.`)

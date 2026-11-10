@@ -126,7 +126,7 @@ export default function ResponseAnalysisPage({ fireId, theme, onBack, onOpenInci
             <div><h2>Dispatch response</h2><p>Review one assignment’s timing, routes and evidence.</p></div>
             <DispatchPicker dispatches={dispatches} value={dispatchId} onChange={id => setSelection({ fireId, dispatchId: id })} />
           </section>
-          <DispatchResponseReview key={fireId} fireId={fireId} detail={detail} dispatch={dispatch} theme={theme} onSaved={saveReview} {...dispatchAnalysis} />
+          <DispatchResponseReview key={fireId} fireId={fireId} detail={detail} dispatch={dispatch} theme={theme} onSaved={saveReview} onSelectDispatch={id => setSelection({ fireId, dispatchId: id })} {...dispatchAnalysis} />
         </> : <>
           <section className="rar-empty"><AnalysisIcon name="coverage" /><h2>No dispatch assignments recorded</h2><p>Incident milestones remain available for review.</p></section>
           <MilestoneForm data={detail} onSaved={onSaved} pageLayout />

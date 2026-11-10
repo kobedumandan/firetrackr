@@ -16,6 +16,7 @@ from services.historical_incidents import attach_history, history, demo_times
 from services.reporting_periods import reporting_window
 from services.timing_metrics import EXCLUDED, measure, first_arrival
 from services.incident_scope import effective_response_kind, validate_classification
+from services.dispatch_history import context as history_context, truck_plate
 
 UTC = timezone.utc
 MANILA = ZoneInfo("Asia/Manila")
@@ -412,7 +413,7 @@ def detail(db, inc):
                 origin, [departure_fix.truck_log_lat, departure_fix.truck_log_long]
             ) + departure_fix.accuracy_m <= 150)
             difference = values["travel"] - eta if comparable and values["travel"] is not None and eta is not None else None
-            station = dispatch.team.station if dispatch.team else None
+            saved = history_context(dispatch)
             # Historical samples must carry explicit dispatch-unit association.
             logs = []
             arrival = unit_arrival(unit)
@@ -436,10 +437,10 @@ def detail(db, inc):
                                "eta_seconds": r.route_est_minutes * 60 if r.route_est_minutes is not None else None}
                               for r in db.query(Route).filter_by(dispatch_id=dispatch.dispatch_id).all()]
             result["units"].append({"id": unit.dispatch_truck_id, "dispatch_id": dispatch.dispatch_id,
-                "truck": unit.truck.truck_platenum if unit.truck else str(unit.truck_id),
-                "team": dispatch.team.team_name if dispatch.team else None, "status": dispatch.dispatch_status,
-                "station": station.station_name if station else None,
-                "station_location": [station.station_latitude, station.station_longitude] if station and station.station_latitude is not None and station.station_longitude is not None else None,
+                "truck": truck_plate(dispatch, unit.truck_id),
+                "team": saved.get('team_name'), "status": dispatch.dispatch_status,
+                "station": saved.get('station_name'),
+                "station_location": [saved['station_latitude'], saved['station_longitude']] if saved.get('station_latitude') is not None and saved.get('station_longitude') is not None else None,
                 "dispatch_at": iso(dispatch.dispatch_at), "departed_at": iso(unit.departed_at), "arrived_at": iso(arrival),
                 'cleared_at': iso(dispatch.cleared_at),
                 "arrival_source": "legacy_single_truck_dispatch" if arrival and unit.arrived_at is None else None,

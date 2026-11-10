@@ -9,10 +9,11 @@ from sqlalchemy import and_, func, or_, text
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import DispatchRecord, FireIncident, IncidentReport, Users
+from models import DispatchRecord, FireIncident, Users
 from security import require_admin
 from services.reporting_periods import custom_reporting_window, reporting_window
 from services.historical_incidents import attach_history, history
+from services.incident_causes import incident_causes as _incident_causes
 from services.response_performance import overall
 from routers.response_performance import router as performance_router
 from services.incident_scope import FIRE_OPERATION, fire_incident_filter
@@ -33,20 +34,6 @@ def _pct_delta(cur: int, prev: int) -> float | None:
     if not prev:
         return None
     return round((cur - prev) / prev * 100, 1)
-
-
-def _incident_causes(db, incidents):
-    """One latest nonempty report cause per incident; workbook cause wins."""
-    report_causes = {}
-    if incidents:
-        for fire_id, cause in db.query(IncidentReport.fire_id, IncidentReport.report_cause).filter(
-            IncidentReport.fire_id.in_([i.fire_id for i in incidents]),
-            IncidentReport.report_cause.isnot(None),
-        ).order_by(IncidentReport.report_submitted_at, IncidentReport.report_id):
-            if cause.strip():
-                report_causes[fire_id] = cause.strip()
-    return {i.fire_id: history(i).get("cause_clean") or report_causes.get(i.fire_id) or "Not recorded"
-            for i in incidents}
 
 
 def _top_causes(counts, limit):

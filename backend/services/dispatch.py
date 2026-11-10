@@ -11,7 +11,7 @@ import state
 from config import RACE_WINDOW_SECONDS, STALE_MINUTES, _SOURCE_PRIORITY
 from models import (
     CurrentLocation, DispatchRecord, DispatchTruck, FireIncident, HeatmapData,
-    ResponseTeam, ResponseTeamMember, Route, Truck,
+    ResponseTeam, ResponseTeamMember, Route, Station, Truck,
 )
 from serializers import _incident_dict
 from services.incident_events import record_changes, snapshot
@@ -74,11 +74,16 @@ async def _perform_dispatch(
     truck = None
     if team.truck_id:
         truck = db.query(Truck).filter_by(truck_id=team.truck_id).populate_existing().with_for_update().one()
+    if team.station_id:
+        # Station relocation holds this same row lock. Capture either the old
+        # station before its move, or the new station before dispatching.
+        db.query(Station).filter_by(station_id=team.station_id).populate_existing().with_for_update().one()
+        db.expire(team, ['station'])
     unavailable = team_unavailability(db, team, members=members, truck=truck)
     if unavailable:
         raise HTTPException(409, unavailable[1])
 
-    from services.personnel_deployment import member_snapshot
+    from services.dispatch_history import assignment_context
     assigned_at = datetime.now(timezone.utc)
 
     dispatch = DispatchRecord(
@@ -87,16 +92,7 @@ async def _perform_dispatch(
         dispatch_status="dispatched",
         dispatch_at=assigned_at,
         dispatch_truck_count=0,
-        context_snapshot={
-            "provenance": "assignment",
-            "team_name": team.team_name,
-            "station_id": team.station_id,
-            "station_name": team.station.station_name if team.station else None,
-            "shift_name": team.shift.shift_name if team.shift else None,
-            "truck_id": team.truck_id,
-            "truck": team.truck.truck_platenum if team.truck else None,
-            'roster': [member_snapshot(member, assigned_at) for member in members],
-        },
+        context_snapshot=assignment_context(team, members, assigned_at),
     )
     db.add(dispatch)
 

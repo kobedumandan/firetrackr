@@ -119,13 +119,13 @@ export default function ResponderRouteHistory({ fireId, theme = 'dark', initialD
         <div className="rt-workspace">
         <aside className="rt-roster" aria-label="Filter responder routes" tabIndex={0}>
           <div className="rt-roster-heading"><h4>Team members</h4><span>{members.length}</span></div>
-          {dispatchId == null && <label className="rt-team-filter">Team
+          {(dispatchId == null || onSelectDispatch) && <label className="rt-team-filter">Team
             <select value={filters.dispatch} onChange={event => {
               const dispatch = event.target.value
               change({ dispatch, member: 'all' })
               if (dispatch !== 'all') onSelectDispatch?.(Number(dispatch))
             }}>
-              <option value="all">All teams</option>
+              {dispatchId == null && <option value="all">All teams</option>}
               {dispatches.map(d => <option key={d.dispatch_id} value={String(d.dispatch_id)}>{d.team || `Dispatch #${d.dispatch_id}`}</option>)}
             </select>
           </label>}

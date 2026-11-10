@@ -90,7 +90,17 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
     return resource ? { ...defaults, title: resource.title, fileName: resource.fileName, columns: resource.columns.map(column => column.key) } : defaults
   })
   const [incidentData, setData] = useState({ status: 'loading' })
-  const data = useMemo(() => resource ? { status: 'ready', value: resource } : incidentData, [resource, incidentData])
+  const [range, setRange] = useState(() => ({ mode: query?.period === 'custom' ? 'custom' : 'current', from: query?.dateFrom || '', to: query?.dateTo || '' }))
+  const rangeError = !resource && range.mode === 'custom'
+    ? !range.from && !range.to ? 'Choose a start or end date.' : range.from && range.to && range.from > range.to ? 'The end date must be on or after the start date.' : null
+    : null
+  const exportQuery = useMemo(() => range.mode === 'current' ? query : {
+    ...query, period: range.mode === 'all' ? 'all' : 'custom',
+    dateFrom: range.mode === 'all' ? '' : range.from, dateTo: range.mode === 'all' ? '' : range.to,
+  }, [query, range])
+  const data = useMemo(() => resource ? { status: 'ready', value: resource }
+    : rangeError ? { status: 'invalid', error: rangeError }
+      : incidentData.query === exportQuery ? incidentData : { status: 'loading' }, [resource, incidentData, exportQuery, rangeError])
   const [preview, setPreview] = useState({ status: 'idle', pages: [], pageCount: 0 })
   const [zoom, setZoom] = useState(1)
   const [busy, setBusy] = useState(null) // 'download' | 'print'
@@ -103,24 +113,24 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
   const columns = resource?.columns ?? COLUMNS
   const defaultColumns = resource ? columns.map(column => column.key) : DEFAULT_COLUMNS
   const useBadgedHeader = !resource || ['Personnel', 'Teams', 'Stations', 'Trucks'].includes(resource.name)
-  const { parts: scopeParts, sort: scopeSort } = resource ? { parts: resource.filters, sort: resource.sort } : describeQuery(query)
+  const { parts: scopeParts, sort: scopeSort } = resource ? { parts: resource.filters, sort: resource.sort } : describeQuery(exportQuery)
 
-  // ── Scope: every matching incident, fetched once ──
+  // ── Scope: every matching incident for the selected range ──
   useEffect(() => {
-    if (resource) return
+    if (resource || rangeError) return
     const ctrl = new AbortController()
-    fetchAllIncidents(query, { signal: ctrl.signal })
-      .then(value => setData({ status: 'ready', value }))
-      .catch(e => { if (e.name !== 'AbortError') setData({ status: 'error', error: e.message }) })
+    fetchAllIncidents(exportQuery, { signal: ctrl.signal })
+      .then(value => { if (!ctrl.signal.aborted) setData({ status: 'ready', value, query: exportQuery }) })
+      .catch(e => { if (!ctrl.signal.aborted && e.name !== 'AbortError') setData({ status: 'error', error: e.message, query: exportQuery }) })
     return () => ctrl.abort()
-  }, [query, reloadKey, resource])
+  }, [exportQuery, reloadKey, resource, rangeError])
 
   // Typing in a text field shouldn't re-render the PDF on every keystroke.
   const settled = useDebounced(options, 350)
   const doc = useMemo(
     () => (data.status === 'ready' && settled.columns.length
-      ? resource ? buildResourceRegister(resource, settled) : buildRegister(data.value, query, settled) : null),
-    [data, query, resource, settled],
+      ? resource ? buildResourceRegister(resource, settled) : buildRegister(data.value, exportQuery, settled) : null),
+    [data, exportQuery, resource, settled],
   )
   const docIsPaged = settled.format !== 'csv'
 
@@ -190,7 +200,7 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
     // Build from the live options, not the debounced ones, so the file always
     // matches the rail even if the preview is a keystroke behind.
     const fileOptions = { ...options, format }
-    const d = resource ? buildResourceRegister(resource, fileOptions) : buildRegister(data.value, query, fileOptions)
+    const d = resource ? buildResourceRegister(resource, fileOptions) : buildRegister(data.value, exportQuery, fileOptions)
     if (format === 'csv') return registerToCsv(d)
     if (format === 'docx') {
       const { registerToDocx } = await import('../utils/exportDocx')
@@ -201,6 +211,7 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
   }
 
   async function handleDownload() {
+    if (!ready || noColumns || busy) return
     setBusy('download')
     setActionError(null)
     try {
@@ -214,6 +225,7 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
   }
 
   async function handlePrint() {
+    if (!ready || noColumns || busy) return
     setBusy('print')
     setActionError(null)
     try {
@@ -238,6 +250,7 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
     ? 1 / PAPER_RATIO[options.paper] : PAPER_RATIO[options.paper]
 
   let footerNote = 'Gathering incidents…'
+  if (data.status === 'invalid') footerNote = 'Choose a valid date range'
   if (data.status === 'error') footerNote = 'Couldn’t load incidents'
   else if (ready && !isDoc) footerNote = `${rows} ${rows === 1 ? 'row' : 'rows'} · ${options.columns.length} columns`
   else if (ready) {
@@ -286,7 +299,9 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
           </div>
 
           <div className="xpm-pages" style={{ '--xpm-zoom': zoom, '--xpm-fit': `${fit}px` }}>
-            {data.status === 'error' ? (
+            {data.status === 'invalid' ? (
+              <div className="xpm-state"><strong>Choose a valid date range</strong><span>{data.error}</span></div>
+            ) : data.status === 'error' ? (
               <div className="xpm-state">
                 <Icon d={ICON_WARN} className="xpm-state-icon" />
                 <strong>Couldn&rsquo;t load the incidents</strong>
@@ -355,7 +370,7 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
           </section>
 
           <section className={`eim-section${useBadgedHeader ? ' xpm-incident-scope' : ''}`}>
-            <SectionHead title="Scope" desc={`Set on the ${resource?.name ?? 'Incidents'} page`} />
+            <SectionHead title="Scope" desc={resource ? `Set on the ${resource.name} page` : 'Date range can be adjusted below; other filters follow the Incidents page.'} />
             <div className="xpm-scope">
               <div className="xpm-scope-count">
                 {ready ? <><strong>{rows}</strong> {resource ? (rows === 1 ? 'row' : 'rows') : (rows === 1 ? 'incident' : 'incidents')}</> : 'Counting…'}
@@ -368,23 +383,38 @@ export default function ExportRegisterModal({ query, resource, onClose }) {
             </div>
           </section>
 
-          {isDoc && (
+          {(isDoc || !resource) && (
             <section className="eim-section">
-              <SectionHead title="Document" />
+              <SectionHead title={isDoc ? 'Document' : 'Range'} />
+              {isDoc && <>
               <Field label="Title">
                 <input value={options.title} onChange={e => set('title', e.target.value)} placeholder={resource?.title ?? 'Fire Incident Register'} />
               </Field>
               <Field label="Office">
                 <input value={options.office} onChange={e => set('office', e.target.value)} placeholder="e.g. Panabo City Fire Station" />
               </Field>
-              <div className="eim-row">
+              </>}
+              {!resource && <>
+                <Field label="Date range">
+                  <select aria-label="Export date range" value={range.mode} onChange={e => setRange(current => ({ ...current, mode: e.target.value }))}>
+                    <option value="current">Current page filters</option>
+                    <option value="all">All time</option>
+                    <option value="custom">Custom range</option>
+                  </select>
+                </Field>
+                {range.mode === 'custom' && <div className="eim-row">
+                  <Field label="From"><input type="date" aria-label="Export from date" value={range.from} max={range.to || undefined} onChange={e => setRange(current => ({ ...current, from: e.target.value }))} /></Field>
+                  <Field label="To"><input type="date" aria-label="Export to date" value={range.to} min={range.from || undefined} onChange={e => setRange(current => ({ ...current, to: e.target.value }))} /></Field>
+                </div>}
+              </>}
+              {isDoc && <div className="eim-row">
                 <Field label="Paper">
                   <Segmented options={PAPERS} value={options.paper} onChange={v => set('paper', v)} label="Paper size" />
                 </Field>
                 <Field label="Orientation">
                   <Segmented options={ORIENTATIONS} value={options.orientation} onChange={v => set('orientation', v)} label="Orientation" />
                 </Field>
-              </div>
+              </div>}
             </section>
           )}
 

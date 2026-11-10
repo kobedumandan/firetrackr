@@ -122,6 +122,15 @@ def _team_dict(t: ResponseTeam, *, return_locks=None, return_context=None) -> di
 def _incident_dict(r: FireIncident) -> dict:
     from services.response_workflow import stage, WORKFLOW_VERSION
     from services.incident_scope import effective_response_kind
+    from services.historical_incidents import history
+    from datetime import timedelta, timezone
+    imported = r.fire_location_source == 'bfp_historical_import'
+    source = history(r)
+    date_only = source.get('occurrence_precision') == 'date_only'
+    occurred = r.fire_incident_datetime
+    reported_at = occurred.isoformat() if occurred else None
+    if occurred and date_only:
+        reported_at = occurred.astimezone(timezone(timedelta(hours=8))).date().isoformat()
     return {
         **archive_dict(r),
         "id":             f"INC-{r.fire_incident_datetime.year}-{r.fire_id:03d}" if r.fire_incident_datetime else f"INC-{r.fire_id:03d}",
@@ -134,19 +143,23 @@ def _incident_dict(r: FireIncident) -> dict:
         "workflow_version": WORKFLOW_VERSION,
         "operation_completed_at": r.operation_completed_at.isoformat() if r.operation_completed_at else None,
         "effective_response_kind": effective_response_kind(r),
-        "alarm":          "Not applicable" if r.fire_dispatch_type and r.fire_dispatch_type != "Firefighting Operations" else r.fire_alarm_level or "1st Alarm",
+        "alarm":          "Not applicable" if r.fire_dispatch_type and r.fire_dispatch_type != "Firefighting Operations" else r.fire_alarm_level or ("Not recorded" if imported else "1st Alarm"),
         "dispatch_type":  r.fire_dispatch_type or "",
         "response_kind":  r.response_kind,
         "structure":      "Not applicable" if r.fire_dispatch_type and r.fire_dispatch_type != "Firefighting Operations" else r.fire_structure_type or "",
-        "casualties":     r.fire_casualties     or "Unconfirmed",
+        "casualties":     r.fire_casualties     or ("Not recorded" if imported else "Unconfirmed"),
         "casualties_reviewed_at": r.casualties_reviewed_at.isoformat() if r.casualties_reviewed_at else None,
-        "units":          r.fire_units_assigned or 0,
+        "units":          r.fire_units_assigned if imported else r.fire_units_assigned or 0,
         "reporter":       r.fire_reporter_name  or r.fire_reporter_contact or "—",
         "reporter_name":  r.fire_reporter_name or "",
         "reporter_contact": r.fire_reporter_contact or "",
         "latitude":       r.fire_latitude,
         "longitude":      r.fire_longitude,
-        "reported_at":    r.fire_incident_datetime.isoformat() if r.fire_incident_datetime else None,
+        "reported_at":    reported_at,
+        "occurrence_precision": source.get('occurrence_precision'),
+        "source_record_id": source.get('record_id'),
+        "alarm_basis": source.get('alarm_basis'),
+        "data_source": "BFP Panabo station historical record" if imported else None,
         "remarks":        r.fire_remarks or "",
         "record_kind":    r.record_kind or "unknown",
         "report_received_at": r.report_received_at.isoformat() if r.report_received_at else None,
@@ -168,6 +181,9 @@ def _report_dict(r: IncidentReport) -> dict:
     if not author and r.admin_author:
         from services.incident_events import actor_name
         author_name = actor_name(r.admin_author)
+    saved_author = r.author_snapshot
+    if saved_author is not None:
+        author_name = saved_author.get('name')
     return {
         "report_id":       r.report_id,
         "report_kind":     r.report_kind,
@@ -177,8 +193,8 @@ def _report_dict(r: IncidentReport) -> dict:
         "fire_id":         r.fire_id,
         "dispatch_id":     r.dispatch_id,
         "author":          author_name,
-        "author_rank":     author.per_rank if author else ("Administrator" if r.author_user_id else None),
-        "author_role":     "personnel" if author else ("admin" if r.author_user_id else None),
+        "author_rank":     saved_author.get('rank') if saved_author is not None else (author.per_rank if author else ("Administrator" if r.author_user_id else None)),
+        "author_role":     saved_author.get('role') if saved_author is not None else ("personnel" if author else ("admin" if r.author_user_id else None)),
         "author_user_id":  r.author_user_id,
         "cause":           r.report_cause,
         "casualties":      r.report_casualties,

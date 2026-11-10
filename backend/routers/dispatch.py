@@ -31,6 +31,7 @@ from services.routing import (
     _build_rerouted_payload, _rebuild_routes,
 )
 from services.incident_events import record_changes, snapshot
+from services.dispatch_history import context as history_context, members as history_members, truck_plate
 from state import manager
 
 
@@ -157,10 +158,7 @@ def get_dispatches(
 ):
     q = db.query(DispatchRecord).options(
         joinedload(DispatchRecord.fire_incident),
-        joinedload(DispatchRecord.team).joinedload(ResponseTeam.station),
-        joinedload(DispatchRecord.team).selectinload(ResponseTeam.members)
-        .joinedload(ResponseTeamMember.personnel),
-        selectinload(DispatchRecord.dispatch_trucks).joinedload(DispatchTruck.truck),
+        selectinload(DispatchRecord.dispatch_trucks),
         selectinload(DispatchRecord.routes),
     )
     if fire_id:
@@ -186,44 +184,28 @@ def get_dispatches(
             for rt in inc_routes
         ]
 
-    def _team_members(r):
-        if not r.team:
-            return []
-        return [
-            {
-                "per_id":      m.per_id,
-                "name":        f"{m.personnel.per_firstname} {m.personnel.per_lastname}" if m.personnel else "—",
-                "rank":        m.personnel.per_rank        if m.personnel else "—",
-                "designation": m.personnel.per_designation if m.personnel else "—",
-                "member_role": m.member_role,
-                "initials":    (
-                    (m.personnel.per_firstname or "?")[0].upper() +
-                    (m.personnel.per_lastname  or "?")[0].upper()
-                ) if m.personnel else "?",
-            }
-            for m in r.team.members
-        ]
-
     return [
         {
             "dispatch_id":        r.dispatch_id,
             "fire_id":            r.fire_id,
             "team_id":            r.team_id,
-            "team_name":          r.team.team_name if r.team else "—",
-            "team_code":          r.team.team_code if r.team else None,
+            "team_name":          history_context(r).get('team_name'),
+            "team_code":          history_context(r).get('team_code'),
+            "context_provenance": history_context(r).get('provenance'),
+            "roster_available":   'roster' in history_context(r),
             "dispatch_status":    r.dispatch_status,
             "dispatch_at":        r.dispatch_at.isoformat() if r.dispatch_at else None,
             "arrived_at":         r.dispatch_arrived_at.isoformat() if r.dispatch_arrived_at else None,
             "completed_at":       r.dispatch_completed_at.isoformat() if r.dispatch_completed_at else None,
             'cleared_at': r.cleared_at.isoformat() if r.cleared_at else None,
             'release_authorized_at': r.release_authorized_at.isoformat() if r.release_authorized_at else None,
-            "truck_platenums":    [dt.truck.truck_platenum for dt in r.dispatch_trucks if dt.truck],
-            "station_name":       r.team.station.station_name if (r.team and r.team.station) else None,
-            "station_latitude":   r.team.station.station_latitude  if (r.team and r.team.station) else None,
-            "station_longitude":  r.team.station.station_longitude if (r.team and r.team.station) else None,
+            "truck_platenums":    [truck_plate(r, dt.truck_id) for dt in r.dispatch_trucks],
+            "station_name":       history_context(r).get('station_name'),
+            "station_latitude":   history_context(r).get('station_latitude'),
+            "station_longitude":  history_context(r).get('station_longitude'),
             "incident_latitude":  r.fire_incident.fire_latitude  if r.fire_incident else None,
             "incident_longitude": r.fire_incident.fire_longitude if r.fire_incident else None,
-            "members":            _team_members(r),
+            "members":            history_members(r),
             "routes":             _dispatch_routes(r),
         }
         for r in rows

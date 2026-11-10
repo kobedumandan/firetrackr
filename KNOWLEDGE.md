@@ -2,6 +2,26 @@
 
 ## Basis and maintenance
 
+### Assignment history protection (2026-11-10)
+
+Dispatch lists, response analysis, vehicle evidence and return-station displays
+use preserved context rather than current team/station/truck assignments. New
+dispatch snapshots also capture team code, station coordinates, truck identities
+and member designations. Report author names/ranks are captured on insertion,
+including ORM imports. Completed dispatch rosters do not follow later membership
+changes. Personnel can still be removed from one team and added to another as
+separate operations; temporary unassignment is valid.
+
+Migration `0038` must run before this backend starts. It preserves missing display
+metadata on existing dispatches and report authors using values available at
+upgrade, labeling the metadata as a legacy baseline. It preserves all existing
+snapshot keys and does not manufacture verified legacy roster/attendance records.
+Original assignments already lost before upgrade cannot be reconstructed.
+Personnel reassignment/removal and station relocation reject active responses
+and unfinished truck return/readiness; incompatible personnel shift edits require
+removing team membership first. Home stations remain independent assignments.
+See [resource transfers](documentation/resource-transfers.md) for rollout and checks.
+
 ### Resource retirement and retention (2026-11-09)
 
 Teams, trucks, personnel and stations now archive instead of being permanently
@@ -203,6 +223,15 @@ leaving From blank has no lower bound, and leaving To blank includes through
 today. Clearing both restores All Time. Malformed, reversed, or future dates
 return HTTP 422. The range applies before status counts, list
 filters, and pagination, and is preserved in register exports. Presets clear it.
+The incident register export modal also offers a Date range filter immediately
+below Office: current page filters, all time, or a custom From/To range. It
+refetches matching rows for the preview, PDF/Word/CSV download and printing while
+preserving other incident filters. Invalid ranges and pending requests block
+export actions; resource export modals retain their existing snapshot scope.
+The incident export column options include Cause immediately after Units,
+enabled by default for PDF/Word/CSV. Register and Metrics share cause precedence:
+the imported BFP source cause, then the latest nonempty incident-report cause,
+otherwise Not recorded. Register list/detail APIs expose the selected cause.
 
 Metrics uses the same Range control and immediate date changes. Either boundary
 can be left blank with the same meaning as Incidents, and clearing both restores
@@ -1406,6 +1435,31 @@ describe that optional local setup, not a prerequisite for running the applicati
 
 ### BFP historical import and metrics (2026-10-20)
 
+The local database subsequently received a requested operational demonstration
+history for December 2025–November 1, 2026: all 22 old 2026 incidents were replaced
+by 37 complete incidents, while the 78 BFP records were preserved. The new batch
+has natural display text, computed Panabo road routes, full timings, GPS, rosters
+and reports; internal generation provenance remains in its audit events. See
+[operational history](documentation/operational-history-2025-2026.md) for counts,
+validation and backup locations.
+The same-day route-history refresh separated all 37 generated pins within their
+original barangays, kept their addresses intact, and added 99 continuous personal
+GPS tracks (16,534 samples), alongside recomputed route/vehicle histories.
+Response Analysis's route-history Team selector now switches its shared selected
+dispatch, truck comparison and evidence together. All 78 BFP records are preserved.
+
+**Operational replacement applied November 10, 2026:** the configured local
+database now uses 78 real BFP CSV incidents, replacing the 319 provenance-marked
+synthetic Analysis incidents while preserving 22 separately entered incidents.
+The current importer preserves CSV coordinates and barangay names exactly,
+including mismatches and the unresolved name. It uses the team's supplied CSV
+alarm annotations (58 first alarm, 20 second alarm), with user-annotation provenance.
+It generates no operational times, severity, casualties, damage or responding units. Dates display as
+date-only; all 78 appear in the heatmap. The former demo import behavior below is
+historical and is superseded by
+[BFP operational import](documentation/bfp-operational-import.md).
+
+
 - `backend/import_bfp_history.py` validates source Excel rows against the cleaned
   location review, prepares deterministic demonstration timings, and imports one
   incident per source record. It performs no schema DDL. A caller must back up the
@@ -1443,8 +1497,9 @@ describe that optional local setup, not a prerequisite for running the applicati
   non-empty personnel report cause is used. Barangay counts prefer the known FK;
   legacy spatial fallback selects one polygon to avoid double-counting overlaps.
   Unresolved imported barangays are not inferred from approximate coordinates.
-- The Metrics donut displays alarm levels. The barangay map/ranking and top-ten
-  cause bars sit side by side on wide screens and stack on smaller screens. The
+- The Metrics donut displays alarm levels with proportional slices and no fixed
+  gaps, so small nonzero counts retain their arc length. The barangay map/ranking
+  and top-ten cause bars sit side by side on wide screens and stack on smaller screens. The
   map refits to boundaries on resize. Unknown severity and response duration are
   shown as unavailable rather than synthesized into the recorded KPI cards.
 - All 78 imports now have explicitly estimated heatmap pins: 52 address candidates

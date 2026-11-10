@@ -12,7 +12,7 @@ from services.response_performance import window
 def member_snapshot(member, at):
     person = member.personnel
     return {'per_id': member.per_id, 'name': f'{person.per_firstname or ""} {person.per_lastname or ""}'.strip(),
-            'rank': person.per_rank, 'role': member.member_role,
+            'rank': person.per_rank, 'designation': person.per_designation, 'role': member.member_role,
             'assigned_at': iso(at), 'released_at': None}
 
 

@@ -25,7 +25,8 @@ export function buildIncidentReport({ incident, dispatches, fieldReports = [], r
     ['Coordinates', incident.latitude != null && incident.longitude != null ? `${incident.latitude}, ${incident.longitude}` : null],
     ['Dispatch type', incident.dispatch_type],
     ['Structure type', incident.structure], ['Severity', incident.sev], ['Alarm level', incident.alarm],
-    ['Reported via', incident.reporter], ['Reported at', time(incident.reported_at)],
+    ['Reported via', incident.reporter], [incident.occurrence_precision === 'date_only' ? 'Incident date' : 'Reported at', time(incident.reported_at)],
+    ...(incident.data_source ? [['Data source', `${incident.data_source} · ${incident.source_record_id}`]] : []),
     ['Casualties', incident.casualties], ['Operation completed', time(incident.operation_completed_at)],
     ['Closed at', time(report?.closed_at || incident.closed_at)], ['Remarks', incident.remarks],
   ])

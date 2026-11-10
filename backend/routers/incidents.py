@@ -23,6 +23,8 @@ from services.dispatch import (
     _perform_dispatch,
 )
 from services.incident_events import event_dict, record_changes, snapshot
+from services.historical_incidents import attach_history
+from services.incident_causes import incident_causes
 from services.report_photos import cleanup_report_photos
 from services.reporting_periods import custom_reporting_window
 from services.resource_availability import ACTIVE
@@ -123,12 +125,14 @@ def get_incidents(
     q = q.order_by(col.asc() if sort_dir == "asc" else col.desc())
 
     rows = q.offset((page - 1) * page_size).limit(page_size).all()
+    attach_history(db, rows)
+    causes = incident_causes(db, rows)
     return {
         "total":     total,
         "page":      page,
         "page_size": page_size,
         "stats":     stats,
-        "items":     [_incident_dict(r) for r in rows],
+        "items":     [{**_incident_dict(r), "cause": causes[r.fire_id]} for r in rows],
     }
 
 
@@ -157,7 +161,8 @@ def get_incident(
     incident = db.get(FireIncident, fire_id)
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
-    return _incident_dict(incident)
+    attach_history(db, [incident])
+    return {**_incident_dict(incident), "cause": incident_causes(db, [incident])[incident.fire_id]}
 
 
 @router.post("/api/incidents", status_code=201)

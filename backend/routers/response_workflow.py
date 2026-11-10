@@ -45,7 +45,7 @@ class FireMilestoneBody(BaseModel):
 def dispatch_payload(dispatch):
     return {
         'dispatch_id': dispatch.dispatch_id, 'fire_id': dispatch.fire_id,
-        'team': (dispatch.context_snapshot or {}).get('team_name') or (dispatch.team.team_name if dispatch.team else 'Team'),
+        'team': (dispatch.context_snapshot or {}).get('team_name'),
         'dispatch_status': dispatch.dispatch_status,
         'dispatch_at': dispatch.dispatch_at.isoformat() if dispatch.dispatch_at else None,
         'release_authorized_at': dispatch.release_authorized_at.isoformat() if dispatch.release_authorized_at else None,

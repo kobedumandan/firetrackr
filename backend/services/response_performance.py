@@ -16,6 +16,7 @@ from services.timing_metrics import MAX_SECONDS, measure, summarize, arrival, de
 from services.historical_incidents import attach_history, demo_times
 from serializers import _incident_dict
 from services.incident_scope import fire_incident_filter
+from services.dispatch_history import context
 
 MANILA = ZoneInfo("Asia/Manila")
 KINDS = {"operational", "drill", "test", "unknown"}
@@ -45,17 +46,6 @@ def window(start=None, end=None):
     except OverflowError:
         raise HTTPException(422, "The preceding comparison range is outside supported dates.")
     return start, end
-
-
-def context(dispatch):
-    if dispatch.context_snapshot:
-        return dispatch.context_snapshot
-    team = dispatch.team
-    return {"provenance": "legacy_current_metadata", "team_name": team.team_name if team else None,
-            "station_id": team.station_id if team else None,
-            "station_name": team.station.station_name if team and team.station else None,
-            "shift_name": team.shift.shift_name if team and team.shift else None,
-            "truck": team.truck.truck_platenum if team and team.truck else None}
 
 
 def is_reinforcement(dispatch, incident=None):

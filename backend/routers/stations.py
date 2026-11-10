@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 import state
 from database import get_db
 from services.resource_lifecycle import archive_resource, require_unarchived, active_reference, archive_dict
-from models import Personnel, ResponseTeam, Station, Truck, Users
+from models import DispatchRecord, DispatchTruck, Personnel, ResponseTeam, Station, Truck, Users
 from schemas import StationCreate, StationUpdate
 from security import require_admin
 from serializers import _station_dict
@@ -73,6 +73,18 @@ def update_station(
     if not station:
         raise HTTPException(status_code=404, detail="Station not found.")
     require_unarchived(station)
+    moving = any(getattr(body, field) is not None and getattr(body, field) != getattr(station, field)
+                 for field in ('station_latitude', 'station_longitude'))
+    if moving:
+        active = db.query(DispatchRecord.dispatch_id).outerjoin(ResponseTeam).outerjoin(DispatchTruck).outerjoin(
+            Truck, Truck.truck_id == DispatchTruck.truck_id).filter(
+                (ResponseTeam.station_id == station_id) | (Truck.station_id == station_id) |
+                (DispatchTruck.return_station_id == station_id),
+                DispatchRecord.dispatch_status.in_(('dispatched', 'en_route', 'on_scene')) |
+                (DispatchTruck.return_started_at.is_not(None) & DispatchTruck.ready_at.is_(None)),
+            ).first()
+        if active:
+            raise HTTPException(409, 'Complete active responses and truck return/readiness before relocating this station.')
     if body.station_name is not None:
         conflict = db.query(Station).filter(
             Station.station_name == body.station_name,

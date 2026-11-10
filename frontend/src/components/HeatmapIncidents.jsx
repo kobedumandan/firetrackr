@@ -15,7 +15,7 @@ export default function HeatmapIncidents({ points }) {
       return L.marker([point.lat, point.lng], { icon, heatmapIncident: true, alt: label, title: label,
         keyboard: true, riseOnHover: true })
         .bindTooltip(heatmapIncidentDetails(group, 3), { className: 'heatmap-incident-leaflet-tooltip', direction: 'top', offset: [0, -8], opacity: 1 })
-        .bindPopup(heatmapIncidentDetails(group), { className: 'heatmap-incident-popup', maxWidth: 300, maxHeight: 340, autoPan: false })
+        .bindPopup(heatmapIncidentDetails(group, group.length, true), { className: 'heatmap-incident-popup', maxWidth: 300, maxHeight: 340, autoPan: false })
     })
     const group = L.layerGroup(markers).addTo(map)
     const updatePins = () => markers.forEach(marker => {

@@ -2,6 +2,7 @@
 // the incident details page so the two never drift apart.
 import "../styles/IncidentsPage.css";
 import { incidentStatusBadgeLabel, incidentStage } from '../utils/incidentOperations';
+import { isDateOnly, dateOnlyLabel } from '../utils/incidentDate';
 
 export function FireGeneralIcon({ className }) {
   return (
@@ -71,6 +72,7 @@ export function StatusPill({ status, incident }) {
 }
 
 export function formatReported(iso) {
+  if (isDateOnly(iso)) return dateOnlyLabel(iso);
   if (!iso) return "—";
   const d = new Date(iso);
   const now = new Date();

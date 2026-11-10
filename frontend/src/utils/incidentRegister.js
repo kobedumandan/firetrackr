@@ -4,6 +4,7 @@
 import { fetchIncidents } from '../api'
 import { REGION_LABEL } from '../data/mapConfig'
 import { incidentStatusLabel } from './incidentOperations'
+import { isDateOnly, dateOnlyLabel } from './incidentDate'
 
 // Server caps page_size at 100; the export walks pages until it has them all.
 const FETCH_PAGE = 100
@@ -27,6 +28,7 @@ export const COLUMNS = [
   { key: 'alarm',       label: 'Alarm',         width: 0.9,  on: true },
   { key: 'status',      label: 'Status',        width: 0.95, on: true },
   { key: 'units',       label: 'Units',         width: 0.6,  on: true, align: 'center' },
+  { key: 'cause',       label: 'Cause',         width: 2.2,  on: true },
   { key: 'casualties',  label: 'Casualties',    width: 1.2,  on: true },
   { key: 'reporter',    label: 'Reporter',      width: 1.3,  on: false },
   { key: 'coords',      label: 'Coordinates',   width: 1.45, on: false },
@@ -38,6 +40,7 @@ export const DEFAULT_COLUMNS = COLUMNS.filter(c => c.on).map(c => c.key)
 const cap = s => (s ? s[0].toUpperCase() + s.slice(1) : '')
 
 export function formatDateTime(value) {
+  if (isDateOnly(value)) return dateOnlyLabel(value)
   if (!value) return '—'
   const d = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(d.getTime())) return '—'
@@ -50,7 +53,7 @@ function cellValue(inc, key) {
   switch (key) {
     case 'reported_at': return formatDateTime(inc.reported_at)
     case 'status':      return incidentStatusLabel(inc.status, inc)
-    case 'units':       return String(inc.units ?? 0)
+    case 'units':       return inc.units == null && inc.data_source ? 'Not recorded' : String(inc.units ?? 0)
     case 'coords':
       return inc.latitude != null && inc.longitude != null
         ? `${inc.latitude.toFixed(5)}, ${inc.longitude.toFixed(5)}` : '—'

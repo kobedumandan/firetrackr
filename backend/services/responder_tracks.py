@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from math import asin, cos, isfinite, radians, sin, sqrt
 
-from models import DispatchLocation, IncidentEvent, Personnel, Route
+from models import DispatchLocation, IncidentEvent, Route
 
 MAX_GAP_SECONDS = 120
 MAX_ACCURACY_M = 35
@@ -87,18 +87,15 @@ def incident_tracks(db, incident):
     ids = [d.dispatch_id for d in dispatches]
     grouped = defaultdict(lambda: defaultdict(list))
     unattributed = defaultdict(int)
-    names = {}
     if ids:
-        samples = db.query(DispatchLocation, Personnel).outerjoin(Personnel, Personnel.per_id == DispatchLocation.per_id).filter(
+        samples = db.query(DispatchLocation).filter(
             DispatchLocation.dispatch_id.in_(ids),
         ).order_by(DispatchLocation.dispatch_id, DispatchLocation.per_id, DispatchLocation.recorded_at, DispatchLocation.sample_id)
-        for sample, person in samples.yield_per(1000):
+        for sample in samples.yield_per(1000):
             if sample.per_id is None:
                 unattributed[sample.dispatch_id] += 1
                 continue
             grouped[sample.dispatch_id][sample.per_id].append(sample)
-            if person:
-                names[sample.per_id] = {"name": f"{person.per_firstname or ''} {person.per_lastname or ''}".strip(), "rank": person.per_rank}
     events = db.query(IncidentEvent).filter(IncidentEvent.fire_id == incident.fire_id,
         IncidentEvent.event_type.in_(["op_routes", "op_departure"])).order_by(IncidentEvent.event_id).all() if ids else []
     plans = {}
@@ -110,6 +107,7 @@ def incident_tracks(db, incident):
     result = []
     for dispatch in dispatches:
         snapshot = dispatch.context_snapshot or {}
+        recorded_names = {row['per_id']: row for row in snapshot.get('recorded_personnel', [])}
         roster = {}
         for member in snapshot.get("roster", []):
             person_id = member.get("per_id")
@@ -122,7 +120,7 @@ def incident_tracks(db, incident):
         end = min(ends) if ends else datetime.now(timezone.utc)
         members = []
         for person_id in sorted(set(roster) | set(grouped[dispatch.dispatch_id])):
-            member = roster.get(person_id, names.get(person_id, {}))
+            member = roster.get(person_id, recorded_names.get(person_id, {}))
             samples = [s for s in grouped[dispatch.dispatch_id].get(person_id, []) if start and start <= utc(s.recorded_at) <= end]
             members.append({"per_id": person_id, "name": member.get("name") or f"Responder #{person_id}",
                             "rank": member.get("rank"), "roles": member.get("roles", []),
@@ -134,7 +132,7 @@ def incident_tracks(db, incident):
             route = db.query(Route).filter(Route.dispatch_id == dispatch.dispatch_id, Route.route_id == dispatch.route_id).first()
             if route:
                 generated = {"route_id": route.route_id, "wkt": route.route_path_geojson}
-        result.append({"dispatch_id": dispatch.dispatch_id, "team": snapshot.get("team_name") or (dispatch.team.team_name if dispatch.team else None),
+        result.append({"dispatch_id": dispatch.dispatch_id, "team": snapshot.get("team_name"),
                        "status": dispatch.dispatch_status, "dispatch_at": stamp(start), "ended_at": stamp(min(ends)) if ends else None,
                        "roster_available": "roster" in snapshot, "members": members,
                        "unattributed_sample_count": unattributed[dispatch.dispatch_id],

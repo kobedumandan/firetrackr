@@ -1,6 +1,7 @@
 import { DetailsField, DetailsGrid, DetailsProse } from "../layout/DetailsLayout";
 import KpiCard from "./KpiCard";
 import { duration } from "../utils/operationalTimes";
+import { isDateOnly } from '../utils/incidentDate';
 import { incidentControl, isFireOperation } from '../utils/incidentOperations';
 import "../styles/IncidentDetailsPage.css";
 import "../styles/ResponderRouteHistory.css";
@@ -19,7 +20,7 @@ export function ReportTime({ value, stacked = false }) {
     <time className={`aar-datetime${stacked ? " is-stacked" : ""}`} dateTime={value}>
       <span className="aar-date">{reportDate.format(date)}</span>
       {!stacked && <span className="aar-time-separator" aria-hidden="true">|</span>}
-      <span className="aar-time">{reportClock.format(date)}</span>
+      <span className="aar-time">{isDateOnly(value) ? 'Time not recorded' : reportClock.format(date)}</span>
     </time>
   );
 }

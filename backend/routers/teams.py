@@ -256,7 +256,7 @@ def remove_team_member(
     ).populate_existing().first()
     if not m:
         raise HTTPException(status_code=404, detail="Member not found.")
-    reason = return_assignment_locks(db, [per_id]).get(per_id)
+    reason = personnel_assignment_reason(db, per_id)
     if reason:
         raise HTTPException(409, reason)
     db.delete(m)

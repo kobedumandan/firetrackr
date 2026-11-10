@@ -53,7 +53,7 @@ export function ResponseEvidenceEvents({ events, incident }) {
   </section>
 }
 
-export default function DispatchResponseReview({ fireId, detail, dispatch, data, error, onRetry, onSaved, theme }) {
+export default function DispatchResponseReview({ fireId, detail, dispatch, data, error, onRetry, onSaved, theme, onSelectDispatch }) {
   const truckFieldId = useId()
   const [unitId, setUnitId] = useState(null)
   const units = (detail.units || []).filter(unit => unit.dispatch_id === dispatch.dispatch_id)
@@ -113,7 +113,7 @@ export default function DispatchResponseReview({ fireId, detail, dispatch, data,
     </div>
 
     <section className="rar-panel rar-route-panel" aria-label="Responder route history">
-      <ResponderRouteHistory fireId={fireId} dispatchId={dispatch.dispatch_id} theme={theme} vehicleUnits={units} />
+      <ResponderRouteHistory fireId={fireId} dispatchId={dispatch.dispatch_id} theme={theme} vehicleUnits={units} onSelectDispatch={onSelectDispatch} />
     </section>
 
     <section className="rar-supporting" aria-label="Supporting evidence">

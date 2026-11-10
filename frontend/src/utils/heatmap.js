@@ -25,7 +25,10 @@ export function filterHeatmapPoints(points, range, boundary = REGION_BOUNDARY) {
   if (range.from && range.to && range.from > range.to) return []
   return points.filter(point => {
     if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng) ||
-        !Number.isFinite(point.weight) || point.weight <= 0 || !inRing([point.lng, point.lat], boundary)) return false
+        !Number.isFinite(point.weight) || point.weight <= 0) return false
+    // Preserve explicitly imported CSV coordinates even where the display
+    // outline differs from the backend barangay boundary layer.
+    if (!inRing([point.lng, point.lat], boundary) && point.location_specification?.basis !== 'source_csv') return false
     const date = manilaDate(point.occurred_at)
     return (!range.from || (date && date >= range.from)) && (!range.to || (date && date <= range.to))
   })

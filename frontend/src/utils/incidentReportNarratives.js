@@ -1,5 +1,6 @@
 import { dateTime, duration } from './operationalTimes'
 import { isFireOperation } from './incidentOperations'
+import { isDateOnly } from './incidentDate'
 
 const known = value => value != null && !['', '-', '—', 'not recorded', 'unknown', 'unspecified', 'not applicable'].includes(String(value).trim().toLowerCase())
 const sentenceValue = value => String(value).trim().replace(/[.!?]+$/, '')
@@ -30,7 +31,7 @@ export function describeIncidentSummary(incident, report) {
     : /^(none|0|no casualties)$/i.test(String(casualty).trim())
       ? 'The incident record reports no casualties.' : `The incident record lists the casualty information as: ${sentenceValue(casualty)}.`
   const explanation = [
-    at(incident.reported_at) ? `The recorded report time was ${at(incident.reported_at)} (Philippine time).` : 'The report time has not been recorded.',
+    isDateOnly(incident.reported_at) ? `The recorded incident date was ${at(incident.reported_at)}.` : at(incident.reported_at) ? `The recorded report time was ${at(incident.reported_at)} (Philippine time).` : 'The report time has not been recorded.',
     isFireOperation(incident) && known(incident.alarm) ? `The ${closed ? 'recorded alarm level was' : 'current alarm level is'} ${sentenceValue(incident.alarm)}.` : '',
     casualtySentence,
     known(report?.casualties) && String(report.casualties).trim() !== String(casualty || '').trim() ? `The overall incident report separately states: ${sentenceValue(report.casualties)}.` : '',

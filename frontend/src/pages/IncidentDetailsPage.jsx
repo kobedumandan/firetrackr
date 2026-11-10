@@ -23,6 +23,7 @@ import { Icon } from '../components/incidentForm';
 import { ICON_CHECK, supportsFireAlarm } from '../components/incidentFormOptions';
 import useIncidentWorkflow from '../hooks/useIncidentWorkflow';
 import { incidentControl, incidentStage } from '../utils/incidentOperations';
+import { isDateOnly } from '../utils/incidentDate';
 
 const STEPS = [
   { key: "pending", label: "Reported" },
@@ -42,6 +43,7 @@ const DISPATCH_STATUS = {
 };
 
 function clock(iso) {
+  if (isDateOnly(iso)) return 'Time not recorded';
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
@@ -433,10 +435,10 @@ export default function IncidentDetailsPage({
         </div>
 
         <div className="idp-stats">
-          <StatTile label="Alarm Level" value={alarm || "-"} sub="CURRENT" tone={alarm ? undefined : "muted"} />
+          <StatTile label="Alarm Level" value={alarm || "-"} sub={incident.alarm_basis === 'user_annotation' ? 'ANNOTATED' : 'CURRENT'} tone={alarm ? undefined : "muted"} />
           <StatTile
             label="Units"
-            value={dispatches ? dispatches.length : incident.units ?? 0}
+            value={incident.data_source && incident.units == null && !dispatches?.length ? 'Not recorded' : dispatches ? dispatches.length : incident.units ?? 0}
             sub={`TEAM${(dispatches?.length ?? incident.units) === 1 ? "" : "S"} DISPATCHED`}
           />
           <StatTile
@@ -466,7 +468,8 @@ export default function IncidentDetailsPage({
           <DetailsField label="Structure type" value={incident.structure || "—"} />
           <DetailsField label="Reported via" value={(incident.reporter_name ?? incident.reporter) || "—"} />
           <DetailsField label="Reporter contact number" value={incident.reporter_contact || "—"} />
-          <DetailsField label="Reported at" value={<ReportTime value={incident.reported_at} stacked />} />
+          <DetailsField label={incident.occurrence_precision === 'date_only' ? 'Incident date' : 'Reported at'} value={<ReportTime value={incident.reported_at} stacked />} />
+          {incident.data_source && <DetailsField label="Data source" value={`${incident.data_source} · ${incident.source_record_id}`} />}
           <DetailsField label="Severity" value={incident.sev || "—"} />
           <DetailsField label="Address" value={incident.addr || "—"} />
           <DetailsField label="Casualties" value={incident.casualties || "—"} highlight={hasCasualties} />

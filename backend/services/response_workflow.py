@@ -128,21 +128,23 @@ def record_fire_milestone(db, dispatch_id, user, kind, at, request_key):
 
 
 def return_payload(unit):
-    station = unit.return_station
+    from services.dispatch_history import context, truck_plate
+    saved = context(unit.dispatch_record)
+    station = saved.get('return_stations', {}).get(str(unit.truck_id), {})
     return {
         'dispatch_truck_id': unit.dispatch_truck_id, 'dispatch_id': unit.dispatch_id,
         'fire_id': unit.dispatch_record.fire_id, 'truck_id': unit.truck_id,
-        'plate': unit.truck.truck_platenum if unit.truck else None,
-        'status': unit.truck.truck_status if unit.truck else 'unavailable',
+        'plate': truck_plate(unit.dispatch_record, unit.truck_id),
+        'status': 'available' if unit.ready_at else 'unavailable' if unit.returned_at else 'returning',
         'driver_per_id': unit.return_driver_per_id,
         'started_at': unit.return_started_at.isoformat() if unit.return_started_at else None,
         'returned_at': unit.returned_at.isoformat() if unit.returned_at else None,
         'ready_at': unit.ready_at.isoformat() if unit.ready_at else None,
         'reason': unit.not_ready_reason,
         'station_id': unit.return_station_id,
-        'station_name': station.station_name if station else None,
-        'station_latitude': station.station_latitude if station else None,
-        'station_longitude': station.station_longitude if station else None,
+        'station_name': station.get('name'),
+        'station_latitude': station.get('latitude'),
+        'station_longitude': station.get('longitude'),
     }
 
 
@@ -227,6 +229,14 @@ def start_return(db, dispatch, at):
             continue
         unit.return_started_at = at
         unit.return_station_id = unit.truck.station_id if unit.truck else None
+        station = unit.truck.station if unit.truck else None
+        saved = dispatch.context_snapshot or {}
+        dispatch.context_snapshot = {**saved, 'return_stations': {
+            **saved.get('return_stations', {}), str(unit.truck_id): {
+                'name': station.station_name if station else None,
+                'latitude': station.station_latitude if station else None,
+                'longitude': station.station_longitude if station else None,
+            }}}
         unit.return_driver_per_id = unit.manned_by_per_id
         if unit.return_driver_per_id is None and len(dispatch.dispatch_trucks) == 1:
             drivers = {row['per_id'] for row in (dispatch.context_snapshot or {}).get('roster', [])

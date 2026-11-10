@@ -53,12 +53,12 @@ export default function DispatchEvidenceContent({ data, unit, children }) {
           </div>
         </section>
         <section className="rar-evidence-block" aria-label="Assignment context">
-          <header className="rar-evidence-block-heading"><div><h4>Assignment Context</h4></div><span className="rar-context-source">{snapshot ? 'Saved snapshot' : 'Current metadata'}</span></header>
+          <header className="rar-evidence-block-heading"><div><h4>Assignment Context</h4></div><span className="rar-context-source">{snapshot ? 'Saved snapshot' : context.provenance === 'legacy_frozen_metadata' ? 'Preserved legacy metadata' : 'Unknown context'}</span></header>
           <dl className="rar-resource-fields">{[
             ['Assigned truck', context.truck], ['Record kind', humanize(data.record_kind)],
             ['Station', context.station_name], ['Shift', context.shift_name],
           ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd><AnalysisValue value={value} /></dd></div>)}</dl>
-          <p className="rar-provenance-note"><AnalysisIcon name="info" /><span>{snapshot ? 'Context preserved at assignment.' : 'Current metadata; historical context unknown.'}</span></p>
+          <p className="rar-provenance-note"><AnalysisIcon name="info" /><span>{snapshot ? 'Context preserved at assignment.' : context.provenance === 'legacy_frozen_metadata' ? 'Legacy metadata preserved at upgrade; original assignment unknown.' : 'Historical assignment context unknown.'}{snapshot && context.metadata_provenance === 'migration_current_metadata' ? ' Missing display details were preserved at upgrade.' : ''}</span></p>
         </section>
       </aside>
     </div>

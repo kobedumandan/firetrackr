@@ -8,6 +8,7 @@ from geoalchemy2 import Geometry
 from datetime import datetime, timezone
 
 from database import Base
+from services.report_identity import author_snapshot
 
 
 def _now():
@@ -483,6 +484,7 @@ class IncidentReport(Base):
     dispatch_id            = Column(Integer, ForeignKey("dispatch_records.dispatch_id"), nullable=True)
     per_id                 = Column(Integer, ForeignKey("personnel.per_id"),           nullable=True)
     author_user_id         = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    author_snapshot        = Column(JSONB, nullable=True, default=author_snapshot)
     report_cause           = Column(String(255), nullable=True)   # probable cause of fire
     report_casualties      = Column(String(255), nullable=True)   # casualties / injuries summary
     report_damage_estimate = Column(String(100), nullable=True)   # estimated damage (e.g. peso value)

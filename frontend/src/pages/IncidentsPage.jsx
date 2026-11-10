@@ -7,6 +7,7 @@ import ConfirmModal from "../components/ConfirmModal";
 import ExportRegisterModal from "../components/ExportRegisterModal";
 import IncidentDetailsPage from "./IncidentDetailsPage";
 import { ALARMS } from "../utils/alarmLevels";
+import { isDateOnly } from '../utils/incidentDate';
 import { SeverityBadge, StatusPill, formatReported } from "../components/incidentUi";
 import { fetchIncident, fetchIncidents, fetchIncidentWorkflow, createIncident, deleteIncident } from "../api";
 
@@ -67,7 +68,7 @@ function ReportedTimestamp({ value }) {
       <span className="inc-rep-date">{date.toLocaleDateString("en-PH", {
         timeZone: "Asia/Manila", month: "long", day: "numeric", year: "numeric",
       })}</span>
-      <span className="inc-rep-time">{date.toLocaleTimeString("en-PH", {
+      <span className="inc-rep-time">{isDateOnly(value) ? 'Time not recorded' : date.toLocaleTimeString("en-PH", {
         timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit",
       })}</span>
     </div>

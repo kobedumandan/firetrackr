@@ -1,3 +1,5 @@
+import { isDateOnly, dateOnlyLabel } from './incidentDate'
+
 export const STAGES = [
   { key: 'processing', label: 'Report processing', color: 'var(--duration-green, #00b84a)', icon: 'description' },
   { key: 'preparation', label: 'Preparation', color: '#f48d42', icon: 'notifications_active' },
@@ -11,6 +13,7 @@ export function duration(seconds, missing = 'No data') {
   return `${Math.floor(total / 60)}m ${String(total % 60).padStart(2, '0')}s`
 }
 export function dateTime(value) {
+  if (isDateOnly(value)) return dateOnlyLabel(value)
   if (!value) return 'No data'
   return new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(value))
 }

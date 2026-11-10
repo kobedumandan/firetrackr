@@ -230,6 +230,20 @@ def update_personnel(
         raise HTTPException(status_code=404, detail="Personnel not found.")
     require_unarchived(p)
 
+    if any(field in body.model_fields_set for field in ('station_id', 'shift_id')):
+        from services.resource_availability import lock_personnel_assignments, personnel_assignment_reason
+        lock_personnel_assignments(db, [per_id])
+        db.refresh(p)
+        assignment_changed = any(field in body.model_fields_set and getattr(body, field) != getattr(p, field)
+                                 for field in ('station_id', 'shift_id'))
+        reason = personnel_assignment_reason(db, per_id) if assignment_changed else None
+        if reason:
+            raise HTTPException(409, reason)
+        if 'shift_id' in body.model_fields_set and body.shift_id != p.shift_id:
+            if any(m.team.shift_id is not None and m.team.shift_id != body.shift_id
+                   for m in p.team_memberships):
+                raise HTTPException(409, 'Remove this personnel from their team before changing to an incompatible shift.')
+
     if body.per_firstname   is not None: p.per_firstname   = body.per_firstname
     if body.per_lastname    is not None: p.per_lastname    = body.per_lastname
     if body.per_contact     is not None: p.per_contact     = body.per_contact
