@@ -75,10 +75,22 @@ export function splitRouteAtPoint(line, pt) {
 
 // Keep truck progress independent, and expose the part behind it that another
 // responder still needs. This is an active approach, not a historical trail.
-export function dispatchRouteProgress(line, dispatchId, liveLocations = [], includePersonnel = true) {
+export function hasTruckArrived(dispatchId, liveLocations = [], dispatch = null) {
+  if (dispatch?.arrived_at || dispatch?.dispatch_arrived_at || dispatch?.dispatch_status === 'on_scene') return true;
+  // Arrival remains authoritative after driver GPS goes stale or stops on logout.
+  return liveLocations.some(person => person.dispatch_id === dispatchId && person.manned_truck?.truck_id != null
+    && (person.personnel_arrived_at || ['on_scene', 'onscene'].includes(person.personnel_status)));
+}
+
+export function dispatchRouteProgress(line, dispatchId, liveLocations = [], includePersonnel = true, dispatch = null) {
+  const arrived = hasTruckArrived(dispatchId, liveLocations, dispatch);
+  if (!line || line.length < 2) return { remaining: arrived ? [] : line || [], personnelRemaining: [], personnel: [] };
   const truckPoint = truckProgressPoint(dispatchId, liveLocations);
-  const truck = projectRoutePoint(line, truckPoint);
-  const remaining = truck ? [truck.point, ...line.slice(truck.i + 1)] : line || [];
+  // An arrived truck has no remaining approach. Use the destination as the
+  // shared-road boundary for personnel still on their way, even without GPS.
+  const truck = arrived ? { i: line.length - 2, point: line.at(-1), progress: line.length - 1 }
+    : projectRoutePoint(line, truckPoint);
+  const remaining = arrived ? [] : truck ? [truck.point, ...line.slice(truck.i + 1)] : line || [];
   const result = { remaining, personnelRemaining: [], personnel: [] };
   if (!truck || !includePersonnel) return result;
 

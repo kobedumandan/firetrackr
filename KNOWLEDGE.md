@@ -2,6 +2,14 @@
 
 ## Basis and maintenance
 
+### Command routes end at arrival (2026-11-12)
+
+The Command map hides main and alternative truck routes after confirmed truck
+arrival, using dispatch arrival status/timestamps even when the driver's GPS
+stops or becomes stale. An unarrived responder's shared approach remains a
+personnel route through to the incident; it disappears on personal arrival.
+This affects live map visibility and preserves generated routes for history.
+
 ### Team details navigation (2026-11-11)
 
 Team details link to their station, assigned truck and personnel records.

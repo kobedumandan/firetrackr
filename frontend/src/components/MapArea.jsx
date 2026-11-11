@@ -36,7 +36,7 @@ import RoadEdgeSelector from "./RoadEdgeSelector";
 import ConstraintEdgeSaveDialog from "./ConstraintEdgeSaveDialog";
 import { toggleRoadEdge } from "../utils/roadEdgeSelection";
 import { constraintFeatures } from "../utils/commandMapData";
-import { dispatchRouteProgress, hasActivePersonnelApproach, hasActiveRouteLocation, routeDistanceKm } from "../utils/routeProgress";
+import { dispatchRouteProgress, hasActivePersonnelApproach, hasTruckArrived, routeDistanceKm } from "../utils/routeProgress";
 import { openConstraintPopup } from "../utils/constraintPopup";
 import ConstraintLayersPanel from "./ConstraintLayersPanel";
 import { baselineConstraintForEdit, buildConstraintLayers, constraintLayerId, constraintTitleCase } from "../utils/constraintLayers";
@@ -1463,6 +1463,8 @@ export default function MapArea({
                 ? severityColor(inc)
                 : ROUTE_COLORS[colorIdx % ROUTE_COLORS.length];
               const isAlt = !dr.isSelected;
+              const dispatch = dispatches.find(row => row.dispatch_id === dr.dispatch_id);
+              const truckArrived = hasTruckArrived(dr.dispatch_id, livePersonnelLocations, dispatch);
 
               const mainStyle = dr.isGnn
                 ? { color, weight: 5, opacity: 0.8 }
@@ -1487,8 +1489,9 @@ export default function MapArea({
                 type={isAlt ? `Alternative Truck Route (Rank ${dr.rank})` : "Main Truck Route"} name={dr.teamName}
                 distanceKm={dr.distanceKm} etaMinutes={dr.etaMinutes} />;
 
-              // Alternatives are not being driven — always show the full path.
+              // Alternatives stay complete while the truck is approaching.
               if (isAlt) {
+                if (truckArrived) return null;
                 return (
                   <Polyline
                     key={dr.id}
@@ -1507,8 +1510,9 @@ export default function MapArea({
               const { remaining, personnelRemaining, personnel: followingPersonnel } = dispatchRouteProgress(
                 dr.positions,
                 dr.dispatch_id,
-                livePersonnelLocations.filter(person => hasActiveRouteLocation(person, routeClock)),
-                activeLayers.has("Personnel")
+                livePersonnelLocations,
+                activeLayers.has("Personnel"),
+                dispatch
               );
 
               return (
@@ -1535,10 +1539,10 @@ export default function MapArea({
                         distanceKm={routeDistanceKm(personnelRemaining)} segment />
                     </Polyline>
                   )}
-                  <Polyline positions={remaining} pathOptions={mainStyle}>
+                  {remaining.length >= 2 && <Polyline positions={remaining} pathOptions={mainStyle}>
                     {tooltip}
                     {routePopup}
-                  </Polyline>
+                  </Polyline>}
                 </Fragment>
               );
             });
