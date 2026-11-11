@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 import state
-from config import REPORT_PHOTO_STORAGE, UPLOAD_ROOT
+from config import CORS_ORIGINS, REPORT_PHOTO_STORAGE, UPLOAD_ROOT
 from services.report_photos import check_report_photo_storage
 from services.location_routing import location_routing
 from services.route_alternatives import route_alternatives
@@ -107,10 +107,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://firetrackr-dashboard.onrender.com",
-    ],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -16,6 +16,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Browser client origins, not the backend/ngrok destination URL. Native Android
+# requests do not use browser CORS; Expo web must send an allowed origin.
+CORS_ORIGINS = list(dict.fromkeys(
+    origin.strip().rstrip("/")
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,https://firetrackr-dashboard.onrender.com,"
+        "http://localhost:8081,http://127.0.0.1:8081",
+    ).split(",")
+    if origin.strip()
+))
+
 # Training is opt-in through the admin API; no job starts during startup.
 _RETRAIN_REPO_ROOT = Path(__file__).resolve().parent.parent
 RETRAIN_RUNNER = os.getenv("RETRAIN_RUNNER", "local")
