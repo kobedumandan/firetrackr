@@ -161,12 +161,10 @@ async def _perform_dispatch(
     if state.routing_engine and origin_lat is not None and incident.fire_latitude and incident.fire_longitude:
         try:
             src_candidates = state.routing_engine.graph.nodes_near(origin_lat, origin_lng, radius_km=2.0)
-            tgt_candidates = state.routing_engine.graph.nodes_near(
-                incident.fire_latitude, incident.fire_longitude, radius_km=2.0)
-            if src_candidates and tgt_candidates:
+            if src_candidates:
                 obs = _load_active_obstructions(db)
-                route_results = state.routing_engine.compute_routes_multi_alpha(
-                    src_candidates[0][0], tgt_candidates[0][0], obstructions=obs)
+                route_results = state.routing_engine.compute_routes_to_point(
+                    src_candidates[0][0], incident.fire_latitude, incident.fire_longitude, obstructions=obs)
                 for r in route_results:
                     route_obj = Route(
                         fire_id=fire_id,

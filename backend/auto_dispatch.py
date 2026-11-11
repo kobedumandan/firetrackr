@@ -133,11 +133,10 @@ def _route_eta_seconds(routing_engine, origin_lat: float, origin_lng: float,
         return None
     try:
         src = routing_engine.graph.nodes_near(origin_lat, origin_lng, radius_km=2.0)
-        tgt = routing_engine.graph.nodes_near(dest_lat,   dest_lng,   radius_km=2.0)
-        if not src or not tgt:
+        if not src:
             return None
-        routes = routing_engine.compute_routes_multi_alpha(
-            src[0][0], tgt[0][0], obstructions=obstructions
+        routes = routing_engine.compute_routes_to_point(
+            src[0][0], dest_lat, dest_lng, obstructions=obstructions
         )
         selected = next((r for r in routes if r.get("is_selected")), None) or (routes[0] if routes else None)
         if not selected:

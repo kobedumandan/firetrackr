@@ -54,10 +54,9 @@ def compute_routes(origin_lat, origin_lng, target_lat, target_lng, obstructions,
     if _engine is None:
         return None
     src = _engine.graph.nodes_near(origin_lat, origin_lng, radius_km=NODES_NEAR_RADIUS_KM)
-    tgt = _engine.graph.nodes_near(target_lat, target_lng, radius_km=NODES_NEAR_RADIUS_KM)
-    if not src or not tgt:
+    if not src:
         return None
-    return _engine.compute_routes_multi_alpha(src[0][0], tgt[0][0], obstructions=obstructions,
+    return _engine.compute_routes_to_point(src[0][0], target_lat, target_lng, obstructions=obstructions,
                                              primary_only=primary_only)
 
 

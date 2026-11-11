@@ -806,6 +806,7 @@ class GeoAIRoutingEngine:
         target: int,
         weight_overrides: Optional[Dict[Tuple[int, int], float]] = None,
         previous_node: Optional[int] = None,
+        terminal_next: Optional[int] = None,
     ) -> Tuple[List[int], float]:
         """
         A* search guided by the ALT heuristic, with U-turns forbidden.
@@ -825,7 +826,7 @@ class GeoAIRoutingEngine:
         Returns (route_nodes, total_cost).
         Raises ValueError if target is unreachable.
         """
-        if source == target:
+        if source == target and terminal_next is None:
             return [source], 0.0
 
         G = self.graph.G
@@ -855,7 +856,8 @@ class GeoAIRoutingEngine:
             closed.add(state)
             prev, node = state
 
-            if node == target:
+            if node == target and (terminal_next is None or prev is None or
+                                   (terminal_next != prev and terminal_next not in twins.get(prev, ()))):
                 path: List[int] = []
                 cur = state
                 while cur != start:
@@ -1061,6 +1063,7 @@ class GeoAIRoutingEngine:
         obstructions: Optional[List[Dict[str, Any]]] = None,
         previous_node: Optional[int] = None,
         primary_only: bool = False,
+        destination_snap=None,
     ) -> List[Dict[str, Any]]:
         """
         Generate up to 3 routes, each answering a different question.
@@ -1112,6 +1115,35 @@ class GeoAIRoutingEngine:
         if not self._landmarks_valid:
             self._precompute_landmarks()
 
+        def _fraction(u, v):
+            a, b = self.graph.G.nodes[u], self.graph.G.nodes[v]
+            return min(1.0, _haversine_km(a['lat'], a['lon'], destination_snap[2], destination_snap[3]) /
+                       max(_haversine_km(a['lat'], a['lon'], b['lat'], b['lon']), 1e-12))
+
+        def _search(costs):
+            if destination_snap is None:
+                return self._alt_search(source_node, target_node, costs, previous_node)
+            u, v = destination_snap[:2]
+            directions = [(u, v)] + ([(v, u)] if self.graph.G.has_edge(v, u) else [])
+            choices = []
+            for start, end in directions:
+                features = self.graph._node_features.get(end)
+                if features is not None and features[4] >= 1.0:
+                    continue
+                fraction = _fraction(start, end)
+                partial = costs.get((start, end), self.graph.G[start][end].get('travel_time_s', 60)) * fraction
+                if not np.isfinite(partial):
+                    continue
+                try:
+                    nodes, cost = self._alt_search(source_node, start, costs, previous_node,
+                                                   terminal_next=end)
+                except ValueError:
+                    continue
+                choices.append((nodes + [end], cost + partial))
+            if not choices:
+                raise ValueError('No legal approach to destination road segment')
+            return min(choices, key=lambda choice: choice[1])
+
         def _edge_times(route_nodes: List[int]) -> Dict[Tuple[int, int], float]:
             """Map each edge of a route to its base travel time."""
             return {
@@ -1126,6 +1158,10 @@ class GeoAIRoutingEngine:
                 for n in route_nodes
             ]
             times = _edge_times(route_nodes)
+            if destination_snap is not None:
+                u, v = route_nodes[-2:]
+                coords[-1] = (destination_snap[3], destination_snap[2])
+                times[(u, v)] *= _fraction(u, v)
             distance_m = float(sum(
                 _haversine_km(
                     coords[i][1], coords[i][0],
@@ -1146,6 +1182,8 @@ class GeoAIRoutingEngine:
                 "route_distance_meters": round(distance_m, 1),
                 "_edge_times":           times,
                 "_total_time":           float(sum(times.values())),
+                **({'destination_edge_fraction': _fraction(*route_nodes[-2:])}
+                   if destination_snap is not None else {}),
             }
 
         def _penalise(route_nodes: List[int]) -> None:
@@ -1174,7 +1212,7 @@ class GeoAIRoutingEngine:
 
         # ── Objective 1: constraint-aware (the recommended route) ─────────────
         try:
-            best_nodes, _ = self._alt_search(source_node, target_node, working_costs, previous_node)
+            best_nodes, _ = _search(working_costs)
         except ValueError as exc:
             logger.warning("ALT primary route failed: %s", exc)
             return []
@@ -1190,7 +1228,7 @@ class GeoAIRoutingEngine:
         # are then the same function and this is just the primary search again.
         if self._use_constraint_costs and not primary_only:
             try:
-                fast_nodes, _ = self._alt_search(source_node, target_node, time_costs, previous_node)
+                fast_nodes, _ = _search(time_costs)
             except ValueError as exc:
                 logger.debug("Fastest-route objective failed: %s", exc)
             else:
@@ -1212,7 +1250,7 @@ class GeoAIRoutingEngine:
             if len(accepted) >= 3:
                 break
             try:
-                cand_nodes, _ = self._alt_search(source_node, target_node, working_costs, previous_node)
+                cand_nodes, _ = _search(working_costs)
             except ValueError as exc:
                 logger.debug("No further alternative: %s", exc)
                 break
@@ -1260,6 +1298,23 @@ class GeoAIRoutingEngine:
         )
         return results
 
+    def compute_routes_to_point(self, source_node, dest_lat, dest_lon, obstructions=None,
+                                previous_node=None, primary_only=False, radius_km=2.0):
+        """Attach an incident to its closest road, without mutating the graph."""
+        from .graph_builder import _haversine_km
+
+        snap = self.graph.nearest_edge(dest_lat, dest_lon, radius_km=radius_km)
+        if snap is None:
+            return []
+        # Keep exact-node destinations on the existing search path.
+        for node in snap[:2]:
+            data = self.graph.G.nodes[node]
+            if _haversine_km(data['lat'], data['lon'], snap[2], snap[3]) * 1000 < .001:
+                return self.compute_routes_multi_alpha(source_node, node, obstructions,
+                                                       previous_node, primary_only)
+        return self.compute_routes_multi_alpha(source_node, snap[0], obstructions,
+                                               previous_node, primary_only, destination_snap=snap)
+
     def nearest_station_node(self, incident_lat: float, incident_lon: float) -> Optional[int]:
         """Return the graph node ID of the nearest fire station to an incident."""
         candidates = self.graph.nodes_near(incident_lat, incident_lon, radius_km=20.0)
@@ -1269,7 +1324,7 @@ class GeoAIRoutingEngine:
         return None
 
     def compute_routes_from_position(self, lat, lon, dest_lat, dest_lon, obstructions=None, previous_position=None,
-                                     primary_only=False):
+                                     primary_only=False, origin_radius_km=0.05):
         """Choose the best available road direction from the current GPS fix.
 
         Geometry begins at the reported fix. A small GPS-to-road snap is explicit;
@@ -1285,48 +1340,73 @@ class GeoAIRoutingEngine:
         import math
         from .graph_builder import _haversine_km
 
-        snap = self.graph.nearest_edge(lat, lon, radius_km=0.05)
-        targets = self.graph.nodes_near(dest_lat, dest_lon, radius_km=0.5)
-        if snap is None or not targets:
+        snap = self.graph.nearest_edge(lat, lon, radius_km=origin_radius_km)
+        destination = self.graph.nearest_edge(dest_lat, dest_lon, radius_km=0.5)
+        if snap is None or destination is None:
             return []
         u, v, plat, plon, _ = snap
         graph = self.graph.G
         endpoints = [(u, v)]
         if graph.has_edge(v, u):
             endpoints.append((v, u))
-        costs, _ = self._compute_edge_costs()
+        costs, node_scores = self._compute_edge_costs()
         if obstructions:
             self.apply_obstructions(obstructions, costs)
         if self._use_constraint_costs:
             self.apply_congestion(costs)
         choices = []
+        # A destination ahead on this same segment needs no trip to a junction.
+        # Compare its partial cost with the normal approaches below.
+        if set(destination[:2]) == {u, v}:
+            a, b = graph.nodes[u], graph.nodes[v]
+            length = _haversine_km(a['lat'], a['lon'], b['lat'], b['lon']) * 1000
+            origin_along = _haversine_km(a['lat'], a['lon'], plat, plon) * 1000
+            dest_along = _haversine_km(a['lat'], a['lon'], destination[2], destination[3]) * 1000
+            edge = (u, v) if dest_along >= origin_along else (v, u)
+            distance = abs(dest_along - origin_along)
+            if graph.has_edge(*edge) and (distance < .001 or np.isfinite(costs.get(edge, 0))):
+                fraction = distance / max(length, .01)
+                access = _haversine_km(lat, lon, plat, plon) * 1000
+                direct = dict(route_nodes=[], rank=1, route_type='recommended', is_selected=True,
+                              gnn_confidence=round(float(np.clip(np.mean([node_scores.get(u, .5), node_scores.get(v, .5)]) * 100, 0, 100)), 1),
+                              eta_seconds=round(graph[edge[0]][edge[1]].get('travel_time_s', 60) * fraction + access / 5),
+                              route_distance_meters=round(distance + access, 1),
+                              route_wkt=f'LINESTRING({lon} {lat}, {plon} {plat}, {destination[3]} {destination[2]})')
+                score = costs.get(edge, graph[edge[0]][edge[1]].get('travel_time_s', 60)) * fraction if distance >= .001 else 0
+                choices.append((score, None, None, 0, 0, 0, [direct]))
         for start, end in endpoints:
             end_data = graph.nodes[end]
             partial_m = _haversine_km(plat, plon, end_data['lat'], end_data['lon']) * 1000
             if partial_m > 1 and not math.isfinite(costs.get((start, end), 0)):
                 continue
-            routes = self.compute_routes_multi_alpha(end, targets[0][0], obstructions=obstructions,
+            routes = self.compute_routes_to_point(end, dest_lat, dest_lon, obstructions=obstructions,
                                                      previous_node=start if partial_m > 1 else None,
-                                                     primary_only=True)
+                                                     primary_only=True, radius_km=0.5)
             edge_m = _haversine_km(graph.nodes[start]['lat'], graph.nodes[start]['lon'], end_data['lat'], end_data['lon']) * 1000
             access_m = _haversine_km(lat, lon, plat, plon) * 1000
             extra_seconds = graph[start][end].get('travel_time_s', 60) * partial_m / max(edge_m, 0.01) + access_m / 5
             if routes:
                 primary = routes[0]['route_nodes']
                 score = sum(costs.get((x, y), graph[x][y].get('travel_time_s', 60)) for x, y in zip(primary, primary[1:]))
+                if 'destination_edge_fraction' in routes[0]:
+                    x, y = primary[-2:]
+                    score -= costs.get((x, y), graph[x][y].get('travel_time_s', 60)) * (1 - routes[0]['destination_edge_fraction'])
                 if partial_m > .001:
                     score += costs.get((start, end), graph[start][end].get('travel_time_s', 60)) * partial_m / max(edge_m, .01)
                 choices.append((score, start, end, partial_m, access_m, extra_seconds, routes))
         if not choices:
             return []
         _, start, end, partial_m, access_m, extra_seconds, routes = min(choices, key=lambda choice: choice[0])
+        if start is None:
+            return routes
         if not primary_only:
-            routes = self.compute_routes_multi_alpha(end, targets[0][0], obstructions=obstructions,
-                                                     previous_node=start if partial_m > 1 else None)
+            routes = self.compute_routes_to_point(end, dest_lat, dest_lon, obstructions=obstructions,
+                                                     previous_node=start if partial_m > 1 else None, radius_km=0.5)
         prepared = []
         for route in routes:
             coords = [(lon, lat), (plon, plat)]
-            coords += [(graph.nodes[node]['lon'], graph.nodes[node]['lat']) for node in route['route_nodes']]
+            from shapely import wkt
+            coords += list(wkt.loads(route['route_wkt']).coords)
             clean = [coords[0]]
             for point in coords[1:]:
                 if _haversine_km(point[1], point[0], clean[-1][1], clean[-1][0]) * 1000 > .001:
@@ -1361,63 +1441,16 @@ class GeoAIRoutingEngine:
         Raises ValueError if driver or destination node cannot be resolved.
         """
 
-        # 1. Snap the driver to the nearest road *segment* (perpendicular
-        #    projection), not the nearest intersection vertex. Nearest-node
-        #    snapping can latch onto an intersection that belongs to a parallel
-        #    road; projecting onto edges keeps the connector on the road the
-        #    driver is actually travelling.
-        snap = self.graph.nearest_edge(driver_lat, driver_lon, radius_km=0.5)
-        if snap is None:
-            raise ValueError("No graph edge within 500 m of driver position")
-        edge_u, edge_v, proj_lat, proj_lon, _perp_km = snap
+        from shapely import wkt
 
-        # 2. Nearest graph node to destination (incident)
-        target_candidates = self.graph.nodes_near(dest_lat, dest_lon, radius_km=0.5)
-        if not target_candidates:
-            raise ValueError("No graph node within 500 m of destination")
-        target_node = target_candidates[0][0]
-
-        edge_costs, _ = self._compute_edge_costs()
-        if obstructions:
-            self.apply_obstructions(obstructions, edge_costs)
-        if self._use_constraint_costs:
-            self.apply_congestion(edge_costs)
-
-        if not self._landmarks_valid:
-            self._precompute_landmarks()
-
-        # 3. Route from whichever endpoint of the snapped segment yields the
-        #    cheaper path to the target, so the connector doesn't backtrack
-        #    along the segment the driver is standing on. nearest_edge returns
-        #    a directed edge, so on a one-way street (no v→u edge) only the
-        #    downstream end is legal — never send the driver back against
-        #    traffic.
-        entries = (edge_u, edge_v) if self.graph.G.has_edge(edge_v, edge_u) else (edge_v,)
-        best_route: Optional[List[int]] = None
-        best_cost = float("inf")
-        for entry in entries:
-            try:
-                route_nodes, cost = self._alt_search(entry, target_node, edge_costs)
-            except ValueError:
-                continue
-            if cost < best_cost:
-                best_cost = cost
-                best_route = route_nodes
-
-        if best_route is None:
+        routes = self.compute_routes_from_position(
+            driver_lat, driver_lon, dest_lat, dest_lon, obstructions,
+            primary_only=True, origin_radius_km=0.5,
+        )
+        if not routes:
             raise ValueError("No connector route found to destination")
-
-        # 4. Build the line: actual driver position → foot of perpendicular on
-        #    the road → routed node path. Drop a routed node if it duplicates
-        #    the projection point (happens when the driver projects onto an
-        #    endpoint, t == 0 or t == 1).
-        coords = [[driver_lon, driver_lat], [proj_lon, proj_lat]]
-        for n in best_route:
-            nd = self.graph.G.nodes[n]
-            pt = [nd["lon"], nd["lat"]]
-            if pt != coords[-1]:
-                coords.append(pt)
-        return {"type": "LineString", "coordinates": coords}
+        return {"type": "LineString", "coordinates": [list(point) for point in
+                wkt.loads(routes[0]['route_wkt']).coords]}
 
     def shutdown(self):
         if self.sumo:

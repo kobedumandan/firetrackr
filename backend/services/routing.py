@@ -86,7 +86,7 @@ def _rebuild_routes(
         return None
 
     src_nodes = state.routing_engine.graph.nodes_near(origin_lat, origin_lng, radius_km=2.0)
-    tgt_nodes = state.routing_engine.graph.nodes_near(
+    tgt_nodes = state.routing_engine.graph.nearest_edge(
         incident.fire_latitude, incident.fire_longitude, radius_km=2.0
     )
     if not src_nodes or not tgt_nodes:
@@ -101,8 +101,8 @@ def _rebuild_routes(
 
     try:
         obs = _load_active_obstructions(db)
-        route_results = state.routing_engine.compute_routes_multi_alpha(
-            src_nodes[0][0], tgt_nodes[0][0], obstructions=obs
+        route_results = state.routing_engine.compute_routes_to_point(
+            src_nodes[0][0], incident.fire_latitude, incident.fire_longitude, obstructions=obs
         )
     except Exception as exc:
         logger.warning(
@@ -211,10 +211,9 @@ def _run_routing_via_pool(
         return state.routing_engine.compute_routes_from_position(a, b, c, d, obstructions, previous_position,
                                                                  primary_only=primary_only)
     src = state.routing_engine.graph.nodes_near(a, b, radius_km=2.0)
-    tgt = state.routing_engine.graph.nodes_near(c, d, radius_km=2.0)
-    if not src or not tgt:
+    if not src:
         return None
-    return state.routing_engine.compute_routes_multi_alpha(src[0][0], tgt[0][0], obstructions=obstructions,
+    return state.routing_engine.compute_routes_to_point(src[0][0], c, d, obstructions=obstructions,
                                                           primary_only=primary_only)
 
 
