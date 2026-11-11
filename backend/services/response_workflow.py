@@ -115,6 +115,8 @@ def record_fire_milestone(db, dispatch_id, user, kind, at, request_key):
     from services.personnel_arrival import arrival_for
     if arrival_for(db, dispatch, user.personnel.per_id) is None:
         raise HTTPException(409, 'Confirm your personal arrival before recording fire milestones.')
+    if dispatch.dispatch_status != 'on_scene':
+        raise HTTPException(409, 'Wait for the assigned truck to arrive before recording fire milestones. The manning driver must confirm truck arrival.')
     if kind == 'fire_out' and inc.fire_out_at is None and inc.fire_status != 'contained':
         raise HTTPException(409, 'Mark the fire as contained before recording Fire Out.')
     field = 'fire_out_at' if kind == 'fire_out' else 'suppression_started_at'

@@ -504,6 +504,11 @@ async def mark_contained(
         raise HTTPException(409, 'This incident no longer accepts situation-control actions.')
     if dispatch.dispatch_status not in ('dispatched', 'en_route', 'on_scene') or dispatch.cleared_at:
         raise HTTPException(409, 'This dispatch is no longer active.')
+    from services.personnel_arrival import arrival_for
+    if arrival_for(db, dispatch, per_id) is None:
+        raise HTTPException(409, 'Confirm your personal arrival before marking the situation under control.')
+    if dispatch.dispatch_status != 'on_scene':
+        raise HTTPException(409, 'Wait for the assigned truck to arrive before marking the situation under control. The manning driver must confirm truck arrival.')
     before = snapshot(inc)
     now = datetime.now(timezone.utc)
     occurred_at = now
@@ -602,6 +607,11 @@ async def submit_incident_report(
     blocker = field_report_blocker(db, dispatch, current_user)
     if blocker:
         raise HTTPException(409, blocker)
+    if dispatch.dispatch_status in ('dispatched', 'en_route') and any(
+        at is not None and at != recorded
+        for at, recorded in ((suppression_started_at, inc.suppression_started_at), (fire_out_at, inc.fire_out_at))
+    ):
+        raise HTTPException(409, 'Wait for the assigned truck to arrive before recording fire milestones in a field report.')
     first_field_report = not db.query(IncidentReport.report_id).filter_by(fire_id=inc.fire_id).first()
 
     now = datetime.now(timezone.utc)
