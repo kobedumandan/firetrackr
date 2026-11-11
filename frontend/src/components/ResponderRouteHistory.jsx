@@ -3,9 +3,8 @@ import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from
 import 'leaflet/dist/leaflet.css'
 import { fetchResponderTracks } from '../api'
 import { MAP_CENTER, tileLayersFor } from '../data/mapConfig'
-import { dateTime, duration, parseRouteWkt } from '../utils/operationalTimes'
+import { dateTime, parseRouteWkt } from '../utils/operationalTimes'
 import AnalysisIcon from './AnalysisIcon'
-import KpiCard, { KPI_EMPTY } from './KpiCard'
 import SettingsLoading from './SettingsLoading'
 import '../styles/ResponderRouteHistory.css'
 
@@ -103,15 +102,13 @@ export default function ResponderRouteHistory({ fireId, theme = 'dark', initialD
   const palette = palettes[theme] || palettes.dark
   const colour = member => palette[allMembers.findIndex(m => m.key === member.key) % palette.length]
   const sampleCount = visible.reduce((n, m) => n + m.sample_count, 0)
-  const recordedWindow = activeMember?.sample_count > 0 && activeMember.first_recorded_at && activeMember.last_recorded_at
-    ? (new Date(activeMember.last_recorded_at) - new Date(activeMember.first_recorded_at)) / 1000 : null
   function selectMember(member) {
     change({ member: activeMember?.key === member.key ? 'all' : member.key })
     if (activeMember?.key !== member.key) onSelectDispatch?.(member.dispatch.dispatch_id)
   }
 
   return <div className="responder-tracks">
-    <div className="rt-heading"><div><h3>Recorded responder routes</h3><p>Select a member to focus on their route and recorded metrics.</p></div><button type="button" className="rt-refresh" disabled={pending} onClick={() => setRevision(value => value + 1)}><AnalysisIcon name="refresh" />{pending ? 'Loading…' : 'Refresh'}</button></div>
+    <div className="rt-heading"><div><h3>Recorded Responder Routes</h3><p>Select a member to focus on their route.</p></div><button type="button" className="rt-refresh" disabled={pending} onClick={() => setRevision(value => value + 1)}><AnalysisIcon name="refresh" />{pending ? 'Loading…' : 'Refresh'}</button></div>
     {!data && pending && <SettingsLoading message="Loading responder routes…" compact />}
     {!pending && current?.error && <div className="rt-error" role="alert">{current.error} <button type="button" onClick={() => setRevision(value => value + 1)}>Retry</button></div>}
     {data && <>
@@ -157,12 +154,6 @@ export default function ResponderRouteHistory({ fireId, theme = 'dark', initialD
         </div>
         {filters.planned && <RouteNote>Dashed grey lines show generated plans.{!planned.length && ' No saved generated route is available for this selection.'}</RouteNote>}
         {vehicles.length > 0 && filters.vehicle && <RouteNote>Dashed amber lines show recorded vehicle GPS. Gaps remain disconnected; vehicle locations are separate from personal metrics.{!visibleVehicles.length && ' No vehicle GPS is available for this selection.'}</RouteNote>}
-        {activeMember && <section className="rt-personal-metrics" aria-label={`${activeMember.name} recorded metrics`}>
-          <KpiCard icon={<AnalysisIcon name="response" />} label="Recorded GPS window" value={duration(recordedWindow, KPI_EMPTY)} sub="First to last saved location" accent="muted" />
-          <KpiCard icon={<AnalysisIcon name="coverage" />} label="GPS locations" value={activeMember.sample_count.toLocaleString()} sub="Usable recorded samples" accent="muted" />
-          <KpiCard icon={<AnalysisIcon name="route" />} label="Track segments" value={activeMember.segments.length.toLocaleString()} sub="Gaps remain disconnected" accent="muted" />
-          <KpiCard icon={<AnalysisIcon name="filter" />} label="Excluded locations" value={(activeMember.excluded_sample_count || 0).toLocaleString()} sub="Invalid or inaccurate fixes" accent="muted" />
-        </section>}
         {!activeMember && <div className="rt-table-scroll"><table className="rt-members-table" aria-label="Recorded paths by member">
           <thead><tr><th scope="col">Personnel</th><th scope="col">Role / Team</th><th scope="col" className="rt-gps-count">Recorded GPS<br />Locations</th><th scope="col">Recorded GPS window</th></tr></thead>
           <tbody>{visible.map(member => <tr className="rt-member-row" key={member.key}>
