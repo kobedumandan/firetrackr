@@ -21,6 +21,7 @@ const ICONS = {
  *   title        – heading text
  *   message      – body text / node describing the consequence
  *   details      – optional [{ label, value }] summarising the affected record
+ *   children     – optional fields shown below the message
  *   icon         – badge icon: "delete" (default) | "logout" | "release" | "warning"
  *   confirmLabel – confirm button text (default "Delete")
  *   confirmDisabled – disables confirmation when the action is unavailable
@@ -34,6 +35,7 @@ export default function ConfirmModal({
   title = "Are you sure?",
   message,
   details,
+  children,
   icon = "delete",
   confirmLabel = "Delete",
   confirmDisabled = false,
@@ -89,6 +91,7 @@ export default function ConfirmModal({
             </dl>
           )}
           <p id="cfm-message" className="cfm-message">{message}</p>
+          {children}
           {error && <div className="apm-error cfm-error">{error}</div>}
         </div>
 

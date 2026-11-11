@@ -29,21 +29,15 @@ export default function useIncidentWorkflow(fireId, revision = 0, onChanged) {
     } catch (failure) { setError(failure.message); throw failure }
     finally { setBusy(false) }
   }
-  async function run(path, body, description) {
-    if (busy || !window.confirm(description)) return
-    try { await submit(path, body) }
-    catch { return false }
-  }
-  async function clear(dispatch) {
-    if (busy) return
-    const reason = window.prompt(`Record the radio source/reason confirming DISP-${dispatch.dispatch_id} is physically clear now.`)
-    if (!reason?.trim()) return
+  async function clear(dispatch, reason) {
+    if (busy) throw new Error('Another response update is saving. Try again shortly.')
+    if (!reason?.trim()) throw new Error('Record the radio source / clearance reason.')
     setBusy(true); setError('')
     try {
       await confirmDispatchClearance(dispatch.dispatch_id, { occurred_at: new Date().toISOString(), idempotency_key: crypto.randomUUID(), reason: reason.trim() })
       const result = await fetchIncidentWorkflow(fireId); setData(result); onChanged?.(result.incident)
-    } catch (failure) { setError(failure.message) }
+    } catch (failure) { setError(failure.message); throw failure }
     finally { setBusy(false) }
   }
-  return { data: data?.incident.fire_id === fireId ? data : null, error, busy, load, submit, run, clear }
+  return { data: data?.incident.fire_id === fireId ? data : null, error, busy, load, submit, clear }
 }

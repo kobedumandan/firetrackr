@@ -28,8 +28,9 @@ function completionRequirements(blockers, dispatches) {
 
 export default function IncidentWorkflowPanel({ fireId, workflow, onPrepare }) {
   const [closeReview, setCloseReview] = useState(null)
+  const [completionReview, setCompletionReview] = useState(null)
   const [photoViewer, setPhotoViewer] = useState(null)
-  const { data, error, busy, run } = workflow
+  const { data, error, busy } = workflow
   const dispatches = data?.dispatches || []
   const fieldReports = data?.field_reports || []
   const viewedReport = photoViewer?.fireId === fireId
@@ -47,6 +48,13 @@ export default function IncidentWorkflowPanel({ fireId, workflow, onPrepare }) {
     && closeReview.reportId === data?.report?.report_id
     && closeReview.revision === data?.report?.revision
     && (complete || closed) && (!data?.report?.reviewed_at || !closed)
+  const completionReviewCurrent = !!completionReview && completionReview.fireId === fireId
+    && data?.incident.fire_id === fireId && !complete && !closed && !data.completion_blockers.length
+
+  async function confirmCompletion() {
+    if (!completionReviewCurrent) throw new Error('The operation status changed. Cancel and reopen operation completion to review the latest status.')
+    await workflow.submit(`/api/workflow/incidents/${completionReview.fireId}/complete`, {})
+  }
 
   async function confirmClose() {
     if (!closeReviewCurrent) throw new Error('The incident or report changed. Reopen Review & Close Incident to review the latest revision.')
@@ -85,7 +93,7 @@ export default function IncidentWorkflowPanel({ fireId, workflow, onPrepare }) {
               {!!data.completion_blockers.length && <div className="wf-blockers"><span className="wf-eyebrow">Before Completion</span><div className="wf-requirements" role="list">{requirements.map(requirement => <span className="wf-requirement" role="listitem" key={requirement.key}>
                 <Icon name={requirement.icon} /><span>{requirement.label}{requirement.action && <><span className="wf-requirement-divider"> | </span>{requirement.action}</>}</span>
               </span>)}</div></div>}
-              <button type="button" className="act-btn block" disabled={busy || !!data.completion_blockers.length} onClick={() => run(`/api/workflow/incidents/${fireId}/complete`, {}, 'Confirm operational work is complete and all responding teams are accounted for? This records operation completion independently of reporting and truck readiness.')}>Confirm Operation Complete</button>
+              <button type="button" className="act-btn block" disabled={busy || !!data.completion_blockers.length} onClick={() => setCompletionReview({ fireId })}>Confirm Operation Complete</button>
             </>}
           </article>
 
@@ -127,6 +135,19 @@ export default function IncidentWorkflowPanel({ fireId, workflow, onPrepare }) {
       onIndexChange={index => setPhotoViewer(current => ({ ...current, index }))}
       onClose={() => setPhotoViewer(null)}
       caption={`Field report #${viewedReport.report_id}${viewedReport.author ? ` · ${viewedReport.author}` : ''}`}
+    />}
+    {completionReview && <ConfirmModal
+      eyebrow="OPERATION COMPLETION"
+      icon="release"
+      title="Confirm operation complete?"
+      details={[{ label: 'Incident', value: data?.incident.id || String(completionReview.fireId) }]}
+      message={completionReviewCurrent
+        ? 'Confirm operational work is finished and all responding teams are accounted for. This records operation completion now. Incident report review and truck readiness remain separate tasks.'
+        : 'The operation status changed. Cancel and reopen operation completion to review the latest status.'}
+      confirmLabel="Confirm Operation Complete"
+      confirmDisabled={busy || !completionReviewCurrent}
+      onConfirm={confirmCompletion}
+      onClose={() => setCompletionReview(null)}
     />}
     {closeReview && <ConfirmModal
       eyebrow="REVIEW & CLOSE INCIDENT"
