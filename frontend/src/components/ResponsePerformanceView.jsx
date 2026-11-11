@@ -15,11 +15,11 @@ import '../styles/ResponseOperations.css'
 import '../styles/MethodNote.css'
 
 const COLORS = ['var(--duration-green, #00b84a)', '#55b4ad', '#81a4e8', '#c49bd3', '#c7aa62', '#c98697']
-const MEASURES = { response: 'After dispatch', handling: 'Dispatch handling', acknowledgement: 'Acknowledgement', turnout: 'Turnout', travel: 'Travel' }
+const MEASURES = { response: 'Dispatch-to-Arrival', handling: 'Report Processing', acknowledgement: 'Acknowledgement', turnout: 'Preparation', travel: 'Travel' }
 const TEAM_EXPLANATIONS = {
   response: 'How long it takes from dispatching a team until it arrives at the incident scene. This includes getting ready and travelling.',
   handling: 'How long it takes from receiving the incident report until this team is dispatched. Teams sent later may have a longer time here.',
-  acknowledgement: 'How long it takes after dispatch for the team to confirm it has received the assignment. This time is already included in turnout.',
+  acknowledgement: 'How long it takes after dispatch for the team to confirm it has received the assignment. This time is already included in preparation.',
   turnout: 'How long it takes after dispatch for the team to get ready and leave for the incident. This includes the time taken to acknowledge the assignment.',
   travel: 'How long the team spends travelling, from departure until arrival at the incident scene.',
 }
@@ -487,7 +487,7 @@ export default function ResponsePerformanceView({ onOpenAnalysis, onOpenDispatch
       {!demo && <details className="ro-team-analysis">
       <summary><span className="ro-team-summary-icon"><PerformanceIcon name="chart" /></span><span className="ro-team-summary-copy"><strong>Team comparison and dispatch evidence</strong><span>Compare crews, review monthly trends and trace individual dispatches.</span></span><span className="rp-count">{data?.candidate_dispatches ?? rows?.total ?? 0} dispatches</span><PerformanceIcon name="chevron" /></summary>
       <div className="ro-team-content">
-      <div className="rp-section-heading rp-interval-heading"><div><h2>Response intervals</h2><p>One observation per dispatch for {filters.teams.length ? 'selected teams' : 'all teams'}. Dispatch handling includes later reinforcements.</p></div><span className="rp-tag">Dispatch-based</span></div>
+      <div className="rp-section-heading rp-interval-heading"><div><h2>Response intervals</h2><p>One observation per dispatch for {filters.teams.length ? 'selected teams' : 'all teams'}. Report processing includes later reinforcements.</p></div><span className="rp-tag">Dispatch-based</span></div>
       <div className="rp-kpis">{Object.entries(MEASURES).map(([key, label]) => {
         const stat = data?.summary[key]
         return <section className="rp-card rp-metric-card" key={key}>
@@ -501,7 +501,7 @@ export default function ResponsePerformanceView({ onOpenAnalysis, onOpenDispatch
           <Quality stat={stat} compact />
         </section>
       })}</div>
-      <details className="rp-method-note mo-method"><summary><PerformanceIcon name="info" />How to read these intervals<PerformanceIcon name="chevron" /></summary><div className="mo-method-content is-single"><p>Incident windows use report receipt dates, with occurrence dates used for listing when receipt is unknown. Team comparisons use dispatch dates. Acknowledgement is included in turnout; do not add them together. Missing receipt times do not prevent dispatch-to-arrival or truck travel measurement. Response intervals above six hours remain inspectable as invalid observations; suppression and overall operation can be longer. p90 uses the nearest-rank method.</p></div></details>
+      <details className="rp-method-note mo-method"><summary><PerformanceIcon name="info" />How to read these intervals<PerformanceIcon name="chevron" /></summary><div className="mo-method-content is-single"><p>Incident windows use report receipt dates, with occurrence dates used for listing when receipt is unknown. Team comparisons use dispatch dates. Acknowledgement is included in preparation; do not add them together. Missing receipt times do not prevent dispatch-to-arrival or truck travel measurement. Response intervals above six hours remain inspectable as invalid observations; suppression and overall operation can be longer. p90 uses the nearest-rank method.</p></div></details>
       <TeamTrend monthly={data?.monthly || []} loading={loading} selectedMonth={month} onMonth={value => { setMonth(current => current === value ? '' : value); setPage(1); setExportError(null) }} />
       <section className="rp-card rp-observations ro-dispatch-observations" aria-label="Dispatch observations" aria-busy={dispatchLoading}>
         <div className="rp-section-heading"><div><div className="rp-heading-title"><h2>Dispatch observations</h2>{!dispatchLoading && <span className="rp-count">{rows?.total || 0}</span>}</div><p>Inspect the records behind the response times</p></div>

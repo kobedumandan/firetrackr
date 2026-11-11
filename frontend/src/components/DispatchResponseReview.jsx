@@ -29,11 +29,21 @@ export function ResponseMilestones({ milestones }) {
   </li>)}</ol>
 }
 
-export function ResponseEvidenceEvents({ events, incident }) {
-  if (!events.length) return null
+export function ResponseEvidenceEvents({ events, incident, unit }) {
+  if (!events.length && !unit) return null
   return <section className="rar-event-list" aria-label="Recorded evidence">
-    <div className="rar-evidence-heading"><div><h3>Recorded evidence</h3><p>Who recorded each milestone and when.</p></div><span className="rar-evidence-count">{events.length} {events.length === 1 ? 'record' : 'records'}</span></div>
-    <ol className="rar-evidence-feed">{events.map((event, index) => {
+    <div className="rar-evidence-heading">
+      <div className={unit ? 'rar-unit-evidence-heading' : undefined}>
+        {unit && <span className="rar-action-icon"><AnalysisIcon name="travel" /></span>}
+        <div><h3>{unit ? 'Truck Timing' : 'Recorded evidence'}</h3><p>Who recorded each milestone and when.</p></div>
+      </div>
+      <div className="rar-evidence-heading-meta">
+        {unit && <span className="rar-truck-reference">{unit.truck || 'Truck unknown'}</span>}
+        <span className="rar-evidence-count">{events.length} {events.length === 1 ? 'record' : 'records'}</span>
+      </div>
+    </div>
+    {!events.length && <p className="rar-note">No truck milestones recorded yet.</p>}
+    {events.length > 0 && <ol className="rar-evidence-feed">{events.map((event, index) => {
       const [label, icon] = event.type === 'op_fire_control'
         ? [incidentControl(incident).label, 'acknowledgement']
         : EVIDENCE_TYPES[event.type] || [readable(event.type.replace('op_', '')), 'handling']
@@ -49,7 +59,7 @@ export function ResponseEvidenceEvents({ events, incident }) {
           {event.correction?.previous_at && <div className="rar-evidence-previous"><dt>Previous occurrence</dt><dd><AnalysisDateTime value={event.correction.previous_at} /></dd></div>}
         </dl>
       </li>
-    })}</ol>
+    })}</ol>}
   </section>
 }
 
@@ -121,7 +131,7 @@ export default function DispatchResponseReview({ fireId, detail, dispatch, data,
       <details className="rar-disclosure rar-dispatch-evidence">
         <summary className="rp-section-heading rar-section-heading"><div className="rar-section-heading-copy"><span className="rar-section-heading-icon"><AnalysisIcon name="handling" /></span><div><h3>Dispatch Evidence &amp; Data Quality</h3><p>Attribution and interval checks</p></div></div><AnalysisIcon name="chevron" className="rar-chevron" /></summary>
         <div className="rar-disclosure-body">
-          {data ? <DispatchEvidenceContent data={data} unit={unit}><ResponseEvidenceEvents events={unitEvents} /></DispatchEvidenceContent> : <p className="rar-note">{error ? 'Retry dispatch evidence to load assignment records and interval quality.' : 'Loading dispatch evidence…'}</p>}
+          {data ? <DispatchEvidenceContent data={data} unit={unit}><ResponseEvidenceEvents events={unitEvents} unit={unit} /></DispatchEvidenceContent> : <p className="rar-note">{error ? 'Retry dispatch evidence to load assignment records and interval quality.' : 'Loading dispatch evidence…'}</p>}
         </div>
       </details>
       <MilestoneForm key={`${dispatch.dispatch_id}:${unit?.id}:${detail.response_kind}`} data={detail} unit={unit} selectedDispatchId={dispatch.dispatch_id} onSaved={onSaved} pageLayout />
