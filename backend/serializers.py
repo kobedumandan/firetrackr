@@ -127,6 +127,18 @@ def _incident_dict(r: FireIncident) -> dict:
     imported = r.fire_location_source == 'bfp_historical_import'
     source = history(r)
     date_only = source.get('occurrence_precision') == 'date_only'
+    cancellation = None
+    if r.fire_status == 'cancelled':
+        from sqlalchemy.orm import object_session
+        from models import IncidentEvent
+        from services.incident_events import event_dict
+        db = object_session(r)
+        event = (
+            db.query(IncidentEvent)
+            .filter_by(fire_id=r.fire_id, event_type='status', event_to='cancelled')
+            .order_by(IncidentEvent.event_id.desc()).first()
+        ) if db else None
+        cancellation = event_dict(event) if event else None
     occurred = r.fire_incident_datetime
     reported_at = occurred.isoformat() if occurred else None
     if occurred and date_only:
@@ -139,6 +151,7 @@ def _incident_dict(r: FireIncident) -> dict:
         "addr":           r.fire_address        or "",
         "sev":            r.fire_severity or ("Not recorded" if r.fire_location_source == "bfp_historical_import" else "Minor"),
         "status":         r.fire_status         or "pending",
+        "cancellation":   cancellation,
         "lifecycle_stage": stage(r),
         "workflow_version": WORKFLOW_VERSION,
         "operation_completed_at": r.operation_completed_at.isoformat() if r.operation_completed_at else None,

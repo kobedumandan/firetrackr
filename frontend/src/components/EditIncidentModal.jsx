@@ -144,7 +144,7 @@ export default function EditIncidentModal({ incident, onClose, onSubmit }) {
               value={displayStatus}
               incident={{ ...incident, dispatch_type: form.fire_dispatch_type }}
               includeOperationComplete
-              disabledValues={displayStatus === 'operation_complete' || incident.status === 'closed' ? ['pending', 'dispatched', 'contained', 'closed'] : ['closed']}
+              disabledValues={displayStatus === 'operation_complete' || ['closed', 'cancelled', 'canceled', 'recalled'].includes(incident.status) ? ['pending', 'dispatched', 'contained', 'closed'] : ['closed']}
               onChange={v => set('fire_status', v)}
               hint={statusMeta.hint.replace(/\.$/, '')}
             />

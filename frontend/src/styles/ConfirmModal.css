@@ -110,6 +110,14 @@
   margin: 12px 0 0;
 }
 
+.cancel-incident-modal .apm-field {
+  margin-top: 16px;
+}
+
+.cancel-incident-modal .apm-field label {
+  color: rgba(255, 255, 255, 0.7);
+}
+
 /* ── Actions ── */
 .cfm-actions {
   display: flex;

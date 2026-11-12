@@ -2,6 +2,20 @@
 
 ## Basis and maintenance
 
+### Pending incident cancellation (2026-11-12)
+
+The incident details archive icon becomes Cancel incident while pending and is
+enabled after its dispatch list loads empty. Cancellation uses the same shared
+confirmation dialog as archiving, with a required reason field. Other statuses
+retain the archive action. `POST /api/incidents/{fire_id}/cancel` requires a trimmed
+reason of 1–500 characters and locks the incident against concurrent dispatch.
+Only unarchived pending incidents without any dispatch records or operation
+completion qualify. The status event stores the reason, actor and server time;
+details expose this as `cancellation`. Cancelled incidents remain in the register
+and are excluded from active incidents. General edits cannot cancel or reopen
+cancelled records. No database migration is required. Dispatch cancellation and
+cancellation after dispatch are deferred in [the plan](plans-todo/incident-cancellation.md).
+
 ### Local PostgreSQL with Supabase photos (2026-11-12)
 
 The configured API now uses a fresh local PostgreSQL/PostGIS database copied

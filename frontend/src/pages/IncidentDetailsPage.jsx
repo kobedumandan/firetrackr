@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import PhotoViewer from "../components/PhotoViewer";
+import CancelPendingIncident from '../components/CancelPendingIncident';
 import "../styles/IncidentDetailsPage.css";
 import DetailsLayout, {
   DetailsSection,
@@ -8,6 +9,7 @@ import DetailsLayout, {
 } from "../layout/DetailsLayout";
 import {
   SeverityBadge,
+  StatusPill,
   EditIcon,
   RemoveIcon,
   FireGeneralIcon,
@@ -24,6 +26,7 @@ import { ICON_CHECK, supportsFireAlarm } from '../components/incidentFormOptions
 import useIncidentWorkflow from '../hooks/useIncidentWorkflow';
 import { incidentControl, incidentStage } from '../utils/incidentOperations';
 import { isDateOnly } from '../utils/incidentDate';
+import { dateTime } from '../utils/operationalTimes';
 
 const STEPS = [
   { key: "pending", label: "Reported" },
@@ -91,6 +94,9 @@ function Progress({ incident, reportedAt, dispatchedAt, closedAt }) {
     const step = timeline?.children[current];
     if (step) timeline.scrollLeft = Math.max(0, step.offsetLeft - (timeline.clientWidth - step.clientWidth) / 2);
   }, [current]);
+  if (['cancelled', 'canceled', 'recalled'].includes(incident.status)) {
+    return null;
+  }
   return (
     <div className={`idp-steps eim-steps${incident.status === 'closed' ? ' complete' : ''}`} ref={timelineRef} tabIndex={0} role="list" aria-label="Incident progress">
       {STEPS.map((s, i) => {
@@ -421,7 +427,7 @@ export default function IncidentDetailsPage({
             >
               <EditIcon />
             </button>
-            <button
+            {incident.status === 'pending' ? <CancelPendingIncident key={fireId} incident={incident} dispatches={dispatches} onUpdated={onUpdated} /> : <button
               type="button"
               className="act-icon-btn danger"
               onClick={() => onDelete?.(incident)}
@@ -430,10 +436,20 @@ export default function IncidentDetailsPage({
               aria-label="Archive incident"
             >
               <RemoveIcon />
-            </button>
+            </button>}
           </div>
         </div>
 
+        {['cancelled', 'canceled'].includes(incident.status) && <div className="idp-cancellation" aria-label="Cancellation details">
+          <div className="idp-cancellation-heading">
+            <StatusPill status="cancelled" />
+            <span className="idp-cancellation-pipe" aria-hidden="true">|</span>
+            <span>By {incident.cancellation?.actor || 'Unknown'}</span>
+            <span className="val-badge vb-fire">Admin</span>
+          </div>
+          <p className="idp-cancellation-date">Date cancelled: {incident.cancellation?.at ? <time dateTime={incident.cancellation.at}>{dateTime(incident.cancellation.at)}</time> : 'Not recorded'}</p>
+          <p className="idp-cancellation-reason">Reason: {incident.cancellation?.reason || 'Not recorded'}</p>
+        </div>}
         <div className="idp-stats">
           <StatTile label="Alarm Level" value={alarm || "-"} sub={incident.alarm_basis === 'user_annotation' ? 'ANNOTATED' : 'CURRENT'} tone={alarm ? undefined : "muted"} />
           <StatTile

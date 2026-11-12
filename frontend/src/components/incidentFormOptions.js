@@ -43,6 +43,7 @@ export const STRUCTURES = [
 export const CASUALTIES = ['None', 'Unconfirmed', 'Minor Injuries', 'Serious Injuries', 'Fatalities']
 
 export const statusMetaOf = (value, incident) => {
+  if (['cancelled', 'canceled', 'recalled'].includes(value)) return { ...STATUSES.find(s => s.value === 'closed'), value, label: value === 'recalled' ? 'Recalled' : 'Cancelled', hint: 'This incident has been cancelled.' }
   if (value === OPERATION_COMPLETE_STATUS.value) return OPERATION_COMPLETE_STATUS
   const meta = STATUSES.find(s => s.value === value) || STATUSES[0]
   return value === 'contained' ? { ...meta, label: incidentControl(incident).label } : meta

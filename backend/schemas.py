@@ -2,7 +2,12 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, ConfigDict, PositiveInt, model_validator
+from pydantic import BaseModel, Field, ConfigDict, PositiveInt, model_validator, StringConstraints
+from typing import Annotated
+
+
+class IncidentCancel(BaseModel):
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 
 
 class RouteRequest(BaseModel):

@@ -65,4 +65,5 @@ def event_dict(ev: IncidentEvent) -> dict:
         "to":       ev.event_to,
         "actor":    ev.event_actor,
         "at":       ev.created_at.isoformat() if ev.created_at else None,
+        "reason":   (ev.event_metadata or {}).get('reason'),
     }

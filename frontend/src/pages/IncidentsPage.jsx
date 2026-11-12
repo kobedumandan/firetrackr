@@ -49,8 +49,8 @@ function UnfoldIcon() {
     </svg>
   );
 }
-const STATUS_TABS = ["all", "pending", "responding", "under_control", "operation_complete", "closed"];
-const STATUS_LABELS = { all: 'All', pending: 'Pending', responding: 'Responding', under_control: 'Under Control', operation_complete: 'Operation Complete', closed: 'Closed' };
+const STATUS_TABS = ["all", "pending", "responding", "under_control", "operation_complete", "closed", "cancelled"];
+const STATUS_LABELS = { all: 'All', pending: 'Pending', responding: 'Responding', under_control: 'Under Control', operation_complete: 'Operation Complete', closed: 'Closed', cancelled: 'Cancelled' };
 const PAGE_SIZE = 15;
 const PERIODS = [
   { key: "all", label: "All Time" },

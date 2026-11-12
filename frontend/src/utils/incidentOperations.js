@@ -46,7 +46,7 @@ export function incidentStage(incident) {
 export function incidentStatusLabel(status, incident) {
   const stage = incidentStage(incident || { status });
   if (stage === 'under_control') return incidentControl(incident).label;
-  return { pending: 'Pending', responding: 'Responding', operation_complete: 'Operation Complete', closed: 'Closed' }[stage]
+  return { pending: 'Pending', responding: 'Responding', operation_complete: 'Operation Complete', closed: 'Closed', cancelled: 'Cancelled', canceled: 'Cancelled', recalled: 'Recalled' }[stage]
     || stage || 'Not recorded';
 }
 

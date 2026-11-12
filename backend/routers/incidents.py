@@ -15,7 +15,7 @@ from models import (
     DispatchRecord, DispatchTruck, FireIncident, HeatmapData, IncidentEvent,
     IncidentReport, ReportPhoto, Route, Users,
 )
-from schemas import IncidentCreate, IncidentReportSave, IncidentUpdate
+from schemas import IncidentCancel, IncidentCreate, IncidentReportSave, IncidentUpdate
 from security import require_admin
 from serializers import _incident_dict, _report_dict
 from services.dispatch import (
@@ -141,10 +141,10 @@ def get_active_incidents(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    """Plain array of non-closed incidents for the dashboard map/sidebar."""
+    """Plain array of open, uncancelled incidents for the dashboard map/sidebar."""
     rows = (
         db.query(FireIncident)
-        .filter(FireIncident.fire_status != "closed", FireIncident.archived_at.is_(None))
+        .filter(FireIncident.fire_status.notin_(("closed", "cancelled", "canceled", "recalled")), FireIncident.archived_at.is_(None))
         .order_by(FireIncident.fire_incident_datetime.desc())
         .all()
     )
@@ -271,6 +271,33 @@ async def create_incident(
     return data
 
 
+@router.post("/api/incidents/{fire_id}/cancel")
+async def cancel_incident(
+    fire_id: int,
+    body: IncidentCancel,
+    db: Session = Depends(get_db),
+    _auth: Users = Depends(require_admin),
+):
+    # Use dispatch creation's incident lock so the eligibility check stays valid.
+    inc = db.query(FireIncident).filter_by(fire_id=fire_id).populate_existing().with_for_update().first()
+    if inc is None:
+        raise HTTPException(404, 'Incident not found.')
+    require_unarchived(inc, 'Incident')
+    if inc.fire_status != 'pending' or inc.operation_completed_at:
+        raise HTTPException(409, 'Only pending incidents can be cancelled.')
+    if db.query(DispatchRecord.dispatch_id).filter_by(fire_id=fire_id).first():
+        raise HTTPException(409, 'An incident with dispatch records cannot be cancelled.')
+    before = snapshot(inc)
+    inc.fire_status = 'cancelled'
+    events = record_changes(db, inc, before, user=_auth)
+    events[0].event_metadata = {'reason': body.reason}
+    db.commit()
+    db.refresh(inc)
+    data = _incident_dict(inc)
+    await manager.broadcast({'type': 'incident_updated', 'data': data})
+    return data
+
+
 @router.patch("/api/incidents/{fire_id}")
 async def update_incident(
     fire_id: int,
@@ -278,10 +305,14 @@ async def update_incident(
     db: Session = Depends(get_db),
     _auth: Users = Depends(require_admin),
 ):
-    inc = db.get(FireIncident, fire_id)
+    inc = db.query(FireIncident).filter_by(fire_id=fire_id).populate_existing().with_for_update().first()
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found.")
     require_unarchived(inc, "Incident")
+    if body.fire_status in ('cancelled', 'canceled', 'recalled') and body.fire_status != inc.fire_status:
+        raise HTTPException(409, 'Use Cancel incident for a pending incident without dispatches.')
+    if inc.fire_status in ('cancelled', 'canceled', 'recalled') and 'fire_status' in body.model_fields_set and body.fire_status != inc.fire_status:
+        raise HTTPException(409, 'A cancelled incident cannot be reopened. Record a new incident.')
     was_closed = inc.fire_status == "closed"
     if body.fire_status == 'closed' and not was_closed:
         raise HTTPException(409, 'Use Review & Close after operation completion and consolidated reporting.')

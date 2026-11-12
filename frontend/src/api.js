@@ -443,6 +443,12 @@ export async function updateIncident(fireId, body) {
   return res.json()
 }
 
+export async function cancelIncident(fireId, reason) {
+  const res = await apiFetch(`/api/incidents/${fireId}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) })
+  if (!res.ok) throw new Error(await _detail(res, 'Could not cancel incident'))
+  return res.json()
+}
+
 export async function deleteIncident(fireId) {
   const res = await apiFetch(`/api/incidents/${fireId}`, { method: 'DELETE' })
   if (!res.ok) {
