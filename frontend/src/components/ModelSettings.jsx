@@ -233,7 +233,7 @@ export default function ModelSettings({ theme = 'dark' }) {
       <button type="button" className="model-btn model-refresh-btn" aria-label="Refresh" title="Refresh model status" disabled={busy} onClick={() => setRevision(value => value + 1)}><ModelSettingsIcon name="refresh" />Refresh</button></div>
     {error && <p className="model-error" role="alert">{error}</p>}
     {operationError && <p className="model-error" role="alert">{operationError}</p>}
-    {notice && <p className="model-success" role="status">{notice}</p>}
+    {notice && <p className="model-success" role="status"><ModelSettingsIcon name="success" /><span>{notice}</span></p>}
     {!summary && !error && <SettingsLoading message="Loading model settings…" description="Getting the latest model status and version history." />}
     {summary && <>
       <article className="settings-block model-card model-current-card">

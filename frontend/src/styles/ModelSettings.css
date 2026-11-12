@@ -76,7 +76,9 @@
 .model-warning { color: var(--text-primary); padding: 8px 12px; background: var(--accent-amber-dim); border-radius: 6px; overflow-wrap: anywhere; }
 .model-report-heading .model-warning { margin: 0; padding-block: 4px; font-size: 10px; }
 .model-error { border: 1px solid var(--border-dim); border-radius: 8px; padding: 12px 16px; background: var(--accent-fire-dim); color: var(--text-primary); overflow-wrap: anywhere; }
-.model-success { border-radius: 8px; background: var(--accent-green-dim); padding: 12px 16px; }
+.model-success { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; border-radius: 8px; background: var(--accent-green-dim); padding: 12px 16px; overflow-wrap: anywhere; }
+.model-success svg { flex-shrink: 0; color: var(--accent-green); }
+.model-success > span { min-width: 0; }
 .model-table-scroll { overflow-x: auto; border: 1px solid var(--border-dim); border-radius: 10px; }
 .model-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 11px; }
 .model-table caption { text-align: left; color: var(--model-muted); padding: 12px 16px; font-size: 10px; }
