@@ -107,7 +107,11 @@
 .wf-error { display: flex; align-items: flex-start; gap: 9px; margin-top: 16px; padding: 12px; border-radius: 8px; background: var(--accent-fire-dim); color: var(--accent-fire); }
 .wf-error .wf-icon { font-size: 17px; margin-top: 2px; }
 .wf-error p { font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
-.wf-loading { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 180px; color: var(--text-secondary); font-size: 12px; }
+.wf-loading { display: flex; align-items: center; justify-content: center; min-height: 180px; }
+.wf-loading-circle { width: 32px; height: 32px; box-sizing: border-box; border: 2px solid var(--border); border-top-color: var(--accent-fire); border-right-color: var(--accent-fire); border-radius: 50%; animation: wf-loading-spin .8s linear infinite; }
+@keyframes wf-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .wf-loading-circle { animation: none; } }
+:root[data-motion="off"] .wf-loading-circle { animation: none; }
 .wf-panel .wf-saving { margin-top: 12px; font-size: 11px; color: var(--text-secondary); }
 
 @container (min-width: 680px) {

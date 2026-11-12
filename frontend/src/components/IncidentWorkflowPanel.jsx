@@ -67,7 +67,7 @@ export default function IncidentWorkflowPanel({ fireId, workflow, onPrepare }) {
   return <section className="wf-panel" aria-label="Incident operational workflow" aria-busy={busy || (!data && !error)}>
     {error && <div role="alert" className="wf-error"><Icon name="error" /><p>{error}</p></div>}
     {busy && <p className="wf-saving" role="status">Saving update…</p>}
-    {!data && !error && <div className="wf-loading" role="status"><Icon name="hourglass_top" /><p>Loading response workflow…</p></div>}
+    {!data && !error && <div className="wf-loading" role="status" aria-label="Loading response workflow"><span className="wf-loading-circle" aria-hidden="true" /></div>}
 
     {data && <>
       <div className="wf-overview">
