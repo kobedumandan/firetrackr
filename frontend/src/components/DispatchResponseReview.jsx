@@ -93,7 +93,7 @@ export default function DispatchResponseReview({ fireId, detail, dispatch, data,
         {!data && !error && <SettingsLoading message="Loading dispatch evidence…" compact />}
         {data && <>
           <ResponseMilestones milestones={milestones} />
-          <dl className="rar-intervals">{[['handling', 'Handling'], ['turnout', 'Turnout'], ['travel', 'Travel']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd><AnalysisValue value={duration(data.metrics?.[key]?.seconds)} /></dd></div>)}</dl>
+          <dl className="rar-intervals">{[['handling', 'Report Processing'], ['turnout', 'Preparation'], ['travel', 'Travel']].map(([key, label]) => <div key={key}><dt>{label}</dt><dd><AnalysisValue value={duration(data.metrics?.[key]?.seconds)} /></dd></div>)}</dl>
         </>}
         {!data && error && <p className="rar-note">Dispatch timestamps are unavailable. Truck timing and responder routes can still be reviewed below.</p>}
       </section>
