@@ -51,9 +51,9 @@ remain process-local: retain one Uvicorn worker for coherent real-time behavior.
   and leaflet.heat. PDF/Word exports use jsPDF, pdfjs-dist and docx.
 - JWT via `jose`, PBKDF2 password hashing, WebSocket events, PhilSMS and Expo push.
   See the dependency gaps in [KNOWLEDGE.md](KNOWLEDGE.md) before claiming a clean setup.
-- The configured development API uses Supabase PostgreSQL/PostGIS through its
-  TLS Session pooler and private Supabase Storage for report photos. The API and
-  frontend still run locally. Storage is opt-in via `REPORT_PHOTO_STORAGE=supabase`;
+- The configured development API uses local PostgreSQL/PostGIS and private
+  Supabase Storage for report photos, with hosted clients reaching the local API
+  through ngrok. Storage is opt-in via `REPORT_PHOTO_STORAGE=supabase`;
   local disk is the code default. FastAPI owns auth; no Supabase client SDK is required.
   RL/SUMO code exists but is disabled by default.
 

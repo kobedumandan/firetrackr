@@ -1,10 +1,18 @@
 # Supabase database connection and migration
 
-The configured development API now uses Supabase for both its PostgreSQL/PostGIS
-database and private report-photo Storage (2026-11-03). Existing accounts,
-incidents, reports, photo object names and operational records were preserved.
-FastAPI still owns authentication and authorization. The API and frontend still
-run locally; this migration does not publish the application.
+As of 2026-11-12, the configured API uses local PostgreSQL/PostGIS for application
+records and private Supabase Storage for report photos. The latest cloud data
+was copied into a fresh local database at revision `0038`, preserving the old
+local database and cloud database. All 28 application tables passed row-count
+and complete-data checksum checks; both referenced photos downloaded from Storage.
+Backups and verification records are outside Git in
+`local-backups/cloud-to-local-20261111T234100Z/` beside the repository.
+
+`DATABASE_URL` controls the application database independently of
+`REPORT_PHOTO_STORAGE=supabase`. New application writes stay local; switching
+back to the retained cloud database requires reconciling subsequent writes.
+FastAPI owns authentication and authorization, and hosted clients reach the
+local API through ngrok. The sections below document the earlier cloud cutover.
 
 The following procedure documents the completed cutover and the checks required
 for a future migration. Do not re-import into the active cloud database.

@@ -2,6 +2,20 @@
 
 ## Basis and maintenance
 
+### Local PostgreSQL with Supabase photos (2026-11-12)
+
+The configured API now uses a fresh local PostgreSQL/PostGIS database copied
+from the current Supabase application data at revision `0038`. All 28 application
+tables, 47,365 rows and 25 sequence states were verified during the copy; both
+referenced private report photos downloaded successfully from Supabase Storage.
+`DATABASE_URL` selects the local database independently of
+`REPORT_PHOTO_STORAGE=supabase`. The previous local database and cloud database
+were preserved. The snapshot, prior environment and verification records live
+outside the repository in `local-backups/cloud-to-local-20261111T234100Z/`.
+New application writes go to the selected local database; the retained cloud
+database does not receive them. Keep the local API, PostgreSQL and ngrok running
+for hosted dashboard/mobile access.
+
 ### Command routes end at arrival (2026-11-12)
 
 The Command map hides main and alternative truck routes after confirmed truck
@@ -9,6 +23,27 @@ arrival, using dispatch arrival status/timestamps even when the driver's GPS
 stops or becomes stale. An unarrived responder's shared approach remains a
 personnel route through to the incident; it disappears on personal arrival.
 This affects live map visibility and preserves generated routes for history.
+
+### Hosted clients through a local ngrok backend (2026-11-11)
+
+Backend browser CORS origins can be overridden with comma-separated
+`CORS_ORIGINS`; defaults retain the Render dashboard and local Vite origin and
+include Expo web on localhost/127.0.0.1 port 8081. Native Android requests do not
+require a browser origin. Dashboard `VITE_API_BASE_URL` and mobile
+`EXPO_PUBLIC_API_BASE_URL` are embedded during their respective builds; backend
+`PUBLIC_BASE_URL` controls reporter links and local photo URLs. See
+[ngrok setup](documentation/ngrok-local-backend.md).
+
+### Mobile milestones require team arrival (2026-11-11)
+
+The leader's personal arrival alone no longer enables containment, suppression
+start or Fire Out. These mobile actions also require the assignment to be
+`on_scene`, which the assigned manning driver's truck-arrival confirmation sets
+(or personal arrival for an assignment without trucks). The API enforces the
+same prerequisite. Personal arrival and field reporting remain separate.
+Existing fire timestamps are preserved; affected records need verified timing
+review through the administrator operational-time controls before retrying an
+arrival blocked by fire chronology.
 
 ### Team details navigation (2026-11-11)
 
@@ -1771,6 +1806,15 @@ requirements before enabling local mode. Routing status includes `inference_mode
 `gnn_type` is `exported` when no local model is constructed.
 
 ### Search and route products
+
+Incident destinations snap to the nearest road segment, including the final
+partial segment in route distance and base-time ETA. Station dispatches, routing
+workers, live navigation, deviation connectors and team ETA ranking share this
+behavior. Approaches preserve directed edges, blocked-road costs and terminal
+U-turn restrictions; exact-node destinations retain the existing node search.
+The graph and landmark tables are not modified per request. Existing saved routes
+change only when recalculated. Restart the backend (including routing workers)
+after updating, then use Force Reroute to refresh an existing dispatch.
 
 [routing_engine.py](backend/ai/routing_engine.py) implements ALT (A* with Landmarks
 and Triangle inequality), with 16 landmarks and directed-graph distance tables.
