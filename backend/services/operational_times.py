@@ -15,7 +15,7 @@ from services.incident_events import actor_name
 from services.historical_incidents import attach_history, history, demo_times
 from services.reporting_periods import reporting_window
 from services.timing_metrics import EXCLUDED, measure, first_arrival
-from services.incident_scope import effective_response_kind, validate_classification
+from services.incident_scope import analytics_incident_filter, effective_response_kind, validate_classification
 from services.dispatch_history import context as history_context, truck_plate
 
 UTC = timezone.utc
@@ -284,7 +284,7 @@ def load_incidents(db, start, end):
     incidents = db.query(FireIncident).options(
         selectinload(FireIncident.dispatches).selectinload(DispatchRecord.dispatch_trucks),
         selectinload(FireIncident.barangay),
-    ).filter(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) >= start,
+    ).filter(analytics_incident_filter(), func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) >= start,
              func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) < end
     ).order_by(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime).desc(), FireIncident.fire_id.desc()).all()
     return attach_history(db, incidents)
@@ -322,7 +322,7 @@ def samples(incidents, include_demo=False):
 
 def analytics(db, period, page=1, now=None, source="recorded", kind='all'):
     now = now or datetime.now(UTC)
-    earliest = db.query(func.min(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime))).scalar() if period == "all" else None
+    earliest = db.query(func.min(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime))).filter(analytics_incident_filter()).scalar() if period == "all" else None
     start, now = reporting_window(period, now, earliest)
     span = now - start
     current = load_incidents(db, start, now)

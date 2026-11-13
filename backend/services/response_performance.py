@@ -15,7 +15,7 @@ from services.operational_times import EXCLUDED, detail, iso
 from services.timing_metrics import MAX_SECONDS, measure, summarize, arrival, departure, first_arrival
 from services.historical_incidents import attach_history, demo_times
 from serializers import _incident_dict
-from services.incident_scope import fire_incident_filter
+from services.incident_scope import analytics_incident_filter, fire_incident_filter
 from services.dispatch_history import context
 
 MANILA = ZoneInfo("Asia/Manila")
@@ -91,7 +91,7 @@ def _dispatch_query(db, start, end, kind="operational", team_ids=None, barangay_
         joinedload(DispatchRecord.team).joinedload(ResponseTeam.shift),
         joinedload(DispatchRecord.team).joinedload(ResponseTeam.truck),
         joinedload(DispatchRecord.fire_incident).selectinload(FireIncident.dispatches),
-    ).join(FireIncident).filter(DispatchRecord.dispatch_at >= start, DispatchRecord.dispatch_at < end)
+    ).join(FireIncident).filter(analytics_incident_filter(), DispatchRecord.dispatch_at >= start, DispatchRecord.dispatch_at < end)
     if kind != "all":
         query = query.filter(func.coalesce(FireIncident.record_kind, "unknown") == kind)
     if team_ids:
@@ -146,7 +146,7 @@ def overall(db, start, end, kind="operational", station_id=None, barangay_id=Non
         selectinload(FireIncident.dispatches).joinedload(DispatchRecord.team).joinedload(ResponseTeam.station),
         selectinload(FireIncident.dispatches).joinedload(DispatchRecord.team).joinedload(ResponseTeam.shift),
         selectinload(FireIncident.dispatches).joinedload(DispatchRecord.team).joinedload(ResponseTeam.truck),
-    ).filter(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) >= start,
+    ).filter(analytics_incident_filter(), func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) >= start,
              func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime) < end)
     if fire_only:
         query = query.filter(fire_incident_filter())

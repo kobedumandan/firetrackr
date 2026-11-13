@@ -2,8 +2,14 @@
 from sqlalchemy import and_, func, or_
 
 from models import FireIncident
+from services.timing_metrics import EXCLUDED
 
 FIRE_OPERATION = 'Firefighting Operations'
+
+
+def analytics_incident_filter():
+    """Keep cancelled/recalled records in history, outside analytics cohorts."""
+    return func.coalesce(FireIncident.fire_status, '').notin_(EXCLUDED)
 
 
 def effective_response_kind(incident):

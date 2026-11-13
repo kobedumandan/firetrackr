@@ -14,6 +14,7 @@ from models import Users, ResponseTeam, FireIncident
 from security import require_admin
 from services import response_performance as performance
 from services import response_operations as operations
+from services.incident_scope import analytics_incident_filter
 
 router = APIRouter(prefix="/api/metrics/response-performance", tags=["metrics"], dependencies=[Depends(require_admin)])
 
@@ -24,7 +25,7 @@ def filters(start: datetime | None = None, end: datetime | None = None,
             barangay_id: int | None = Query(None, ge=1), severity: Literal['Minor', 'Moderate', 'Critical'] | None = None,
             all_dates: bool = False, db: Session = Depends(get_db)):
     if all_dates:
-        start = db.query(func.min(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime))).scalar()
+        start = db.query(func.min(func.coalesce(FireIncident.report_received_at, FireIncident.fire_incident_datetime))).filter(analytics_incident_filter()).scalar()
     start, end = performance.window(start, end)
     if len(team_id) > 50 or any(t < 1 for t in team_id):
         raise HTTPException(422, "Select up to 50 valid team IDs.")

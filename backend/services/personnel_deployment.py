@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from models import DispatchRecord, FireIncident, ResponseTeamMember
 from services.operational_times import EXCLUDED, audit, iso
 from services.response_performance import window
+from services.incident_scope import analytics_incident_filter
 
 
 def member_snapshot(member, at):
@@ -69,7 +70,7 @@ def merged_seconds(intervals):
 
 def report(db, start=None, end=None, kind='operational', per_id=None, team_id=None, station_id=None, shift=None):
     start, end = window(start, end)
-    query = db.query(DispatchRecord).options(selectinload(DispatchRecord.fire_incident)).filter(DispatchRecord.dispatch_at < end)
+    query = db.query(DispatchRecord).options(selectinload(DispatchRecord.fire_incident)).join(FireIncident).filter(analytics_incident_filter(), DispatchRecord.dispatch_at < end)
     if team_id:
         query = query.filter(DispatchRecord.team_id == team_id)
     rows, missing_rosters = [], 0

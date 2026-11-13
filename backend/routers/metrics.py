@@ -16,7 +16,8 @@ from services.historical_incidents import attach_history, history
 from services.incident_causes import incident_causes as _incident_causes
 from services.response_performance import overall
 from routers.response_performance import router as performance_router
-from services.incident_scope import FIRE_OPERATION, fire_incident_filter
+from services.incident_scope import FIRE_OPERATION, analytics_incident_filter, fire_incident_filter
+from services.timing_metrics import EXCLUDED
 
 
 router = APIRouter(tags=["metrics"])
@@ -70,13 +71,13 @@ def metrics_summary(
             raise HTTPException(422, str(exc)) from None
         if not date_from:
             earliest = db.query(func.min(FireIncident.fire_incident_datetime)).filter(
-                fire_incident_filter(), FireIncident.fire_incident_datetime < now,
+                fire_incident_filter(), analytics_incident_filter(), FireIncident.fire_incident_datetime < now,
             ).scalar()
             # Include all recorded history through To; keep an empty chart in its end month.
             start, _ = reporting_window("all", now - timedelta(microseconds=1), earliest)
         period = "custom"
     else:
-        earliest = db.query(func.min(FireIncident.fire_incident_datetime)).filter(fire_incident_filter()).scalar() if period == "all" else None
+        earliest = db.query(func.min(FireIncident.fire_incident_datetime)).filter(fire_incident_filter(), analytics_incident_filter()).scalar() if period == "all" else None
         start, now = reporting_window(period, now, earliest)
     breakdown_start, breakdown_end = start, now
     if month is not None:
@@ -109,7 +110,7 @@ def metrics_summary(
         count.filter(prior_window, is_critical).label('previous_critical'),
         *(count.filter(current_window, FireIncident.fire_severity == name).label(name)
           for name in ('Critical', 'Moderate', 'Minor')),
-    ).filter(fire_incident_filter(), FireIncident.fire_incident_datetime >= prev_start,
+    ).filter(fire_incident_filter(), analytics_incident_filter(), FireIncident.fire_incident_datetime >= prev_start,
              FireIncident.fire_incident_datetime < now).one()
     total, prev_total = totals.total, totals.previous
     contained, prev_contained, prev_critical = totals.contained, totals.previous_contained, totals.previous_critical
@@ -126,6 +127,7 @@ def metrics_summary(
             .join(DispatchRecord, DispatchRecord.fire_id == FireIncident.fire_id)
             .filter(
                 fire_incident_filter(),
+                analytics_incident_filter(),
                 FireIncident.fire_incident_datetime >= since,
                 FireIncident.fire_incident_datetime < until,
                 DispatchRecord.dispatch_arrived_at.isnot(None),
@@ -170,12 +172,13 @@ def metrics_summary(
                      ) ORDER BY fallback.brgy_id LIMIT 1))
                 WHERE fi.fire_incident_datetime >= :start
                   AND fi.fire_incident_datetime < :end
+                  AND NOT (COALESCE(fi.fire_status, '') = ANY(:excluded_statuses))
                   AND (TRIM(COALESCE(fi.fire_dispatch_type, '')) = :fire_operation
                        OR (TRIM(COALESCE(fi.fire_dispatch_type, '')) = '' AND fi.response_kind = 'fire'))
                 GROUP BY bb.brgy_name
                 """
             ),
-            {"start": breakdown_start, "end": breakdown_end, "fire_operation": FIRE_OPERATION},
+            {"start": breakdown_start, "end": breakdown_end, "fire_operation": FIRE_OPERATION, "excluded_statuses": sorted(EXCLUDED)},
         ).all()
     }
 
@@ -196,7 +199,7 @@ def metrics_summary(
         window_start = start
     # Read chart/breakdown incidents together so each source history and report
     # cause is looked up once, including a selected month outside chart history.
-    chart_and_breakdown = attach_history(db, db.query(FireIncident).filter(fire_incident_filter(), or_(
+    chart_and_breakdown = attach_history(db, db.query(FireIncident).filter(fire_incident_filter(), analytics_incident_filter(), or_(
         and_(FireIncident.fire_incident_datetime >= window_start,
              FireIncident.fire_incident_datetime < now),
         and_(FireIncident.fire_incident_datetime >= breakdown_start,

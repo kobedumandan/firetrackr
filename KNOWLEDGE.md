@@ -2,6 +2,13 @@
 
 ## Basis and maintenance
 
+### Cancelled incidents excluded from analytics (2026-11-13)
+
+Metrics and Analysis exclude cancelled, canceled and recalled incidents from
+totals, breakdowns, trends, response/operation cohorts, dispatch observations,
+personnel deployment reports and their exports. Cancelled records remain in the
+incident register and retain their cancellation history. No migration is required.
+
 ### Pending incident cancellation (2026-11-12)
 
 The incident details archive icon becomes Cancel incident while pending and is
