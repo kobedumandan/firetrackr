@@ -90,6 +90,65 @@
 .avatar-online { position: absolute; right: -3px; bottom: -3px; width: 12px; height: 12px; border: 3px solid var(--bg-panel); border-radius: 50%; background: var(--accent-green); }
 .avatar-name { color: var(--text-primary); font-size: 16px; font-weight: 600; line-height: 1.5; letter-spacing: -.4px; overflow-wrap: anywhere; }
 .avatar-email { color: var(--settings-muted); font-size: 9.8px; overflow-wrap: anywhere; }
+.profile-content { container-type: inline-size; }
+.profile-layout { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); align-items: start; gap: 24px; }
+.settings-page .profile-rail { position: sticky; top: 0; min-width: 0; margin-bottom: 0; border: 0; border-radius: 18px; background: transparent; box-shadow: none; }
+.profile-rail .avatar-block { flex-direction: row; align-items: center; gap: 10px; padding: 22px; border-bottom: 0; }
+.profile-rail .big-avatar { width: 48px; height: 48px; border: 0; border-radius: 8px; background: var(--bg-hover); color: white; font-family: var(--font-span); font-size: 18px; }
+.profile-rail .name-wrapper { align-items: flex-start; gap: 4px; flex: 1; text-align: left; }
+.profile-rail .avatar-name { font-size: 14px; line-height: 1.4; }
+.profile-rail .avatar-email { max-width: 100%; color: color-mix(in srgb, var(--settings-muted) 85%, var(--page-default-base)); font-size: 10px; }
+.profile-rail .val-badge { text-transform: capitalize; }
+.profile-rail-details { display: flex; flex-direction: column; align-items: flex-start; gap: 18px; padding: 0 22px 22px; }
+.profile-contact { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--settings-muted); font-size: 10.8px; overflow-wrap: anywhere; }
+.profile-contact svg { width: 12px; height: 12px; flex-shrink: 0; }
+.profile-contact span { min-width: 0; }
+.profile-rail-footer { display: flex; padding: 0 22px 22px; }
+.profile-rail-footer .btn-edit { width: 100%; padding: 6px 14px; }
+.profile-edit-form { display: flex; flex-direction: column; gap: 14px; padding: 0 22px 22px; }
+.profile-edit-field { display: flex; flex-direction: column; gap: 6px; color: var(--settings-muted); font-size: 10.8px; }
+.profile-edit-field .inline-input { width: 100%; box-sizing: border-box; }
+.profile-edit-field .inline-input:focus { border-color: var(--accent-fire); outline: none; box-shadow: none; }
+.profile-rail-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.profile-about { min-width: 0; margin-top: 36px; margin-bottom: 0; }
+.profile-about-list { display: flex; flex-direction: column; gap: 18px; margin: 20px 0 0; padding: 0; list-style: none; }
+.profile-about-list li { display: flex; align-items: flex-start; gap: 10px; color: var(--settings-muted); font-size: 10.8px; overflow-wrap: anywhere; }
+.profile-about-list svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; }
+.profile-about-list strong { color: var(--text-primary); font-weight: 500; }
+.profile-main { min-width: 0; }
+.login-activity { padding: 18px; }
+.login-activity-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.login-activity-heading > span, .login-activity-footer { color: var(--settings-muted); font-size: 9.8px; }
+.login-activity-grid { min-width: 0; }
+.login-activity-calendar { width: 100%; border-collapse: separate; border-spacing: 2px; table-layout: fixed; }
+.login-activity-calendar tr > th:first-child { width: 26px; }
+.login-activity-calendar th { padding: 0; color: var(--settings-muted); font-size: 9px; font-weight: 400; line-height: 1; text-align: left; white-space: nowrap; }
+.login-activity-calendar thead th { height: 19px; vertical-align: top; }
+.login-activity-calendar tbody th { min-width: 26px; padding-right: 5px; }
+.login-activity-calendar td { padding: 0; }
+.login-activity-day { display: block; width: 10px; height: 10px; border-radius: 2px; background: var(--bg-hover); }
+.login-activity-calendar .login-activity-day { width: 100%; height: auto; aspect-ratio: 1; }
+.login-level-1 { background: color-mix(in srgb, var(--accent-fire) 28%, var(--bg-panel)); }
+.login-level-2 { background: color-mix(in srgb, var(--accent-fire) 50%, var(--bg-panel)); }
+.login-level-3 { background: color-mix(in srgb, var(--accent-fire) 74%, var(--bg-panel)); }
+.login-level-4 { background: var(--accent-fire); }
+.login-activity-day.outside-range { visibility: hidden; }
+.login-activity-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.login-activity-summary { display: inline-flex; align-items: center; gap: 6px; }
+.login-activity-summary svg { flex-shrink: 0; }
+.login-activity-legend { display: flex; align-items: center; gap: 4px; }
+.login-activity-legend > span:first-child { margin-right: 3px; }
+.login-activity-legend > span:last-child { margin-left: 3px; }
+.login-activity-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.login-day-tooltip { position: fixed; z-index: 10000; display: flex; flex-direction: column; gap: 3px; box-sizing: border-box; width: 220px; max-width: calc(100vw - 24px); padding: 10px 12px; border: 1px solid #666; border-radius: 8px; background: var(--bg-panel); color: var(--text-primary); box-shadow: var(--shadow-md); font: 10px/1.5 var(--font-ui); pointer-events: none; transform: translate(-50%, -100%); }
+.login-day-tooltip.is-below { transform: translate(-50%, 0); }
+.login-day-tooltip strong { font-weight: 600; }
+.login-day-tooltip > span { color: var(--accent-fire); }
+.login-day-tooltip.is-empty > span, .login-day-tooltip > .login-day-duration { color: #999; }
+@container (max-width: 640px) {
+  .profile-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .settings-page .profile-rail { position: static; }
+}
 .session-timer { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px; border: 1px solid var(--border-dim); border-radius: 999px; background: var(--settings-soft); color: var(--text-primary); font-size: 9.8px; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; letter-spacing: .5px; }
 .timer-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--accent-green); animation: st-timer-pulse 1.6s ease-in-out infinite; }
 @keyframes st-timer-pulse { 50% { opacity: .5; } }

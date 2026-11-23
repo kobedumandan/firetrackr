@@ -4,6 +4,7 @@ import { useSessionTimer } from "../hooks/useSessionTimer";
 import SignOutModal from "../components/SignOutModal";
 import SettingsLoading from "../components/SettingsLoading";
 import ResourceArchive from "../components/ResourceArchive";
+import LoginActivity from "../components/LoginActivity";
 import {
   changePassword,
   fetchCurrentUser,
@@ -322,6 +323,10 @@ function EditableRow({ label, sub, value: initialValue, onSave, type = "text" })
 // ── SECTIONS ─────────────────────────────────────────────────────────────────
 
 function SectionProfile({ user, onAccountUpdate = () => {} }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ first_name: "", last_name: "", contact: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   const firstName = user?.first_name ?? "";
   const lastName = user?.last_name ?? "";
   const initials = `${firstName[0] ?? "?"}${lastName[0] ?? ""}`.toUpperCase();
@@ -331,24 +336,72 @@ function SectionProfile({ user, onAccountUpdate = () => {} }) {
   const role = user?.role ?? "—";
   const designation =
     user?.designation ?? (role === "admin" ? "Administrator" : "—");
-  const createdAt = user?.created_at
-    ? new Date(user.created_at).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
+  const joinedDate = user?.created_at ? new Date(user.created_at) : null;
+  const createdAt = joinedDate && !Number.isNaN(joinedDate.getTime())
+    ? joinedDate.toLocaleDateString("en-US", {
+        month: "long",
         year: "numeric",
+        timeZone: "Asia/Manila",
       })
-    : "—";
+    : null;
 
   // Admins aren't station-bound, so an absent station is expected for them and
   // a genuine gap for a responder — say which, rather than printing "—".
-  const station = user?.station?.station_name
-    ? user.station.station_name
-    : role === "admin"
-      ? "City-wide — all stations"
-      : "Not assigned";
+  const station = user?.station?.station_name;
+  const aboutItems = [
+    {
+      key: "joined",
+      icon: "M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z",
+      text: createdAt ? <>You joined in <strong>{createdAt}</strong></> : "Your join date is not available",
+    },
+    {
+      key: "station",
+      icon: "M21 10c0 7-9 12-9 12S3 17 3 10a9 9 0 1 1 18 0ZM12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z",
+      text: station ? <>You are assigned to <strong>{station}</strong></> : role === "admin" ? <>You oversee <strong>all stations city-wide</strong></> : "You have not been assigned to a station",
+    },
+    {
+      key: "designation",
+      icon: "M9 7V4h6v3M3 7h18v14H3ZM3 12a20 20 0 0 0 18 0M10 12h4v4h-4Z",
+      text: designation !== "—" ? <>Your designation is <strong>{designation}</strong></> : "Your designation is not available",
+    },
+    ...(user?.rank ? [{
+      key: "rank",
+      icon: "m8 14-2 8 6-3 6 3-2-8M12 2a7 7 0 1 0 0 14 7 7 0 0 0 0-14Z",
+      text: <>Your service rank is <strong>{user.rank}</strong></>,
+    }] : []),
+    {
+      key: "role",
+      icon: "m12 3 9 4v5c0 5-9 10-9 10S3 17 3 12V7ZM8 12l3 3 5-6",
+      text: role === "admin" ? <>You have <strong>administrator access</strong></> : <>Your account role is <strong>{role}</strong></>,
+    },
+  ];
 
-  const saveField = (field) => async (value) =>
-    onAccountUpdate(await updateAccountProfile({ [field]: value }));
+  function startEdit() {
+    setDraft({ first_name: firstName, last_name: lastName, contact: user?.contact ?? "" });
+    setError(null);
+    setEditing(true);
+  }
+
+  async function saveProfile(event) {
+    event.preventDefault();
+    if (saving) return;
+    const fields = Object.fromEntries(Object.entries(draft).map(([key, value]) => [key, value.trim()]));
+    if (!fields.contact) delete fields.contact;
+    if (!fields.first_name || !fields.last_name) {
+      setError("First and last name are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      onAccountUpdate(await updateAccountProfile(fields));
+      setEditing(false);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <>
@@ -356,88 +409,79 @@ function SectionProfile({ user, onAccountUpdate = () => {} }) {
         Your account information and identity details.
       </SettingsHeading>
 
-      <div className="settings-block">
-        <SettingsBlockHeading Icon={IcoAccount} title="Identity">Your personal details and contact information.</SettingsBlockHeading>
-        <div className="avatar-block">
-          <div className="big-avatar">
-            {initials}
-            <div className="avatar-online" />
-          </div>
-          <div className="name-wrapper">
-            <div className="avatar-name">{fullName}</div>
-            <div className="avatar-email">{email}</div>
-            <span className="val-badge vb-fire">{role}</span>
-          </div>
-        </div>
-        <EditableRow
-          label="First Name"
-          sub="Your given name on record"
-          value={firstName || "—"}
-          onSave={saveField("first_name")}
-        />
-        <EditableRow
-          label="Last Name"
-          sub="Your surname on record"
-          value={lastName || "—"}
-          onSave={saveField("last_name")}
-        />
-        <EditableRow
-          label="Contact Number"
-          sub="Primary contact for dispatch"
-          value={contact}
-          onSave={saveField("contact")}
-        />
-      </div>
+      <div className="profile-content">
+        <div className="profile-layout">
+          <aside className="settings-block profile-rail" aria-label="Personal information">
+            {!editing && <div className="avatar-block">
+              <div className="big-avatar" role="img" aria-label={`${fullName} profile avatar`}>
+                {initials}
+              </div>
+              <div className="name-wrapper">
+                <div className="avatar-name">{fullName}</div>
+                <div className="avatar-email">{email}</div>
+              </div>
+            </div>}
+            {!editing && <div className="profile-rail-details">
+              <span className="val-badge vb-fire">{role}</span>
+              {user?.contact && (
+                <div className="profile-contact">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.69 2.79a2 2 0 0 1-.45 2.11L8.09 9.89a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.89.33 1.83.56 2.79.69A2 2 0 0 1 22 16.92Z" />
+                  </svg>
+                  <span>{contact}</span>
+                </div>
+              )}
+            </div>}
+            {editing ? (
+              <form className="profile-edit-form" onSubmit={saveProfile}>
+                {[
+                  { key: "first_name", label: "First Name", type: "text" },
+                  { key: "last_name", label: "Last Name", type: "text" },
+                  { key: "contact", label: "Contact Number", type: "tel" },
+                ].map(({ key, label, type }, index) => (
+                  <label className="profile-edit-field" key={key}>
+                    {label}
+                    <input
+                      className="inline-input"
+                      type={type}
+                      value={draft[key]}
+                      required={key !== "contact"}
+                      minLength={key === "contact" ? 7 : 1}
+                      maxLength={key === "contact" ? 50 : 100}
+                      autoFocus={index === 0}
+                      disabled={saving}
+                      onChange={(event) => setDraft(previous => ({ ...previous, [key]: event.target.value }))}
+                    />
+                  </label>
+                ))}
+                {error && <div className="row-sub-error" role="alert">{error}</div>}
+                <div className="profile-rail-actions">
+                  <button type="button" className="btn-edit" disabled={saving} onClick={() => setEditing(false)}>Cancel</button>
+                  <button type="submit" className="btn-save" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+                </div>
+              </form>
+            ) : (
+              <div className="profile-rail-footer">
+                <button type="button" className="btn-edit" onClick={startEdit}>Edit Profile</button>
+              </div>
+            )}
+          </aside>
 
-      <div className="settings-block">
-        <SettingsBlockHeading Icon={IcoSecurity} title="Role &amp; Access">Your assigned role and station access.</SettingsBlockHeading>
-        <div className="block-row">
-          <div className="row-left">
-            <div className="row-label">User Role</div>
-            <div className="row-sub">Assigned system access level</div>
-          </div>
-          <div className="row-right">
-            <span className="val-badge vb-fire">{role}</span>
-          </div>
-        </div>
-        <div className="block-row">
-          <div className="row-left">
-            <div className="row-label">Designation</div>
-            <div className="row-sub">Position within the command structure</div>
-          </div>
-          <div className="row-right">
-            <span className="row-value">{designation}</span>
-          </div>
-        </div>
-        {/* Rank only exists on personnel records, so it would read "—" forever
-            on an admin account. Omit the row instead of showing an empty one. */}
-        {user?.rank && (
-          <div className="block-row">
-            <div className="row-left">
-              <div className="row-label">Rank</div>
-              <div className="row-sub">Service rank on record</div>
-            </div>
-            <div className="row-right">
-              <span className="row-value">{user.rank}</span>
-            </div>
-          </div>
-        )}
-        <div className="block-row">
-          <div className="row-left">
-            <div className="row-label">Assigned Station</div>
-            <div className="row-sub">Primary reporting station</div>
-          </div>
-          <div className="row-right">
-            <span className="row-value">{station}</span>
-          </div>
-        </div>
-        <div className="block-row">
-          <div className="row-left">
-            <div className="row-label">Account Created</div>
-            <div className="row-sub">Date this account was provisioned</div>
-          </div>
-          <div className="row-right">
-            <span className="row-value">{createdAt}</span>
+          <div className="profile-main">
+            {role === "admin" && <LoginActivity key={user?.user_id} />}
+            <section className="profile-about" aria-label="About You">
+              <h3 className="block-title">About You</h3>
+              <ul className="profile-about-list">
+                {aboutItems.map(item => (
+                  <li key={item.key}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                      <path d={item.icon} />
+                    </svg>
+                    <span>{item.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
           </div>
         </div>
       </div>

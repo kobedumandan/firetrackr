@@ -5,15 +5,23 @@ import { getCurrentShift } from "../utils/shift";
 import { BellIcon } from "./notificationUi";
 import { COMMAND_SHORTCUT } from "../hooks/useCommandShortcut";
 
-function PointUpIcon({className}) {
+function SidebarToggleIcon({ collapsed }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 -960 960 960"
-      className={className}
-      fill="currentColor"
+      viewBox="0 0 24 24"
+      className="user-chip-btn"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
     >
-      <path d="m296-345-56-56 240-240 240 240-56 56-184-183-184 183Z" />
+      <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
+      <path d="M9 4v16" />
+      <path d={collapsed ? "m13 9 3 3-3 3" : "m16 9-3 3 3 3"} />
     </svg>
   );
 }
@@ -131,6 +139,8 @@ export default function TopBar({
   unreadCount = 0,
   onToggleAlerts,
   alertsOpen = false,
+  compactNav = false,
+  onCompactNavChange,
 }) {
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [shift, setShift] = useState(() => getCurrentShift());
@@ -144,10 +154,14 @@ export default function TopBar({
     <header className="topbar">
       <div
         className={`user-chip${showingSettings ? " active" : ""}`}
-        onClick={onOpenSettings}
-        style={{ cursor: "pointer" }}
       >
-        <div className="user-avatar-name-wrap">
+        <button
+          type="button"
+          className="user-avatar-name-wrap"
+          onClick={onOpenSettings}
+          aria-label="Open settings"
+          title="Open settings"
+        >
           <div className="user-avatar">
             {`${user?.first_name?.[0] ?? ""}${
               user?.last_name?.[0] ?? ""
@@ -161,16 +175,23 @@ export default function TopBar({
             </span>
             <span className="user-chip-role">System Administrator</span>
           </div>
-        </div>
-        <div className="user-chip-btn-wrap">
-          <PointUpIcon className={"user-chip-btn"}/>
-          <PointUpIcon className={"user-chip-btn-reverse"}/>
-        </div>
+        </button>
+        <button
+          type="button"
+          className="user-chip-btn-wrap"
+          onClick={() => onCompactNavChange?.(!compactNav)}
+          aria-label={compactNav ? "Expand sidebar" : "Collapse sidebar"}
+          title={compactNav ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!compactNav}
+          aria-controls="sidebar-navigation"
+        >
+          <SidebarToggleIcon collapsed={compactNav} />
+        </button>
       </div>
 
       <div className="topbar-spacer" />
 
-      <nav className="topbar-nav">
+      <nav className="topbar-nav" id="sidebar-navigation">
         {NAV_ITEMS.map(({ label, Icon }) => (
           <span key={label} style={{ display: "contents" }}>
             {label === "Incidents" && <div className="section-divider" />}

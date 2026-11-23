@@ -872,6 +872,19 @@ export async function changePassword(currentPassword, newPassword) {
   return res.json()   // { user, access_token }
 }
 
+/** End the server-side session before clearing browser credentials. */
+export async function logoutAccount() {
+  const res = await apiFetch('/api/auth/logout', { method: 'POST', signal: AbortSignal.timeout(5000) })
+  if (!res.ok) throw new Error(await _detail(res, 'Could not end the session'))
+}
+
+/** Daily sign-in counts and recorded signed-in time, in Manila time. */
+export async function fetchLoginActivity() {
+  const res = await apiFetch('/api/auth/login-activity')
+  if (!res.ok) throw new Error(await _detail(res, `Failed to load login activity (${res.status})`))
+  return res.json()
+}
+
 /** Most recent sign-ins for the current user, newest first. Not cached — a
  *  stale login list is worse than no list on a security screen. */
 export async function fetchLoginHistory(limit = 5) {

@@ -261,7 +261,7 @@
   text-overflow: ellipsis;
 }
 
-.user-chip:hover {
+:root:not([data-nav="compact"]) .user-chip:hover:not(:has(.user-chip-btn-wrap:hover)) {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
@@ -276,13 +276,25 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .user-chip-name-wrap {
   display: flex;
   flex-direction: column; 
+  min-width: 0;
 }
 .user-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-primary);
   font-weight: 400;
   font-size: 13.8px;
@@ -312,23 +324,39 @@
 }
 
 .user-chip-btn {
-  fill: var(--text-primary);
-  width: 16px;
-  height: 16px;
-  transform: translateY(4px);
-}
-.user-chip-btn-reverse {
-  fill: var(--text-primary);
-  width: 16px;
-  height: 16px;
-  transform: translateY(-4px) rotate(180deg);
+  width: 18px;
+  height: 18px;
 }
 
 .user-chip-btn-wrap {
   display: flex;
-  flex-direction: column;
   justify-content: center;
   align-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  padding: 0;
+  margin-left: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.user-chip-btn-wrap:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+:root:not([data-nav="compact"]) .user-chip.active .user-chip-btn-wrap:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.user-chip-btn-wrap:focus-visible,
+.user-avatar-name-wrap:focus-visible {
+  outline: 2px solid var(--accent-fire);
+  outline-offset: 2px;
 }
 
 .theme-toggle {
@@ -353,10 +381,8 @@
 }
 
 /* ── COMPACT NAVIGATION RAIL ──────────────────────────────────────────────────
-   Driven by the Appearance > Compact Sidebar preference, which App.jsx stamps
-   onto <html> as data-nav. Everything here is a width change plus hiding the
-   text, so the markup is identical in both states and nothing re-renders when
-   the preference flips. */
+   Driven by the shared sidebar / Appearance > Compact Sidebar preference,
+   which App.jsx stamps onto <html> as data-nav. */
 
 :root[data-nav="compact"] .topbar {
   width: 56px;
@@ -368,7 +394,6 @@
 :root[data-nav="compact"] .nav-btn-label,
 :root[data-nav="compact"] .nav-btn-shortcut,
 :root[data-nav="compact"] .user-chip-name-wrap,
-:root[data-nav="compact"] .user-chip-btn-wrap,
 :root[data-nav="compact"] .current-shift-label,
 :root[data-nav="compact"] .current-shift-window {
   display: none;
@@ -394,6 +419,42 @@
   /* The rail is a flex column, so without this a tight viewport would squash
      these back out of square. */
   flex: none;
+}
+
+:root[data-nav="compact"] .user-chip {
+  height: auto;
+  flex-direction: column;
+  gap: 8px;
+  overflow: visible;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+:root[data-nav="compact"] .user-avatar-name-wrap {
+  width: 34px;
+  height: 34px;
+  justify-content: center;
+  border-radius: 9px;
+}
+
+:root[data-nav="compact"] .user-avatar-name-wrap:hover {
+  background: var(--bg-hover);
+}
+
+:root[data-nav="compact"] .user-chip.active .user-avatar-name-wrap {
+  background: var(--accent-fire-dim);
+  color: var(--accent-fire);
+}
+
+:root[data-nav="compact"] .user-chip-btn-wrap {
+  width: 34px;
+  height: 34px;
+  margin-left: 0;
+}
+
+:root[data-nav="compact"] .user-chip-btn {
+  width: 20px;
+  height: 20px;
 }
 
 /* .topbar centres its children, which would otherwise leave this shrink-wrapped

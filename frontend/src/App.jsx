@@ -15,7 +15,7 @@ import TeamsPage from './pages/TeamsPage'
 import TrucksPage from './pages/TrucksPage'
 import MetricsPage from './pages/MetricsPage'
 import AnalysisPage from './pages/AnalysisPage'
-import { invalidateOperationalTimes, invalidateResponseResources, notifyIncidentReportUpdated } from './api'
+import { invalidateOperationalTimes, invalidateResponseResources, notifyIncidentReportUpdated, logoutAccount } from './api'
 import SettingsPage from './pages/SettingsPage'
 import LoginPage from './pages/LoginPage'
 import ToastStack from './components/ToastStack'
@@ -150,8 +150,8 @@ export default function App() {
     () => localStorage.getItem('fireops-theme') || 'dark'
   )
   // Appearance preferences, persisted the same way as theme. Both are applied
-  // purely through an attribute on <html> that CSS keys off, so no component
-  // needs the value threaded down to it.
+  // through an attribute on <html> that CSS keys off. The sidebar toggle and
+  // Settings share the same compact-nav preference.
   const [compactNav, setCompactNav]               = useState(
     () => localStorage.getItem('fireops-compact-nav') === '1'
   )
@@ -1028,7 +1028,12 @@ export default function App() {
     }
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      await logoutAccount()
+    } catch (error) {
+      console.warn('Server sign-out was not confirmed; the session will expire automatically.', error)
+    }
     setConstraintEditing(false)
     // Both are diff baselines, not data: a new session has to reseed them or it
     // would alert on everything that changed while nobody was signed in.
@@ -1057,6 +1062,8 @@ export default function App() {
         Skip to main content
       </a>
       <TopBar
+        compactNav={compactNav}
+        onCompactNavChange={setCompactNav}
         activeNav={activeNav}
         onNavChange={navigateToPage}
         theme={theme}

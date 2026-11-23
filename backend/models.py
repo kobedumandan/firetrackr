@@ -632,6 +632,20 @@ class LoginHistory(Base):
     user = relationship("Users", back_populates="login_history")
 
 
+class AdminSession(Base):
+    """Token lifetime evidence for administrator signed-in time, not activity time."""
+    __tablename__ = "admin_sessions"
+
+    session_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+    login_id = Column(Integer, ForeignKey("login_history.login_id", ondelete="SET NULL"), unique=True)
+    jti = Column(String(64), nullable=False, unique=True)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    ended_at = Column(DateTime(timezone=True))
+    __table_args__ = (Index("ix_admin_sessions_user_start", "user_id", "started_at"),)
+
+
 class TokenBlacklist(Base):
     __tablename__ = "token_blacklist"
 

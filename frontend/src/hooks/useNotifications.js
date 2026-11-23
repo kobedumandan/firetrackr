@@ -72,7 +72,6 @@ export function useNotifications(prefs, userId = null) {
   const [items, setItems]       = useState(() => readHistory(storageKey))
   const [toastIds, setToastIds] = useState([])
   const seqRef    = useRef(0)
-  const timersRef = useRef(new Map())
 
   // App stays mounted through login/logout. Switch history before rendering
   // another account, and restore only the list, never old toast popups.
@@ -89,15 +88,8 @@ export function useNotifications(prefs, userId = null) {
     } catch { /* Alerts still work in memory if browser storage is unavailable. */ }
   }, [items, storageKey])
 
-  // Cancel outstanding toast timers when the account changes or App unmounts.
-  useEffect(() => {
-    const timers = timersRef.current
-    return () => { timers.forEach(clearTimeout); timers.clear() }
-  }, [storageKey])
-
+  // Sonner owns popup timing, including pauses during interaction.
   const hideToast = useCallback((id) => {
-    const t = timersRef.current.get(id)
-    if (t) { clearTimeout(t); timersRef.current.delete(id) }
     setToastIds(prev => prev.filter(x => x !== id))
   }, [])
 
@@ -113,14 +105,7 @@ export function useNotifications(prefs, userId = null) {
     const item = { id, kind, title, body, at: new Date().toISOString(), fireId, severity, incident, tracker, read: false }
 
     setItems(prev => [item, ...prev].slice(0, MAX_ITEMS))
-    setToastIds(prev => [id, ...prev])
-
-    if (severity !== 'critical') {
-      timersRef.current.set(id, setTimeout(() => {
-        timersRef.current.delete(id)
-        setToastIds(prev => prev.filter(x => x !== id))
-      }, TOAST_MS))
-    }
+    setToastIds(prev => [id, ...prev].slice(0, MAX_ITEMS))
 
     if (prefsRef.current.sound && severity === 'critical') playChime()
   }, [])
@@ -141,8 +126,6 @@ export function useNotifications(prefs, userId = null) {
     if (storageKey) {
       try { localStorage.removeItem(storageKey) } catch { /* Storage may be blocked. */ }
     }
-    timersRef.current.forEach(clearTimeout)
-    timersRef.current.clear()
     setToastIds([])
     setItems([])
   }, [storageKey])
