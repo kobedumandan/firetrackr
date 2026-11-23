@@ -150,8 +150,8 @@ export default function App() {
     () => localStorage.getItem('fireops-theme') || 'dark'
   )
   // Appearance preferences, persisted the same way as theme. Both are applied
-  // purely through an attribute on <html> that CSS keys off, so no component
-  // needs the value threaded down to it.
+  // through an attribute on <html> that CSS keys off. The sidebar toggle and
+  // Settings share the same compact-nav preference.
   const [compactNav, setCompactNav]               = useState(
     () => localStorage.getItem('fireops-compact-nav') === '1'
   )
@@ -1057,6 +1057,8 @@ export default function App() {
         Skip to main content
       </a>
       <TopBar
+        compactNav={compactNav}
+        onCompactNavChange={setCompactNav}
         activeNav={activeNav}
         onNavChange={navigateToPage}
         theme={theme}

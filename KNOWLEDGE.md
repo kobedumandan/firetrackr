@@ -2,6 +2,13 @@
 
 ## Basis and maintenance
 
+### Sidebar collapse control (2026-11-23)
+
+The navigation sidebar's profile row includes a collapse/expand button that
+shares the Settings > Appearance > Compact Sidebar preference. It stays visible
+in compact mode, and the selection persists in browser localStorage. The avatar
+and name remain a separate Settings button.
+
 ### Cancelled incidents excluded from analytics (2026-11-13)
 
 Metrics and Analysis exclude cancelled, canceled and recalled incidents from
