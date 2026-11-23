@@ -8,23 +8,38 @@
 /* Above --z-modal, not below it: a new-fire toast that a dispatcher cannot see
    because a dialog happens to be open is worse than useless. Precedent is the
    skip link in index.css. */
-.toast-stack {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: calc(var(--z-modal) + 1);
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 10px;
-  width: 360px;
-  max-width: calc(100vw - 36px);
-  pointer-events: none;
+.toast-stack[data-sonner-toaster] {
+  max-width: calc(100vw - 32px);
+  transition-duration: 160ms;
+}
+
+.toast-stack [data-sonner-toast] {
+  width: var(--width);
+}
+
+.toast-stack[data-sonner-toaster] [data-sonner-toast],
+.toast-stack[data-sonner-toaster] [data-sonner-toast] > * {
+  transition-duration: 160ms;
+}
+
+/* Headless cards retain their surface as Sonner collapses the stack. */
+.toast-stack [data-expanded="false"][data-front="false"] .toast {
+  height: var(--front-toast-height);
+}
+
+.toast-stack [data-expanded="false"][data-front="false"] .toast > * {
+  visibility: hidden;
+}
+
+.toast-stack [data-visible="false"] {
+  visibility: hidden;
 }
 
 /* Neutral surfaces keep the icon as the incident's visual cue. */
 .toast {
   position: relative;
-  pointer-events: auto;
+  width: 100%;
+  box-sizing: border-box;
   display: flex;
   gap: 12px;
   padding: 12px 12px 12px 12px;
@@ -33,9 +48,6 @@
   background: var(--bg-panel);
   box-shadow: var(--shadow-lg), 0 0 5px rgba(var(--accent-fire-rgb), 0.08);
   overflow: hidden;
-  /* data-motion="off" in index.css already flattens this to a single frame,
-     so the preference needs no special handling here. */
-  animation: toastIn 0.22s ease-out;
 }
 
 .toast[data-kind="onScene"],
@@ -48,17 +60,6 @@
 .toast[data-kind="contained"] {
   border-color: rgba(var(--accent-emerald-rgb), 0.16);
   box-shadow: var(--shadow-lg), 0 0 4px rgba(var(--accent-emerald-rgb), 0.04);
-}
-
-@keyframes toastIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 .toast-icon {
@@ -191,35 +192,11 @@
   height: 13px;
 }
 
-/* Auto-dismiss countdown: a hairline along the bottom that drains over the
-   same TOAST_MS the hook uses (passed in as --toast-ms). */
-.toast-timer {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--text-tertiary);
-  transform-origin: left center;
-  animation: toastTimer var(--toast-ms, 20s) linear forwards;
+:root[data-motion="off"] .toast-stack [data-sonner-toast],
+:root[data-motion="off"] .toast-stack [data-sonner-toast] > * {
+  animation: none !important;
+  transition: none !important;
 }
-
-@keyframes toastTimer {
-  from { transform: scaleX(1); }
-  to   { transform: scaleX(0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .toast { animation: none; }
-  .toast-timer { display: none; }
-}
-/* With animations off the bar would sit frozen at full width, which reads as
-   a stray border — hide it rather than show a countdown that never moves. */
-:root[data-motion="off"] .toast-timer {
-  display: none;
-}
-
-/* ── History panel ───────────────────────────────────────────────────────── */
 
 /* Fixed and anchored beside the rail rather than nested in it, for the same
    stacking-context reason the toasts are rendered at top level. Type, pills

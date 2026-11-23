@@ -2,6 +2,15 @@
 
 ## Basis and maintenance
 
+### Sonner alert popups (2026-11-23)
+
+Dashboard alert popups use Sonner with the existing notification cards and actions.
+The bottom-right stack shows three cards, expands on hover or keyboard focus, and
+supports swipe dismissal. Non-critical alerts expire after 20 seconds, pausing
+while the stack is being used or the document is hidden. Critical alerts persist
+until dismissed. Popup dismissal leaves bell history and unread counts intact;
+account changes clear popups without replaying saved history.
+
 ### Sidebar collapse control (2026-11-23)
 
 The navigation sidebar's profile row includes a collapse/expand button that
