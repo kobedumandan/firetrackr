@@ -2,6 +2,27 @@
 
 ## Basis and maintenance
 
+### Profile login activity (2026-11-24)
+
+Settings > Profile shows a fire-colored daily login calendar above About You
+for administrators. `GET /api/auth/login-activity` requires `require_admin` and
+returns only the caller's successful login counts over the last 365 Manila dates,
+including today, as `start_date`, `end_date`, `timezone` and `days` (`date`, `count`).
+The query aggregates the recorded login history rather than using the recent
+50-entry list. Squares show zero, one, two, three or four-plus sign-ins; missing
+records are empty days. Token use does not count as a login.
+
+Migration `0039` adds `admin_sessions` to record administrator token issue, expiry,
+and explicit sign-out/revocation. Credential rotation closes the old session and
+records the replacement without adding another login. The dashboard sends the
+logout request before clearing its credentials. Duration is total signed-in time,
+including idle time until sign-out or token expiry; closing the browser does not
+end a token session. Simultaneous sessions are merged and overnight durations split
+at Manila midnight. `duration_seconds` is null for login days with untracked legacy
+sign-ins, displayed as "Duration unavailable"; no historical durations are inferred.
+The calendar refreshes once a minute while visible. Apply `0039` before running
+the updated backend; no application database migration was run as part of this edit.
+
 ### Sonner alert popups (2026-11-23)
 
 Dashboard alert popups use Sonner with the existing notification cards and actions.

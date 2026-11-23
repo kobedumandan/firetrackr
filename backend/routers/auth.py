@@ -1,14 +1,16 @@
 """Login, logout, the current-user profile, and credential self-service."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+from sqlalchemy import Date, func
 
 from config import JWT_ALGORITHM, JWT_SECRET
 from database import get_db
-from models import LoginHistory, TokenBlacklist, Users
+from models import AdminSession, LoginHistory, TokenBlacklist, Users
+from services.admin_sessions import close_admin_session, daily_session_seconds, record_admin_session
 from schemas import LoginRequest, PasswordChange, ProfileUpdate
 from security import (
     _bearer, _create_token, _hash_password, _home_station, _user_profile,
@@ -37,14 +39,18 @@ def _client_ip(request: Request) -> "str | None":
     return client.host[:45] if client else None
 
 
-def _record_login(db: Session, user: Users, request: Request) -> None:
+def _record_login(db: Session, user: Users, request: Request, token=None) -> None:
     """Append a sign-in row. Never let bookkeeping fail the login itself."""
     try:
-        db.add(LoginHistory(
+        row = LoginHistory(
             user_id=user.user_id,
             ip_address=_client_ip(request),
             user_agent=(request.headers.get("user-agent") or None),
-        ))
+        )
+        db.add(row)
+        if token and user.user_role == 'admin':
+            db.flush()
+            record_admin_session(db, user, token, login_id=row.login_id)
         db.commit()
     except Exception:
         db.rollback()
@@ -59,6 +65,7 @@ def _revoke(db: Session, token: str) -> None:
     jti, exp = payload.get("jti"), payload.get("exp")
     if not (jti and exp):
         return
+    close_admin_session(db, jti)
     if not db.query(TokenBlacklist).filter(TokenBlacklist.jti == jti).first():
         db.add(TokenBlacklist(
             jti=jti, expires_at=datetime.fromtimestamp(exp, tz=timezone.utc)))
@@ -74,9 +81,10 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     if user.user_role != "admin":
         raise HTTPException(status_code=403, detail="This account can't sign in to the dashboard.")
     ensure_account_enabled(user)
-    _record_login(db, user, request)
+    token = _create_token(user)
+    _record_login(db, user, request, token)
     return {
-        "access_token": _create_token(user),
+        "access_token": token,
         "token_type": "bearer",
         "user": _user_profile(user),
     }
@@ -167,11 +175,14 @@ def update_me(
 
     if rotate:
         _revoke(db, credentials.credentials)
+    token = _create_token(current_user) if rotate else None
+    if token:
+        record_admin_session(db, current_user, token)
     db.commit()
     db.refresh(current_user)
     return {
         "user": _user_profile(current_user),
-        "access_token": _create_token(current_user) if rotate else None,
+        "access_token": token,
     }
 
 
@@ -198,11 +209,13 @@ def change_password(
     _revoke(db, credentials.credentials)
     current_user.user_password = _hash_password(body.new_password)
     current_user.password_changed_at = datetime.now(timezone.utc)
+    token = _create_token(current_user)
+    record_admin_session(db, current_user, token)
     db.commit()
     db.refresh(current_user)
     return {
         "user": _user_profile(current_user),
-        "access_token": _create_token(current_user),
+        "access_token": token,
     }
 
 
@@ -229,6 +242,56 @@ def login_history(
         }
         for r in rows
     ]
+
+
+@router.get("/api/auth/login-activity")
+def login_activity(
+    current_user: Users = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Successful logins for this administrator over 365 Manila calendar days."""
+    manila = timezone(timedelta(hours=8))
+    today = datetime.now(manila).date()
+    start = today - timedelta(days=364)
+    start_at = datetime.combine(start, datetime.min.time(), tzinfo=manila)
+    end_at = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=manila)
+    login_day = func.date(func.timezone("Asia/Manila", LoginHistory.logged_in_at), type_=Date)
+    rows = (
+        db.query(
+            login_day.label("day"), func.count(LoginHistory.login_id).label("count"),
+            func.count(AdminSession.session_id).label("tracked_count"),
+        )
+        .outerjoin(AdminSession, AdminSession.login_id == LoginHistory.login_id)
+        .filter(
+            LoginHistory.user_id == current_user.user_id,
+            LoginHistory.logged_in_at >= start_at.astimezone(timezone.utc),
+            LoginHistory.logged_in_at < end_at.astimezone(timezone.utc),
+        )
+        .group_by(login_day)
+        .order_by(login_day)
+        .all()
+    )
+    sessions = db.query(AdminSession).filter(
+        AdminSession.user_id == current_user.user_id,
+        AdminSession.started_at < end_at.astimezone(timezone.utc),
+        AdminSession.expires_at > start_at.astimezone(timezone.utc),
+    ).all()
+    durations = daily_session_seconds(
+        sessions, start_at, end_at, datetime.now(timezone.utc), current_user.sessions_revoked_at,
+    )
+    days = {row.day.isoformat(): {
+        "date": row.day.isoformat(), "count": row.count,
+        "duration_seconds": durations.get(row.day.isoformat(), 0) if row.tracked_count == row.count else None,
+    } for row in rows}
+    for day, seconds in durations.items():
+        if day not in days:
+            days[day] = {"date": day, "count": 0, "duration_seconds": seconds}
+    return {
+        "start_date": start.isoformat(),
+        "end_date": today.isoformat(),
+        "timezone": "Asia/Manila",
+        "days": [days[day] for day in sorted(days)],
+    }
 
 
 @router.post("/api/auth/logout", status_code=204)
