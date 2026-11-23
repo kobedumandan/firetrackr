@@ -58,7 +58,11 @@ backend/cache/*.json
 # Tests + test tooling (kept local)
 backend/tests/
 backend/requirements-dev.txt
+frontend/tests/
 frontend/src/**/*.test.js
+
+# Local uploaded incident report photos
+backend/uploads/report_photos/
 # Local backups of regenerated data
 backend/data/*.bak.gpkg
 # Generated label baselines and retraining snapshots; regenerate from source.
